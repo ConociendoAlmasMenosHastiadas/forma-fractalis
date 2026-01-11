@@ -1,8 +1,12 @@
-/// Rendering module for the Mandelbrot fractal
-/// 
-/// This module handles:
-/// - Parallel rendering with Rayon
-/// - Drawing overlays (preview rectangles, etc.)
+//! Parallel Fractal Rendering
+//!
+//! This module handles the conversion of Mandelbrot iteration counts into
+//! colored pixels using parallel processing via Rayon.
+//!
+//! # Features
+//! - Multi-threaded row-based parallel rendering
+//! - ColorMap-based gradient coloring
+//! - RGBA buffer output for GPU texture upload
 
 use crate::fractal::{mandelbrot_iterations, MandelbrotView};
 use crate::colorschemes::{ColorMap, color_from_iterations};

@@ -1,8 +1,12 @@
-/// Mandelbrot fractal calculation module
-/// 
-/// This module contains the core fractal mathematics:
-/// - Coordinate transformations (screen to complex plane)
-/// - Mandelbrot iteration calculations
+//! Mandelbrot Set Mathematics and View Management
+//!
+//! This module provides the core mathematical functions for computing
+//! the Mandelbrot set and managing the viewport state for navigation.
+//!
+//! # Key Components
+//! - `MandelbrotView`: Viewport state (center, zoom, dimensions)
+//! - `mandelbrot_iterations()`: Core iteration counting algorithm
+//! - Navigation: zoom, pan, reset operations
 /// - View state management
 
 /// Represents the view parameters for rendering the Mandelbrot set

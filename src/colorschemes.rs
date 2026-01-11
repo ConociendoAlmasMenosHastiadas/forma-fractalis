@@ -1,8 +1,19 @@
-/// Color schemes and colormap management for Mandelbrot rendering
-///
-/// This module handles:
-/// - Color representation (RGB/HSV with conversions)
-/// - Color schemes (Default, Fire, Ocean, etc.)
+//! Color Schemes and Gradient System
+//!
+//! This module provides a flexible color mapping system for fractal visualization,
+//! with support for smooth gradient interpolation between color stops.
+//!
+//! # Architecture
+//! - `Color`: RGB representation with HSV conversion and interpolation
+//! - `ColorStop`: Position-color pair for gradient definition
+//! - `ColorMap`: Collection of stops with smooth interpolation
+//! - `ColorScheme`: Pre-built color schemes (Default, Fire, Ocean, etc.)
+//!
+//! # Usage
+//! ```ignore
+//! let colormap = ColorScheme::Fire.to_colormap();
+//! let color = colormap.get_color(0.5);  // Get color at 50% position
+//! ```
 /// - Color stops and gradient interpolation
 /// - Iteration-to-color mapping
 
@@ -155,6 +166,10 @@ impl ColorMap {
     
     pub fn stops(&self) -> &[ColorStop] {
         &self.stops
+    }
+    
+    pub fn stops_mut(&mut self) -> &mut Vec<ColorStop> {
+        &mut self.stops
     }
     
     fn sort_stops(&mut self) {

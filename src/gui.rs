@@ -1,337 +1,169 @@
-/// Integrated Mandelbrot GUI with iced
-/// 
-/// This module contains the control panel GUI that integrates with the fractal renderer
+//! GUI Helper Functions for egui Interface
+//!
+//! This module provides reusable UI building blocks that keep main.rs clean
+//! and maintainable. Each function renders a specific section of the sidebar.
+//!
+//! # Components
+//! - Dimension controls (width/height inputs)
+//! - Fractal settings (iterations)
+//! - View information display (coordinates, zoom level)
+//! - Colormap controls (scheme picker, color stops)
+//! - Action buttons (apply, reset, export)
+//! - Zoom square visualization
+//!
+//! All functions take `&mut egui::Ui` for rendering within egui layouts.
 
-use iced::{
-    executor,
-    widget::{button, column, container, pick_list, row, scrollable, text, text_input, Space},
-    Alignment, Application, Command, Element, Length, Settings, Theme,
-};
-use std::sync::{Arc, Mutex};
+use eframe::egui;
 use crate::fractal::MandelbrotView;
+use crate::colorschemes::{ColorScheme, ColorMap};
 
-static VIEW: once_cell::sync::OnceCell<Arc<Mutex<MandelbrotView>>> = once_cell::sync::OnceCell::new();
-
-/// Launch the GUI application with shared view
-pub fn run_with_view(view: Arc<Mutex<MandelbrotView>>) -> iced::Result {
-    VIEW.set(view).ok();
-    MandelbrotApp::run(Settings {
-        window: iced::window::Settings {
-            size: iced::Size::new(320.0, 750.0),
-            position: iced::window::Position::Specific(iced::Point::new(50.0, 50.0)),
-            ..Default::default()
-        },
-        ..Default::default()
-    })
-}
-
-// Color schemes
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ColorScheme {
-    Default,
-    Fire,
-    Ocean,
-    Grayscale,
-    Rainbow,
-}
-
-impl ColorScheme {
-    const ALL: [ColorScheme; 5] = [
-        ColorScheme::Default,
-        ColorScheme::Fire,
-        ColorScheme::Ocean,
-        ColorScheme::Grayscale,
-        ColorScheme::Rainbow,
-    ];
-}
-
-impl std::fmt::Display for ColorScheme {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            ColorScheme::Default => "Default",
-            ColorScheme::Fire => "Fire",
-            ColorScheme::Ocean => "Ocean",
-            ColorScheme::Grayscale => "Grayscale",
-            ColorScheme::Rainbow => "Rainbow",
-        })
-    }
-}
-
-// Application state
-struct MandelbrotApp {
-    // UI inputs
-    width_input: String,
-    height_input: String,
-    iterations_input: String,
+/// Render the preview window dimensions section
+pub fn render_dimensions_section(ui: &mut egui::Ui, width_input: &mut String, height_input: &mut String) {
+    section_header(ui, "Preview Window Dimensions");
     
-    // Colormap
-    selected_scheme: Option<ColorScheme>,
-    color_stops: Vec<String>,
+    input_row(ui, "Width:", width_input, 28.0);
+    input_row(ui, "Height:", height_input, 24.0);
     
-    // Status
-    status_message: String,
+    ui.add_space(5.0);
+    ui.label(
+        egui::RichText::new("These controls will not resize the preview window but they will control the aspect ratio and performance of the preview. See rendering below for high-res output.")
+            .small()
+            .italics()
+            .color(egui::Color32::GRAY)
+    );
 }
 
-// Messages
-#[derive(Debug, Clone)]
-enum Message {
-    WidthChanged(String),
-    HeightChanged(String),
-    IterationsChanged(String),
-    SchemeSelected(ColorScheme),
-    AddColorStop,
-    SaveColormap,
-    LoadColormap,
-    ApplySettings,
-    ExportImage,
-    ResetView,
+/// Render the fractal settings section
+pub fn render_fractal_settings(ui: &mut egui::Ui, iterations_input: &mut String) {
+    section_header(ui, "Fractal Settings");
+    
+    input_row(ui, "Iterations:", iterations_input, 5.0);
 }
 
-impl Application for MandelbrotApp {
-    type Message = Message;
-    type Theme = Theme;
-    type Executor = executor::Default;
-    type Flags = ();
+/// Render the current view information section
+pub fn render_current_view_info(ui: &mut egui::Ui, view: &MandelbrotView) {
+    section_header(ui, "Current View");
+    
+    ui.label(format!("X: {:.6}", view.center_x));
+    ui.label(format!("Y: {:.6}", view.center_y));
+    ui.label(format!("Zoom: {:.2}x", view.zoom));
+    ui.label(format!("Size: {}×{}", view.width, view.height));
+}
 
-    fn new(_flags: ()) -> (Self, Command<Message>) {
-        (
-            Self {
-                width_input: String::from("800"),
-                height_input: String::from("600"),
-                iterations_input: String::from("256"),
-                selected_scheme: Some(ColorScheme::Default),
-                color_stops: vec![
-                    "RGB(0,0,0)".to_string(),
-                    "RGB(255,0,0)".to_string(),
-                    "RGB(255,255,0)".to_string(),
-                ],
-                status_message: String::from("Ready - Fractal renderer integrated"),
-            },
-            Command::none(),
-        )
-    }
-
-    fn title(&self) -> String {
-        String::from("Mandelbrot Controls")
-    }
-
-    fn update(&mut self, message: Message) -> Command<Message> {
-        match message {
-            Message::WidthChanged(value) => {
-                self.width_input = value;
-            }
-            Message::HeightChanged(value) => {
-                self.height_input = value;
-            }
-            Message::IterationsChanged(value) => {
-                self.iterations_input = value;
-            }
-            Message::SchemeSelected(scheme) => {
-                self.selected_scheme = Some(scheme);
-                self.status_message = format!("Color scheme: {:?}", scheme);
-            }
-            Message::AddColorStop => {
-                let new_color = format!("RGB({},{},{})", 
-                    (self.color_stops.len() * 50) % 255,
-                    (self.color_stops.len() * 100) % 255,
-                    (self.color_stops.len() * 150) % 255
-                );
-                self.color_stops.push(new_color);
-                self.status_message = format!("Added color stop ({} total)", self.color_stops.len());
-            }
-            Message::SaveColormap => {
-                self.status_message = String::from("Save colormap (TODO)");
-            }
-            Message::LoadColormap => {
-                self.status_message = String::from("Load colormap (TODO)");
-            }
-            Message::ApplySettings => {
-                let width: u32 = self.width_input.parse().unwrap_or(800).clamp(100, 4096);
-                let height: u32 = self.height_input.parse().unwrap_or(600).clamp(100, 4096);
-                let iterations: u32 = self.iterations_input.parse().unwrap_or(256).clamp(10, 10000);
-                
-                // Update the view (note: dimensions require restart)
-                if let Some(view_arc) = VIEW.get() {
-                    if let Ok(view) = view_arc.lock() {
-                        if view.width != width || view.height != height {
-                            self.status_message = format!("Dimensions require restart: {}×{}", width, height);
-                        } else {
-                            self.status_message = format!("Applied: {} iterations", iterations);
-                        }
-                        
-                        println!("\n=== Settings Applied ===");
-                        println!("Requested: {}×{}, {} iter", width, height, iterations);
-                        println!("Current: {}×{}", view.width, view.height);
-                        println!("Center: ({:.6}, {:.6})", view.center_x, view.center_y);
-                        println!("Zoom: {:.2}x", view.zoom);
-                        println!("Color scheme: {:?}", self.selected_scheme);
-                        println!("=======================\n");
-                    }
-                } else {
-                    self.status_message = String::from("View not initialized");
+/// Render the color scheme and color stops section
+pub fn render_colormap_section(
+    ui: &mut egui::Ui,
+    selected_scheme: &mut ColorScheme,
+    colormap: &mut ColorMap,
+    needs_redraw: &mut bool,
+    status_message: &mut String,
+) {
+    section_header(ui, "Color Scheme");
+    
+    egui::ComboBox::from_label("")
+        .selected_text(selected_scheme.as_str())
+        .show_ui(ui, |ui| {
+            for scheme in ColorScheme::ALL.iter() {
+                if ui.selectable_value(selected_scheme, *scheme, scheme.as_str()).clicked() {
+                    *colormap = scheme.to_colormap();
+                    *needs_redraw = true;
                 }
             }
-            Message::ExportImage => {
-                self.status_message = String::from("Export (TODO)");
-            }
-            Message::ResetView => {
-                if let Some(view_arc) = VIEW.get() {
-                    if let Ok(mut view) = view_arc.lock() {
-                        view.reset();
-                    }
-                }
-                self.width_input = String::from("800");
-                self.height_input = String::from("600");
-                self.iterations_input = String::from("256");
-                self.selected_scheme = Some(ColorScheme::Default);
-                self.status_message = String::from("Reset to defaults");
-            }
+        });
+    
+    ui.add_space(15.0);
+    
+    // Color Stops
+    ui.label(egui::RichText::new("Color Stops").strong());
+    ui.add_space(5.0);
+    
+    for (i, stop) in colormap.stops().iter().enumerate() {
+        ui.label(format!("{}. {} at {:.2}", i + 1, stop.color, stop.position));
+    }
+    
+    ui.add_space(5.0);
+    
+    ui.horizontal(|ui| {
+        if ui.button("Save").clicked() {
+            *status_message = String::from("Save colormap (TODO)");
         }
+        
+        if ui.button("Load").clicked() {
+            *status_message = String::from("Load colormap (TODO)");
+        }
+    });
+}
 
-        Command::none()
+/// Render action buttons section
+pub fn render_actions_section(
+    ui: &mut egui::Ui,
+    view: &mut MandelbrotView,
+    width_input: &str,
+    height_input: &str,
+    iterations_input: &str,
+    needs_redraw: &mut bool,
+    status_message: &mut String,
+) {
+    if ui.add_sized([ui.available_width(), 40.0], egui::Button::new("Apply Settings")).clicked() {
+        let width: u32 = width_input.parse().unwrap_or(800).clamp(100, 4096);
+        let height: u32 = height_input.parse().unwrap_or(600).clamp(100, 4096);
+        let iterations: u32 = iterations_input.parse().unwrap_or(256).clamp(10, 10000);
+        
+        view.width = width;
+        view.height = height;
+        *needs_redraw = true;
+        *status_message = format!("Applied: {}×{}, {} iter", width, height, iterations);
     }
-
-    fn view(&self) -> Element<Message> {
-        let view_info = if let Some(view_arc) = VIEW.get() {
-            if let Ok(view) = view_arc.lock() {
-                (view.center_x, view.center_y, view.zoom, view.width, view.height)
-            } else {
-                (-0.5, 0.0, 1.0, 800, 600)
-            }
-        } else {
-            (-0.5, 0.0, 1.0, 800, 600)
-        };
-
-        let content = scrollable(
-            column![
-                // Header
-                container(text("Mandelbrot Controls").size(18))
-                    .padding(10)
-                    .width(Length::Fill)
-                    .center_x(),
-                
-                // Dimensions
-                Self::section_header("Dimensions"),
-                Self::input_row("Width", &self.width_input, Message::WidthChanged),
-                Self::input_row("Height", &self.height_input, Message::HeightChanged),
-                Self::input_row("Iterations", &self.iterations_input, Message::IterationsChanged),
-                
-                Self::divider(),
-                
-                // View info
-                Self::section_header("Current View"),
-                Self::info_text(&format!("X: {:.6}", view_info.0)),
-                Self::info_text(&format!("Y: {:.6}", view_info.1)),
-                Self::info_text(&format!("Zoom: {:.2}x", view_info.2)),
-                Self::info_text(&format!("Size: {}×{}", view_info.3, view_info.4)),
-                
-                Self::divider(),
-                
-                // Colormap
-                Self::section_header("Color Scheme"),
-                pick_list(
-                    &ColorScheme::ALL[..],
-                    self.selected_scheme,
-                    Message::SchemeSelected,
-                )
-                .width(Length::Fill)
-                .padding(5),
-                
-                Space::with_height(10),
-                
-                Self::section_header("Color Stops"),
-                column(
-                    self.color_stops.iter().enumerate().map(|(i, color)| {
-                        text(format!("{}. {}", i + 1, color))
-                            .size(12)
-                            .into()
-                    }).collect::<Vec<Element<Message>>>()
-                )
-                .spacing(3)
-                .padding(5),
-                
-                row![
-                    button(text("Add").size(12))
-                        .on_press(Message::AddColorStop)
-                        .padding(5),
-                    button(text("Save").size(12))
-                        .on_press(Message::SaveColormap)
-                        .padding(5),
-                    button(text("Load").size(12))
-                        .on_press(Message::LoadColormap)
-                        .padding(5),
-                ]
-                .spacing(5)
-                .width(Length::Fill),
-                
-                Self::divider(),
-                
-                // Actions
-                button(text("Apply Settings").horizontal_alignment(iced::alignment::Horizontal::Center).size(14))
-                    .on_press(Message::ApplySettings)
-                    .width(Length::Fill)
-                    .padding(12),
-                
-                button(text("Reset").horizontal_alignment(iced::alignment::Horizontal::Center).size(12))
-                    .on_press(Message::ResetView)
-                    .width(Length::Fill)
-                    .padding(8),
-                
-                button(text("Export (TODO)").horizontal_alignment(iced::alignment::Horizontal::Center).size(12))
-                    .on_press(Message::ExportImage)
-                    .width(Length::Fill)
-                    .padding(8),
-                
-                Self::divider(),
-                
-                // Status
-                container(text(&self.status_message).size(11))
-                    .padding(8)
-                    .width(Length::Fill)
-                    .center_x(),
-            ]
-            .spacing(5)
-            .padding(10)
-        );
-
-        container(content)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
+    
+    ui.add_space(5.0);
+    
+    if ui.add_sized([ui.available_width(), 30.0], egui::Button::new("Reset View")).clicked() {
+        view.reset();
+        *needs_redraw = true;
+        *status_message = String::from("Reset to defaults");
     }
-
-    fn theme(&self) -> Theme {
-        Theme::Dark
+    
+    ui.add_space(5.0);
+    
+    if ui.add_sized([ui.available_width(), 30.0], egui::Button::new("Export (TODO)")).clicked() {
+        *status_message = String::from("Export (TODO)");
     }
 }
 
-// Helper methods
-impl MandelbrotApp {
-    fn section_header(title: &str) -> Element<'static, Message> {
-        container(text(title).size(14))
-            .padding([5, 0, 3, 0])
-            .into()
-    }
+/// Render the zoom square when dragging
+pub fn render_zoom_square(
+    ui: &mut egui::Ui,
+    center: egui::Pos2,
+    square_size: f32,
+    aspect_ratio: f32,
+) {
+    let rect_width = square_size;
+    let rect_height = square_size / aspect_ratio;
     
-    fn input_row(label: &'static str, value: &str, on_change: fn(String) -> Message) -> Element<'static, Message> {
-        row![
-            text(label).size(12).width(70),
-            text_input("", value)
-                .on_input(on_change)
-                .padding(4)
-                .size(12)
-                .width(Length::Fill),
-        ]
-        .spacing(5)
-        .align_items(Alignment::Center)
-        .into()
-    }
-    
-    fn info_text(content: &str) -> Element<'static, Message> {
-        text(content).size(11).into()
-    }
-    
-    fn divider() -> Element<'static, Message> {
-        Space::with_height(8).into()
-    }
+    let zoom_rect = egui::Rect::from_center_size(
+        center,
+        egui::vec2(rect_width, rect_height)
+    );
+    ui.painter().rect_stroke(
+        zoom_rect,
+        0.0,
+        egui::Stroke::new(2.0, egui::Color32::from_rgb(255, 0, 255)), // Magenta
+    );
+}
+
+// Helper functions
+
+/// Render a section header with consistent styling
+fn section_header(ui: &mut egui::Ui, title: &str) {
+    ui.label(egui::RichText::new(title).strong());
+    ui.add_space(5.0);
+}
+
+/// Render a labeled input row with consistent spacing
+fn input_row(ui: &mut egui::Ui, label: &str, input: &mut String, spacing: f32) {
+    ui.horizontal(|ui| {
+        ui.label(label);
+        ui.add_space(spacing);
+        ui.add(egui::TextEdit::singleline(input).desired_width(120.0));
+    });
 }

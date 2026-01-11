@@ -3,6 +3,8 @@ use mandelrust::{
     fractal::MandelbrotView, 
     rendering::render_mandelbrot,
     colorschemes::{ColorScheme, ColorMap},
+    colorschemes_gui::ColorEditor,
+    gui,
 };
 
 fn main() -> Result<(), eframe::Error> {
@@ -36,6 +38,7 @@ struct MandelbrotApp {
     // Colormap
     selected_scheme: ColorScheme,
     colormap: ColorMap,
+    color_editor: ColorEditor,
     
     // Fractal texture
     fractal_texture: Option<egui::TextureHandle>,
@@ -52,17 +55,15 @@ struct MandelbrotApp {
 
 impl Default for MandelbrotApp {
     fn default() -> Self {
+        let selected_scheme = ColorScheme::Default;
         Self {
             view: MandelbrotView::new(1280, 720),
             width_input: String::from("1280"),
             height_input: String::from("720"),
             iterations_input: String::from("256"),
-            selected_scheme: ColorScheme::Default,
-            color_stops: vec![
-                "RGB(0,0,0)".to_string(),
-                "RGB(255,0,0)".to_string(),
-                "RGB(255,255,0)".to_string(),
-            ],
+            selected_scheme,
+            colormap: selected_scheme.to_colormap(),
+            color_editor: ColorEditor::new(),
             fractal_texture: None,
             needs_redraw: true,
             is_dragging: false,
@@ -82,14 +83,12 @@ impl MandelbrotApp {
         render_mandelbrot(&mut buffer, &self.view, &self.colormap);
         
         // Convert to egui ColorImage
-        let selected_scheme = ColorScheme::Default;
-        Self {
-            view: MandelbrotView::new(1280, 720),
-            width_input: String::from("1280"),
-            height_input: String::from("720"),
-            iterations_input: String::from("256"),
-            selected_scheme,
-            colormap: selected_scheme.to_colormap()date or create texture
+        let color_image = egui::ColorImage::from_rgba_unmultiplied(
+            [width, height],
+            &buffer,
+        );
+        
+        // Update or create texture
         if let Some(texture) = &mut self.fractal_texture {
             texture.set(color_image, egui::TextureOptions::NEAREST);
         } else {
@@ -122,89 +121,45 @@ impl eframe::App for MandelbrotApp {
                         ui.add_space(10.0);
                         
                         // Preview Window Dimensions
-                        ui.label(egui::RichText::new("Preview Window Dimensions").strong());
-                        ui.add_space(5.0);
-                        
-                        ui.horizontal(|ui| {
-                            ui.label("Width:");
-                            ui.add_space(28.0);
-                            ui.add(egui::TextEdit::singleline(&mut self.width_input).desired_width(120.0));
-                        });
-                        
-                        ui.horizontal(|ui| {
-                            ui.label("Height:");
-                            ui.add_space(24.0);
-                            ui.add(egui::TextEdit::singleline(&mut self.height_input).desired_width(120.0));
-                        });
-                        
-                        ui.add_space(5.0);
-                        ui.label(egui::RichText::new("These controls will not resize the preview window but they will control the aspect ratio and performance of the preview. See rendering below for high-res output.").small().italics().color(egui::Color32::GRAY));
+                        gui::render_dimensions_section(ui, &mut self.width_input, &mut self.height_input);
                         
                         ui.add_space(15.0);
                         ui.separator();
                         ui.add_space(10.0);
                         
                         // Fractal Settings
-                        ui.label(egui::RichText::new("Fractal Settings").strong());
-                        ui.add_space(5.0);
-                        
-                        ui.horizontal(|ui| {
-                            ui.label("Iterations:");
-                            ui.add_space(5.0);
-                            ui.add(egui::TextEdit::singleline(&mut self.iterations_input).desired_width(120.0));
-                        });
+                        gui::render_fractal_settings(ui, &mut self.iterations_input);
                         
                         ui.add_space(15.0);
                         ui.separator();
                         ui.add_space(10.0);
                         
                         // Current View
-                        ui.label(egui::RichText::new("Current View").strong());
-                        ui.add_space(5.0);
-                        
-                        ui.label(format!("X: {:.6}", self.view.center_x));
-                        ui.label(format!("Y: {:.6}", self.view.center_y));
-                        ui.label(format!("Zoom: {:.2}x", self.view.zoom));
-                        ui.label(format!("Size: {}×{}", self.view.width, self.view.height));
+                        gui::render_current_view_info(ui, &self.view);
                         
                         ui.add_space(15.0);
                         ui.separator();
                         ui.add_space(10.0);
                         
-                        // Color Scheme
-                        ui.label(egui::RichText::new("Color Scheme").strong());
-                        ui.add_space(5.0);
+                        // Color Scheme & Stops
+                        gui::render_colormap_section(
+                            ui,
+                            &mut self.selected_scheme,
+                            &mut self.colormap,
+                            &mut self.needs_redraw,
+                            &mut self.status_message,
+                        );
                         
-                        egui::ComboBox::from_label("")
-                            .selected_text(self.selected_scheme.as_str())
-                            .show_ui(ui, |ui| {
-                                for scheme in ColorScheme::ALL.iter() {
-                                    if ui.selectable_value(&mut self.selected_scheme, *scheme, scheme.as_str()).clicked() {
-                                        self.colormap = scheme.to_colormap();
-                                        self.needs_redraw = true;
-                                    }
-                                }
-                            });
+                        ui.add_space(10.0);
                         
-                        ui.add_space(15.0);
-                        
-                        // Color Stops
-                        ui.label(egui::RichText::new("Color Stops").strong());
-                        ui.add_space(5.0);
-                        
-                        for (i, stop) in self.colormap.stops().iter().enumerate() {
-                            ui.label(format!("{}. {} at {:.2}", i + 1, stop.color, stop.position));
-                        }
-                        
-                        ui.add_space(5.0);
-                        
-                        ui.horizontal(|ui| {
-                            if ui.button("Save").clicked() {
-                                self.status_message = String::from("Save colormap (TODO)");
-                            }
-                            
-                            if ui.button("Load").clicked() {
-                                self.status_message = String::from("Load colormap (TODO)");
+                        // Advanced Color Editor (collapsible)
+                        ui.collapsing("🎨 Advanced Color Editor", |ui| {
+                            if mandelrust::colorschemes_gui::render_color_editor_section(
+                                ui,
+                                &mut self.colormap,
+                                &mut self.color_editor,
+                            ) {
+                                self.needs_redraw = true;
                             }
                         });
                         
@@ -213,30 +168,15 @@ impl eframe::App for MandelbrotApp {
                         ui.add_space(10.0);
                         
                         // Actions
-                        if ui.add_sized([ui.available_width(), 40.0], egui::Button::new("Apply Settings")).clicked() {
-                            let width: u32 = self.width_input.parse().unwrap_or(800).clamp(100, 4096);
-                            let height: u32 = self.height_input.parse().unwrap_or(600).clamp(100, 4096);
-                            let iterations: u32 = self.iterations_input.parse().unwrap_or(256).clamp(10, 10000);
-                            
-                            self.view.width = width;
-                            self.view.height = height;
-                            self.needs_redraw = true;
-                            self.status_message = format!("Applied: {}×{}, {} iter", width, height, iterations);
-                        }
-                        
-                        ui.add_space(5.0);
-                        
-                        if ui.add_sized([ui.available_width(), 30.0], egui::Button::new("Reset View")).clicked() {
-                            self.view.reset();
-                            self.needs_redraw = true;
-                            self.status_message = String::from("Reset to defaults");
-                        }
-                        
-                        ui.add_space(5.0);
-                        
-                        if ui.add_sized([ui.available_width(), 30.0], egui::Button::new("Export (TODO)")).clicked() {
-                            self.status_message = String::from("Export (TODO)");
-                        }
+                        gui::render_actions_section(
+                            ui,
+                            &mut self.view,
+                            &self.width_input,
+                            &self.height_input,
+                            &self.iterations_input,
+                            &mut self.needs_redraw,
+                            &mut self.status_message,
+                        );
                         
                         ui.add_space(15.0);
                         ui.separator();
@@ -322,20 +262,8 @@ impl eframe::App for MandelbrotApp {
                 // Draw zoom rectangle if dragging (matching aspect ratio)
                 if self.is_dragging {
                     if let Some(center) = self.zoom_square_center {
-                        // Calculate rectangle size maintaining aspect ratio
                         let aspect_ratio = self.view.width as f32 / self.view.height as f32;
-                        let rect_width = self.zoom_square_size;
-                        let rect_height = self.zoom_square_size / aspect_ratio;
-                        
-                        let zoom_rect = egui::Rect::from_center_size(
-                            center,
-                            egui::vec2(rect_width, rect_height)
-                        );
-                        ui.painter().rect_stroke(
-                            zoom_rect,
-                            0.0,
-                            egui::Stroke::new(2.0, egui::Color32::from_rgb(255, 0, 255)), // Magenta
-                        );
+                        gui::render_zoom_square(ui, center, self.zoom_square_size, aspect_ratio);
                     }
                 }
             } else {

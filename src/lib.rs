@@ -5,3 +5,4 @@ pub mod fractal;
 pub mod rendering;
 pub mod gui;
 pub mod colorschemes;
+pub mod colorschemes_gui;
