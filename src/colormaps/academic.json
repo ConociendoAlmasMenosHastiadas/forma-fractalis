@@ -1,0 +1,50 @@
+{
+  "name": "Academic",
+  "stops": [
+    {
+      "position": 0.0,
+      "color": {
+        "r": 19,
+        "g": 27,
+        "b": 35
+      },
+      "name": "Rich Black"
+    },
+    {
+      "position": 0.25,
+      "color": {
+        "r": 129,
+        "g": 108,
+        "b": 97
+      },
+      "name": "Cinereous"
+    },
+    {
+      "position": 0.5,
+      "color": {
+        "r": 34,
+        "g": 116,
+        "b": 165
+      },
+      "name": "UCLA Blue"
+    },
+    {
+      "position": 0.75,
+      "color": {
+        "r": 231,
+        "g": 223,
+        "b": 198
+      },
+      "name": "Pearl"
+    },
+    {
+      "position": 1.0,
+      "color": {
+        "r": 233,
+        "g": 241,
+        "b": 247
+      },
+      "name": "Alice Blue"
+    }
+  ]
+}

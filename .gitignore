@@ -1,1 +1,41 @@
-/target
+# Rust build artifacts
+/target/
+debug/
+release/
+**/*.rs.bk
+*.pdb
+
+# Cargo.lock (keep for binary applications, ignore for libraries)
+# Cargo.lock is currently tracked for reproducible builds
+
+# Exported images
+*.png
+!src/colormaps/*.png
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS files
+Thumbs.db
+Desktop.ini
+.Spotlight-V100
+.Trashes
+
+# Documentation build
+/doc/
+
+# Test coverage
+*.profraw
+*.profdata
+
+# Backup files
+*.bak
+*.tmp
+
+# Temporary captures
+/captures/

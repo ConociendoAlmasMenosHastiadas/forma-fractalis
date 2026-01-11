@@ -10,6 +10,7 @@
 /// - View state management
 
 /// Represents the view parameters for rendering the Mandelbrot set
+#[derive(Clone)]
 pub struct MandelbrotView {
     pub center_x: f64,
     pub center_y: f64,
@@ -32,20 +33,22 @@ impl MandelbrotView {
     }
 
     /// Converts screen pixel coordinates to complex plane coordinates
-    /// 
+    ///
     /// # Arguments
     /// * `x` - Pixel x-coordinate
     /// * `y` - Pixel y-coordinate
-    /// 
+    ///
     /// # Returns
     /// A tuple (real, imaginary) representing the complex number
     pub fn screen_to_complex(&self, x: u32, y: u32) -> (f64, f64) {
         let aspect_ratio = self.width as f64 / self.height as f64;
         let scale = 3.5 / self.zoom;
-        
-        let real = self.center_x + (x as f64 - self.width as f64 / 2.0) * scale / self.width as f64 * aspect_ratio;
-        let imag = self.center_y + (y as f64 - self.height as f64 / 2.0) * scale / self.height as f64;
-        
+
+        let real = self.center_x
+            + (x as f64 - self.width as f64 / 2.0) * scale / self.width as f64 * aspect_ratio;
+        let imag =
+            self.center_y + (y as f64 - self.height as f64 / 2.0) * scale / self.height as f64;
+
         (real, imag)
     }
 
@@ -73,12 +76,12 @@ impl MandelbrotView {
 }
 
 /// Calculates the number of iterations before divergence for a complex number
-/// 
+///
 /// # Arguments
 /// * `c_real` - Real part of the complex number
 /// * `c_imag` - Imaginary part of the complex number
 /// * `max_iter` - Maximum number of iterations to test
-/// 
+///
 /// # Returns
 /// Number of iterations before |z| > 2, or max_iter if in the set
 pub fn mandelbrot_iterations(c_real: f64, c_imag: f64, max_iter: u32) -> u32 {

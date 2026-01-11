@@ -1,0 +1,50 @@
+{
+  "name": "Mint Lavender",
+  "stops": [
+    {
+      "position": 0.0,
+      "color": {
+        "r": 123,
+        "g": 224,
+        "b": 173
+      },
+      "name": "Celadon"
+    },
+    {
+      "position": 0.25,
+      "color": {
+        "r": 174,
+        "g": 229,
+        "b": 216
+      },
+      "name": "Tiffany Blue"
+    },
+    {
+      "position": 0.5,
+      "color": {
+        "r": 231,
+        "g": 229,
+        "b": 229
+      },
+      "name": "Platinum"
+    },
+    {
+      "position": 0.75,
+      "color": {
+        "r": 229,
+        "g": 208,
+        "b": 227
+      },
+      "name": "Thistle"
+    },
+    {
+      "position": 1.0,
+      "color": {
+        "r": 224,
+        "g": 176,
+        "b": 213
+      },
+      "name": "Pink Lavender"
+    }
+  ]
+}

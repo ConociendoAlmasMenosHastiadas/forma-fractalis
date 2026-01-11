@@ -13,9 +13,10 @@
 //!
 //! All functions take `&mut egui::Ui` for rendering within egui layouts.
 
-use eframe::egui;
+use crate::colorschemes::ColorMap;
+use crate::colorschemes_io;
 use crate::fractal::MandelbrotView;
-use crate::colorschemes::{ColorScheme, ColorMap};
+use eframe::egui;
 
 /// Render the preview window dimensions section
 pub fn render_dimensions_section(
@@ -26,18 +27,21 @@ pub fn render_dimensions_section(
     needs_redraw: &mut bool,
 ) {
     section_header(ui, "Preview Window Dimensions");
-    
+
     // Width input with multiply/divide buttons
     ui.horizontal(|ui| {
         ui.label("Width:");
         ui.add_space(8.0);
-        if ui.add(egui::TextEdit::singleline(width_input).desired_width(80.0)).changed() {
+        if ui
+            .add(egui::TextEdit::singleline(width_input).desired_width(80.0))
+            .changed()
+        {
             if let Ok(val) = width_input.parse::<u32>() {
                 view.width = val.clamp(100, 4096);
                 *needs_redraw = true;
             }
         }
-        
+
         if ui.small_button("×2").clicked() {
             if let Ok(val) = width_input.parse::<u32>() {
                 let new_val = val * 2;
@@ -71,28 +75,35 @@ pub fn render_dimensions_section(
             }
         }
     });
-    
+
     // Swap button
     ui.horizontal(|ui| {
         ui.add_space(100.0);
-        if ui.button("↕").on_hover_text("Swap width and height").clicked() {
+        if ui
+            .button("↕")
+            .on_hover_text("Swap width and height")
+            .clicked()
+        {
             std::mem::swap(width_input, height_input);
             std::mem::swap(&mut view.width, &mut view.height);
             *needs_redraw = true;
         }
     });
-    
+
     // Height input with multiply/divide buttons
     ui.horizontal(|ui| {
         ui.label("Height:");
         ui.add_space(4.0);
-        if ui.add(egui::TextEdit::singleline(height_input).desired_width(80.0)).changed() {
+        if ui
+            .add(egui::TextEdit::singleline(height_input).desired_width(80.0))
+            .changed()
+        {
             if let Ok(val) = height_input.parse::<u32>() {
                 view.height = val.clamp(100, 4096);
                 *needs_redraw = true;
             }
         }
-        
+
         if ui.small_button("×2").clicked() {
             if let Ok(val) = height_input.parse::<u32>() {
                 let new_val = val * 2;
@@ -126,7 +137,7 @@ pub fn render_dimensions_section(
             }
         }
     });
-    
+
     ui.add_space(5.0);
     ui.label(
         egui::RichText::new("These controls will not resize the preview window but they will control the aspect ratio and performance of the preview. See rendering below for high-res output.")
@@ -137,17 +148,24 @@ pub fn render_dimensions_section(
 }
 
 /// Render the fractal settings section
-pub fn render_fractal_settings(ui: &mut egui::Ui, iterations_input: &mut String, needs_redraw: &mut bool) {
+pub fn render_fractal_settings(
+    ui: &mut egui::Ui,
+    iterations_input: &mut String,
+    needs_redraw: &mut bool,
+) {
     section_header(ui, "Fractal Settings");
-    
+
     // Iterations input with multiply/divide buttons
     ui.horizontal(|ui| {
         ui.label("Iterations:");
         ui.add_space(5.0);
-        if ui.add(egui::TextEdit::singleline(iterations_input).desired_width(80.0)).changed() {
+        if ui
+            .add(egui::TextEdit::singleline(iterations_input).desired_width(80.0))
+            .changed()
+        {
             *needs_redraw = true;
         }
-        
+
         if ui.small_button("×2").clicked() {
             if let Ok(val) = iterations_input.parse::<u32>() {
                 *iterations_input = (val * 2).to_string();
@@ -183,15 +201,21 @@ pub fn render_current_view_info(
     status_message: &mut String,
 ) {
     section_header(ui, "Current View");
-    
+
     ui.label(format!("X: {:.6}", view.center_x));
     ui.label(format!("Y: {:.6}", view.center_y));
     ui.label(format!("Zoom: {:.2}x", view.zoom));
     ui.label(format!("Size: {}×{}", view.width, view.height));
-    
+
     ui.add_space(10.0);
-    
-    if ui.add_sized([ui.available_width(), 30.0], egui::Button::new("Reset View")).clicked() {
+
+    if ui
+        .add_sized(
+            [ui.available_width(), 30.0],
+            egui::Button::new("Reset View"),
+        )
+        .clicked()
+    {
         view.reset();
         *needs_redraw = true;
         *status_message = String::from("Reset to defaults");
@@ -201,7 +225,8 @@ pub fn render_current_view_info(
 /// Render the color scheme and color stops section
 pub fn render_colormap_section(
     ui: &mut egui::Ui,
-    selected_scheme: &mut ColorScheme,
+    available_colormaps: &mut Vec<String>,
+    selected_colormap_name: &mut String,
     colormap: &mut ColorMap,
     needs_redraw: &mut bool,
     status_message: &mut String,
@@ -211,31 +236,43 @@ pub fn render_colormap_section(
     interior_color: &mut [u8; 3],
 ) {
     section_header(ui, "Color Scheme");
-    
+
     egui::ComboBox::from_label("")
-        .selected_text(selected_scheme.as_str())
+        .selected_text(selected_colormap_name.as_str())
         .show_ui(ui, |ui| {
-            for scheme in ColorScheme::ALL.iter() {
-                if ui.selectable_value(selected_scheme, *scheme, scheme.as_str()).clicked() {
-                    *colormap = scheme.to_colormap();
-                    *needs_redraw = true;
+            for colormap_name in available_colormaps.iter() {
+                if ui
+                    .selectable_label(*selected_colormap_name == *colormap_name, colormap_name)
+                    .clicked()
+                {
+                    if let Ok(loaded_colormap) = colorschemes_io::load_colormap(colormap_name) {
+                        *colormap = loaded_colormap;
+                        *selected_colormap_name = colormap_name.clone();
+                        *needs_redraw = true;
+                        *status_message = format!("Loaded colormap: {}", colormap_name);
+                    } else {
+                        *status_message = format!("Failed to load colormap: {}", colormap_name);
+                    }
                 }
             }
         });
-    
+
     ui.add_space(10.0);
-    
+
     // Period modulation checkbox and input
     if ui.checkbox(use_period, "Period").changed() {
         *needs_redraw = true;
     }
-    
+
     if *use_period {
         ui.horizontal(|ui| {
-            if ui.add(egui::TextEdit::singleline(period_input).desired_width(60.0)).changed() {
+            if ui
+                .add(egui::TextEdit::singleline(period_input).desired_width(60.0))
+                .changed()
+            {
                 *needs_redraw = true;
             }
-            
+
             if ui.small_button("×2").clicked() {
                 if let Ok(val) = period_input.parse::<u32>() {
                     *period_input = (val * 2).to_string();
@@ -262,38 +299,47 @@ pub fn render_colormap_section(
             }
         });
     }
-    
+
     ui.add_space(5.0);
-    
+
     // Interior color checkbox and picker
     if ui.checkbox(use_interior_color, "Interior Color").changed() {
         *needs_redraw = true;
     }
-    
+
     if *use_interior_color {
         ui.add_space(5.0);
-        
+
         ui.horizontal(|ui| {
             ui.label("R:");
-            if ui.add(egui::Slider::new(&mut interior_color[0], 0..=255).show_value(true)).changed() {
+            if ui
+                .add(egui::Slider::new(&mut interior_color[0], 0..=255).show_value(true))
+                .changed()
+            {
                 *needs_redraw = true;
             }
         });
-        
+
         ui.horizontal(|ui| {
             ui.label("G:");
-            if ui.add(egui::Slider::new(&mut interior_color[1], 0..=255).show_value(true)).changed() {
+            if ui
+                .add(egui::Slider::new(&mut interior_color[1], 0..=255).show_value(true))
+                .changed()
+            {
                 *needs_redraw = true;
             }
         });
-        
+
         ui.horizontal(|ui| {
             ui.label("B:");
-            if ui.add(egui::Slider::new(&mut interior_color[2], 0..=255).show_value(true)).changed() {
+            if ui
+                .add(egui::Slider::new(&mut interior_color[2], 0..=255).show_value(true))
+                .changed()
+            {
                 *needs_redraw = true;
             }
         });
-        
+
         // Color preview
         ui.horizontal(|ui| {
             ui.label("Preview:");
@@ -303,34 +349,120 @@ pub fn render_colormap_section(
                 2.0,
                 egui::Color32::from_rgb(interior_color[0], interior_color[1], interior_color[2]),
             );
-            ui.painter().rect_stroke(
-                color_rect,
-                2.0,
-                egui::Stroke::new(1.0, egui::Color32::GRAY),
-            );
+            ui.painter()
+                .rect_stroke(color_rect, 2.0, egui::Stroke::new(1.0, egui::Color32::GRAY));
         });
     }
-    
-    ui.add_space(10.0);
-    
-    ui.horizontal(|ui| {
-        if ui.button("Save").clicked() {
-            *status_message = String::from("Save colormap (TODO)");
-        }
-        
-        if ui.button("Load").clicked() {
-            *status_message = String::from("Load colormap (TODO)");
-        }
-    });
 }
 
 /// Render action buttons section
 pub fn render_actions_section(
     ui: &mut egui::Ui,
+    view: &MandelbrotView,
+    colormap: &ColorMap,
+    max_iterations: u32,
+    use_period: bool,
+    period: u32,
+    use_interior_color: bool,
+    interior_color: [u8; 3],
+    export_scale_input: &mut String,
+    export_directory: &mut Option<std::path::PathBuf>,
     status_message: &mut String,
 ) {
-    if ui.add_sized([ui.available_width(), 30.0], egui::Button::new("Export (TODO)")).clicked() {
-        *status_message = String::from("Export (TODO)");
+    section_header(ui, "Export Image");
+
+    // Scale input
+    ui.horizontal(|ui| {
+        ui.label("Scale:");
+        ui.add(egui::TextEdit::singleline(export_scale_input).desired_width(60.0));
+    });
+
+    ui.add_space(5.0);
+
+    // Calculate and display output dimensions
+    let scale = export_scale_input
+        .parse::<f32>()
+        .unwrap_or(3.0)
+        .max(0.1)
+        .min(10.0);
+    let (output_width, output_height) = crate::export::calculate_output_dimensions(view, scale);
+
+    ui.label(
+        egui::RichText::new(format!(
+            "Output image size: {}×{}",
+            output_width, output_height
+        ))
+        .small()
+        .italics(),
+    );
+
+    ui.add_space(10.0);
+
+    // Directory selection
+    ui.horizontal(|ui| {
+        if ui.button("📁 Choose Directory").clicked() {
+            if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                *export_directory = Some(path);
+                *status_message = format!(
+                    "Export directory set to: {}",
+                    export_directory.as_ref().unwrap().display()
+                );
+            }
+        }
+
+        if export_directory.is_some() {
+            if ui.button("✖ Clear").clicked() {
+                *export_directory = None;
+                *status_message =
+                    String::from("Export directory cleared (using current directory)");
+            }
+        }
+    });
+
+    // Show current directory
+    if let Some(dir) = export_directory {
+        ui.label(
+            egui::RichText::new(format!("📂 {}", dir.display()))
+                .small()
+                .italics(),
+        );
+    } else {
+        ui.label(
+            egui::RichText::new("📂 Current directory")
+                .small()
+                .italics(),
+        );
+    }
+
+    ui.add_space(10.0);
+
+    // Export button
+    if ui
+        .add_sized(
+            [ui.available_width(), 30.0],
+            egui::Button::new("💾 Export PNG"),
+        )
+        .clicked()
+    {
+        // Export the image
+        match crate::export::export_png(
+            view,
+            colormap,
+            max_iterations,
+            use_period,
+            period,
+            use_interior_color,
+            interior_color,
+            scale,
+            export_directory.as_ref(),
+        ) {
+            Ok(path) => {
+                *status_message = format!("Exported to: {}", path);
+            }
+            Err(e) => {
+                *status_message = format!("Export failed: {}", e);
+            }
+        }
     }
 }
 
@@ -343,11 +475,8 @@ pub fn render_zoom_square(
 ) {
     let rect_width = square_size;
     let rect_height = square_size / aspect_ratio;
-    
-    let zoom_rect = egui::Rect::from_center_size(
-        center,
-        egui::vec2(rect_width, rect_height)
-    );
+
+    let zoom_rect = egui::Rect::from_center_size(center, egui::vec2(rect_width, rect_height));
     ui.painter().rect_stroke(
         zoom_rect,
         0.0,

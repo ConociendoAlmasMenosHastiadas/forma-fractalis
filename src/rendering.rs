@@ -8,15 +8,15 @@
 //! - ColorMap-based gradient coloring
 //! - RGBA buffer output for GPU texture upload
 
+use crate::colorschemes::{color_from_iterations, ColorMap};
 use crate::fractal::{mandelbrot_iterations, MandelbrotView};
-use crate::colorschemes::{ColorMap, color_from_iterations};
 use rayon::prelude::*;
 
 /// Maximum iterations for Mandelbrot calculation
 pub const MAX_ITERATIONS: u32 = 256;
 
 /// Renders the Mandelbrot set to a pixel buffer using parallel processing
-/// 
+///
 /// # Arguments
 /// * `frame` - Mutable reference to the pixel buffer (RGBA format)
 /// * `view` - View parameters (center, zoom, dimensions)
@@ -37,7 +37,7 @@ pub fn render_mandelbrot(
     interior_color: [u8; 3],
 ) {
     let rows: Vec<_> = (0..view.height).collect();
-    
+
     // Parallel processing: each row is computed independently
     let pixels: Vec<Vec<[u8; 4]>> = rows
         .par_iter()
@@ -71,7 +71,7 @@ pub fn render_mandelbrot(
 }
 
 /// Draws a rectangle overlay on the frame (used for zoom preview)
-/// 
+///
 /// # Arguments
 /// * `frame` - Mutable reference to the pixel buffer
 /// * `center_x` - X coordinate of rectangle center
@@ -91,16 +91,22 @@ pub fn draw_rectangle(
 ) {
     let half_width = rect_width / 2;
     let half_height = rect_height / 2;
-    
-    let x1 = center_x.saturating_sub(half_width).max(0).min(buffer_width - 1);
-    let y1 = center_y.saturating_sub(half_height).max(0).min(buffer_height - 1);
+
+    let x1 = center_x
+        .saturating_sub(half_width)
+        .max(0)
+        .min(buffer_width - 1);
+    let y1 = center_y
+        .saturating_sub(half_height)
+        .max(0)
+        .min(buffer_height - 1);
     let x2 = (center_x + half_width).min(buffer_width - 1);
     let y2 = (center_y + half_height).min(buffer_height - 1);
-    
+
     // Draw rectangle outline in white with 3-pixel thickness
     let color = [255, 255, 255, 255];
     let thickness = 3;
-    
+
     // Draw thick horizontal lines (top and bottom)
     for t in 0..thickness {
         for x in x1..=x2 {
@@ -120,7 +126,7 @@ pub fn draw_rectangle(
             }
         }
     }
-    
+
     // Draw thick vertical lines (left and right)
     for t in 0..thickness {
         for y in y1..=y2 {

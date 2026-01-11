@@ -1,0 +1,50 @@
+{
+  "name": "Olive Symmetry",
+  "stops": [
+    {
+      "position": 0.0,
+      "color": {
+        "r": 237,
+        "g": 230,
+        "b": 227
+      },
+      "name": "Isabelline"
+    },
+    {
+      "position": 0.25,
+      "color": {
+        "r": 218,
+        "g": 218,
+        "b": 217
+      },
+      "name": "Platinum"
+    },
+    {
+      "position": 0.5,
+      "color": {
+        "r": 54,
+        "g": 56,
+        "b": 46
+      },
+      "name": "Black Olive"
+    },
+    {
+      "position": 0.75,
+      "color": {
+        "r": 218,
+        "g": 218,
+        "b": 217
+      },
+      "name": "Platinum"
+    },
+    {
+      "position": 1.0,
+      "color": {
+        "r": 237,
+        "g": 230,
+        "b": 227
+      },
+      "name": "Isabelline"
+    }
+  ]
+}

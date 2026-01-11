@@ -1,0 +1,50 @@
+{
+  "name": "Coral Sunset",
+  "stops": [
+    {
+      "position": 0.0,
+      "color": {
+        "r": 53,
+        "g": 80,
+        "b": 112
+      },
+      "name": "YInMn Blue"
+    },
+    {
+      "position": 0.25,
+      "color": {
+        "r": 109,
+        "g": 89,
+        "b": 122
+      },
+      "name": "Chinese Violet"
+    },
+    {
+      "position": 0.5,
+      "color": {
+        "r": 181,
+        "g": 101,
+        "b": 118
+      },
+      "name": "China Rose"
+    },
+    {
+      "position": 0.75,
+      "color": {
+        "r": 229,
+        "g": 107,
+        "b": 111
+      },
+      "name": "Light Coral"
+    },
+    {
+      "position": 1.0,
+      "color": {
+        "r": 234,
+        "g": 172,
+        "b": 139
+      },
+      "name": "Buff"
+    }
+  ]
+}
