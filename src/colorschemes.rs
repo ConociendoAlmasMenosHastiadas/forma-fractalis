@@ -269,13 +269,38 @@ impl ColorMap {
 }
 
 /// Convert iteration count to color using a colormap
-pub fn color_from_iterations(iterations: u32, max_iterations: u32, colormap: &ColorMap) -> Color {
-    if iterations >= max_iterations {
-        return Color::black();
+pub fn color_from_iterations(
+    iterations: u32,
+    max_iterations: u32,
+    colormap: &ColorMap,
+    use_period: bool,
+    period: u32,
+    use_interior_color: bool,
+    interior_color: [u8; 3],
+) -> Color {
+    // Check if point is inside the set and custom interior color is enabled
+    if iterations >= max_iterations && use_interior_color {
+        return Color {
+            r: interior_color[0],
+            g: interior_color[1],
+            b: interior_color[2],
+        };
     }
     
+    // Apply period modulation if enabled
+    let effective_iterations = if use_period && period > 0 {
+        iterations % period
+    } else {
+        iterations
+    };
+    
     // Normalize iterations to 0.0-1.0 range
-    let t = iterations as f64 / max_iterations as f64;
+    let divisor = if use_period && period > 0 {
+        period as f64
+    } else {
+        max_iterations as f64
+    };
+    let t = effective_iterations as f64 / divisor;
     
     // Apply smooth coloring using log scale for better distribution
     let smooth_t = (t * 10.0).log10() / 1.0; // log10(10) = 1

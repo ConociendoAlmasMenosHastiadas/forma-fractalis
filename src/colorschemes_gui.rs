@@ -29,6 +29,7 @@ pub struct ColorEditor {
     pub selected_stop_index: Option<usize>,
     pub temp_rgb: [u8; 3],
     pub temp_position: f64,
+    pub dragging_stop_index: Option<usize>,
 }
 
 impl Default for ColorEditor {
@@ -37,6 +38,7 @@ impl Default for ColorEditor {
             selected_stop_index: None,
             temp_rgb: [0, 0, 0],
             temp_position: 0.0,
+            dragging_stop_index: None,
         }
     }
 }
@@ -47,8 +49,16 @@ impl ColorEditor {
     }
 }
 
-/// Render a gradient preview bar showing the colormap
-pub fn render_gradient_preview(ui: &mut egui::Ui, colormap: &ColorMap, width: f32, height: f32) {
+/// Render a gradient preview bar showing the colormap with interactive markers
+pub fn render_gradient_preview(
+    ui: &mut egui::Ui,
+    colormap: &mut ColorMap,
+    editor: &mut ColorEditor,
+    width: f32,
+    height: f32,
+) -> bool {
+    let mut changed = false;
+    
     let (rect, _response) = ui.allocate_exact_size(
         egui::vec2(width, height),
         egui::Sense::hover(),
@@ -84,8 +94,17 @@ pub fn render_gradient_preview(ui: &mut egui::Ui, colormap: &ColorMap, width: f3
         egui::Stroke::new(1.0, egui::Color32::GRAY),
     );
     
-    // Draw color stop markers
-    for stop in colormap.stops() {
+    // Handle mouse dragging
+    let pointer_pos = ui.input(|i| i.pointer.interact_pos());
+    let mouse_released = ui.input(|i| i.pointer.primary_released());
+    
+    if mouse_released {
+        editor.dragging_stop_index = None;
+    }
+    
+    // Draw and handle color stop markers
+    let stops_clone = colormap.stops().to_vec();
+    for (i, stop) in stops_clone.iter().enumerate() {
         let x = rect.min.x + (stop.position as f32) * width;
         let marker_pos = egui::pos2(x, rect.min.y + height);
         
@@ -97,12 +116,71 @@ pub fn render_gradient_preview(ui: &mut egui::Ui, colormap: &ColorMap, width: f3
             egui::pos2(x + size, marker_pos.y + size),
         ];
         
+        // Create a sense area for the marker
+        let marker_rect = egui::Rect::from_min_max(
+            egui::pos2(x - size - 2.0, marker_pos.y - 2.0),
+            egui::pos2(x + size + 2.0, marker_pos.y + size + 2.0),
+        );
+        
+        let marker_id = ui.id().with("marker").with(i);
+        let marker_response = ui.interact(
+            marker_rect,
+            marker_id,
+            egui::Sense::click_and_drag(),
+        );
+        
+        // Check if this marker is being dragged
+        if marker_response.drag_started() {
+            editor.dragging_stop_index = Some(i);
+        }
+        
+        // Update position if dragging
+        if editor.dragging_stop_index == Some(i) {
+            if let Some(pos) = pointer_pos {
+                if pos.x >= rect.min.x && pos.x <= rect.max.x {
+                    let new_position = ((pos.x - rect.min.x) / width) as f64;
+                    let new_position = new_position.clamp(0.0, 1.0);
+                    
+                    // Don't allow moving the first or last stop
+                    if i > 0 && i < stops_clone.len() - 1 {
+                        colormap.stops_mut()[i].position = new_position;
+                        changed = true;
+                    }
+                }
+            }
+        }
+        
+        // Highlight marker on hover or drag
+        let marker_color = if marker_response.hovered() || editor.dragging_stop_index == Some(i) {
+            egui::Color32::YELLOW
+        } else {
+            egui::Color32::WHITE
+        };
+        
         ui.painter().add(egui::Shape::convex_polygon(
             points,
-            egui::Color32::WHITE,
+            marker_color,
             egui::Stroke::new(1.0, egui::Color32::BLACK),
         ));
+        
+        // Show tooltip on hover
+        if marker_response.hovered() {
+            egui::show_tooltip_at_pointer(
+                ui.ctx(),
+                marker_id.with("tooltip"),
+                |ui| {
+                    ui.label(format!("Position: {:.3}", stop.position));
+                    if i > 0 && i < stops_clone.len() - 1 {
+                        ui.label("Drag to adjust");
+                    } else {
+                        ui.label("Fixed position");
+                    }
+                },
+            );
+        }
     }
+    
+    changed
 }
 
 /// Render color stop list with edit/delete buttons
@@ -308,8 +386,8 @@ pub fn render_color_editor_section(
     
     ui.add_space(5.0);
     
-    // Gradient preview
-    render_gradient_preview(ui, colormap, ui.available_width(), 40.0);
+    // Gradient preview with interactive markers
+    changed |= render_gradient_preview(ui, colormap, editor, ui.available_width(), 40.0);
     
     ui.add_space(10.0);
     

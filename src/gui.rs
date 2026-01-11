@@ -4,11 +4,11 @@
 //! and maintainable. Each function renders a specific section of the sidebar.
 //!
 //! # Components
-//! - Dimension controls (width/height inputs)
-//! - Fractal settings (iterations)
+//! - Dimension controls (width/height inputs with quick multiply/divide buttons)
+//! - Fractal settings (iterations with quick multiply/divide buttons)
 //! - View information display (coordinates, zoom level)
-//! - Colormap controls (scheme picker, color stops)
-//! - Action buttons (apply, reset, export)
+//! - Colormap controls (scheme picker, period modulation, interior color)
+//! - Action buttons (reset, export)
 //! - Zoom square visualization
 //!
 //! All functions take `&mut egui::Ui` for rendering within egui layouts.
@@ -18,11 +18,114 @@ use crate::fractal::MandelbrotView;
 use crate::colorschemes::{ColorScheme, ColorMap};
 
 /// Render the preview window dimensions section
-pub fn render_dimensions_section(ui: &mut egui::Ui, width_input: &mut String, height_input: &mut String) {
+pub fn render_dimensions_section(
+    ui: &mut egui::Ui,
+    width_input: &mut String,
+    height_input: &mut String,
+    view: &mut MandelbrotView,
+    needs_redraw: &mut bool,
+) {
     section_header(ui, "Preview Window Dimensions");
     
-    input_row(ui, "Width:", width_input, 28.0);
-    input_row(ui, "Height:", height_input, 24.0);
+    // Width input with multiply/divide buttons
+    ui.horizontal(|ui| {
+        ui.label("Width:");
+        ui.add_space(8.0);
+        if ui.add(egui::TextEdit::singleline(width_input).desired_width(80.0)).changed() {
+            if let Ok(val) = width_input.parse::<u32>() {
+                view.width = val.clamp(100, 4096);
+                *needs_redraw = true;
+            }
+        }
+        
+        if ui.small_button("×2").clicked() {
+            if let Ok(val) = width_input.parse::<u32>() {
+                let new_val = val * 2;
+                *width_input = new_val.to_string();
+                view.width = new_val.clamp(100, 4096);
+                *needs_redraw = true;
+            }
+        }
+        if ui.small_button("÷2").clicked() {
+            if let Ok(val) = width_input.parse::<u32>() {
+                let new_val = val / 2;
+                *width_input = new_val.to_string();
+                view.width = new_val.clamp(100, 4096);
+                *needs_redraw = true;
+            }
+        }
+        if ui.small_button("×10").clicked() {
+            if let Ok(val) = width_input.parse::<u32>() {
+                let new_val = val * 10;
+                *width_input = new_val.to_string();
+                view.width = new_val.clamp(100, 4096);
+                *needs_redraw = true;
+            }
+        }
+        if ui.small_button("÷10").clicked() {
+            if let Ok(val) = width_input.parse::<u32>() {
+                let new_val = val / 10;
+                *width_input = new_val.to_string();
+                view.width = new_val.clamp(100, 4096);
+                *needs_redraw = true;
+            }
+        }
+    });
+    
+    // Swap button
+    ui.horizontal(|ui| {
+        ui.add_space(100.0);
+        if ui.button("↕").on_hover_text("Swap width and height").clicked() {
+            std::mem::swap(width_input, height_input);
+            std::mem::swap(&mut view.width, &mut view.height);
+            *needs_redraw = true;
+        }
+    });
+    
+    // Height input with multiply/divide buttons
+    ui.horizontal(|ui| {
+        ui.label("Height:");
+        ui.add_space(4.0);
+        if ui.add(egui::TextEdit::singleline(height_input).desired_width(80.0)).changed() {
+            if let Ok(val) = height_input.parse::<u32>() {
+                view.height = val.clamp(100, 4096);
+                *needs_redraw = true;
+            }
+        }
+        
+        if ui.small_button("×2").clicked() {
+            if let Ok(val) = height_input.parse::<u32>() {
+                let new_val = val * 2;
+                *height_input = new_val.to_string();
+                view.height = new_val.clamp(100, 4096);
+                *needs_redraw = true;
+            }
+        }
+        if ui.small_button("÷2").clicked() {
+            if let Ok(val) = height_input.parse::<u32>() {
+                let new_val = val / 2;
+                *height_input = new_val.to_string();
+                view.height = new_val.clamp(100, 4096);
+                *needs_redraw = true;
+            }
+        }
+        if ui.small_button("×10").clicked() {
+            if let Ok(val) = height_input.parse::<u32>() {
+                let new_val = val * 10;
+                *height_input = new_val.to_string();
+                view.height = new_val.clamp(100, 4096);
+                *needs_redraw = true;
+            }
+        }
+        if ui.small_button("÷10").clicked() {
+            if let Ok(val) = height_input.parse::<u32>() {
+                let new_val = val / 10;
+                *height_input = new_val.to_string();
+                view.height = new_val.clamp(100, 4096);
+                *needs_redraw = true;
+            }
+        }
+    });
     
     ui.add_space(5.0);
     ui.label(
@@ -34,20 +137,65 @@ pub fn render_dimensions_section(ui: &mut egui::Ui, width_input: &mut String, he
 }
 
 /// Render the fractal settings section
-pub fn render_fractal_settings(ui: &mut egui::Ui, iterations_input: &mut String) {
+pub fn render_fractal_settings(ui: &mut egui::Ui, iterations_input: &mut String, needs_redraw: &mut bool) {
     section_header(ui, "Fractal Settings");
     
-    input_row(ui, "Iterations:", iterations_input, 5.0);
+    // Iterations input with multiply/divide buttons
+    ui.horizontal(|ui| {
+        ui.label("Iterations:");
+        ui.add_space(5.0);
+        if ui.add(egui::TextEdit::singleline(iterations_input).desired_width(80.0)).changed() {
+            *needs_redraw = true;
+        }
+        
+        if ui.small_button("×2").clicked() {
+            if let Ok(val) = iterations_input.parse::<u32>() {
+                *iterations_input = (val * 2).to_string();
+                *needs_redraw = true;
+            }
+        }
+        if ui.small_button("÷2").clicked() {
+            if let Ok(val) = iterations_input.parse::<u32>() {
+                *iterations_input = (val / 2).to_string();
+                *needs_redraw = true;
+            }
+        }
+        if ui.small_button("×10").clicked() {
+            if let Ok(val) = iterations_input.parse::<u32>() {
+                *iterations_input = (val * 10).to_string();
+                *needs_redraw = true;
+            }
+        }
+        if ui.small_button("÷10").clicked() {
+            if let Ok(val) = iterations_input.parse::<u32>() {
+                *iterations_input = (val / 10).to_string();
+                *needs_redraw = true;
+            }
+        }
+    });
 }
 
 /// Render the current view information section
-pub fn render_current_view_info(ui: &mut egui::Ui, view: &MandelbrotView) {
+pub fn render_current_view_info(
+    ui: &mut egui::Ui,
+    view: &mut MandelbrotView,
+    needs_redraw: &mut bool,
+    status_message: &mut String,
+) {
     section_header(ui, "Current View");
     
     ui.label(format!("X: {:.6}", view.center_x));
     ui.label(format!("Y: {:.6}", view.center_y));
     ui.label(format!("Zoom: {:.2}x", view.zoom));
     ui.label(format!("Size: {}×{}", view.width, view.height));
+    
+    ui.add_space(10.0);
+    
+    if ui.add_sized([ui.available_width(), 30.0], egui::Button::new("Reset View")).clicked() {
+        view.reset();
+        *needs_redraw = true;
+        *status_message = String::from("Reset to defaults");
+    }
 }
 
 /// Render the color scheme and color stops section
@@ -57,6 +205,10 @@ pub fn render_colormap_section(
     colormap: &mut ColorMap,
     needs_redraw: &mut bool,
     status_message: &mut String,
+    use_period: &mut bool,
+    period_input: &mut String,
+    use_interior_color: &mut bool,
+    interior_color: &mut [u8; 3],
 ) {
     section_header(ui, "Color Scheme");
     
@@ -71,17 +223,95 @@ pub fn render_colormap_section(
             }
         });
     
-    ui.add_space(15.0);
+    ui.add_space(10.0);
     
-    // Color Stops
-    ui.label(egui::RichText::new("Color Stops").strong());
-    ui.add_space(5.0);
+    // Period modulation checkbox and input
+    if ui.checkbox(use_period, "Period").changed() {
+        *needs_redraw = true;
+    }
     
-    for (i, stop) in colormap.stops().iter().enumerate() {
-        ui.label(format!("{}. {} at {:.2}", i + 1, stop.color, stop.position));
+    if *use_period {
+        ui.horizontal(|ui| {
+            if ui.add(egui::TextEdit::singleline(period_input).desired_width(60.0)).changed() {
+                *needs_redraw = true;
+            }
+            
+            if ui.small_button("×2").clicked() {
+                if let Ok(val) = period_input.parse::<u32>() {
+                    *period_input = (val * 2).to_string();
+                    *needs_redraw = true;
+                }
+            }
+            if ui.small_button("÷2").clicked() {
+                if let Ok(val) = period_input.parse::<u32>() {
+                    *period_input = (val / 2).max(1).to_string();
+                    *needs_redraw = true;
+                }
+            }
+            if ui.small_button("×10").clicked() {
+                if let Ok(val) = period_input.parse::<u32>() {
+                    *period_input = (val * 10).to_string();
+                    *needs_redraw = true;
+                }
+            }
+            if ui.small_button("÷10").clicked() {
+                if let Ok(val) = period_input.parse::<u32>() {
+                    *period_input = (val / 10).max(1).to_string();
+                    *needs_redraw = true;
+                }
+            }
+        });
     }
     
     ui.add_space(5.0);
+    
+    // Interior color checkbox and picker
+    if ui.checkbox(use_interior_color, "Interior Color").changed() {
+        *needs_redraw = true;
+    }
+    
+    if *use_interior_color {
+        ui.add_space(5.0);
+        
+        ui.horizontal(|ui| {
+            ui.label("R:");
+            if ui.add(egui::Slider::new(&mut interior_color[0], 0..=255).show_value(true)).changed() {
+                *needs_redraw = true;
+            }
+        });
+        
+        ui.horizontal(|ui| {
+            ui.label("G:");
+            if ui.add(egui::Slider::new(&mut interior_color[1], 0..=255).show_value(true)).changed() {
+                *needs_redraw = true;
+            }
+        });
+        
+        ui.horizontal(|ui| {
+            ui.label("B:");
+            if ui.add(egui::Slider::new(&mut interior_color[2], 0..=255).show_value(true)).changed() {
+                *needs_redraw = true;
+            }
+        });
+        
+        // Color preview
+        ui.horizontal(|ui| {
+            ui.label("Preview:");
+            let color_rect = ui.allocate_space(egui::vec2(60.0, 20.0)).1;
+            ui.painter().rect_filled(
+                color_rect,
+                2.0,
+                egui::Color32::from_rgb(interior_color[0], interior_color[1], interior_color[2]),
+            );
+            ui.painter().rect_stroke(
+                color_rect,
+                2.0,
+                egui::Stroke::new(1.0, egui::Color32::GRAY),
+            );
+        });
+    }
+    
+    ui.add_space(10.0);
     
     ui.horizontal(|ui| {
         if ui.button("Save").clicked() {
@@ -97,34 +327,8 @@ pub fn render_colormap_section(
 /// Render action buttons section
 pub fn render_actions_section(
     ui: &mut egui::Ui,
-    view: &mut MandelbrotView,
-    width_input: &str,
-    height_input: &str,
-    iterations_input: &str,
-    needs_redraw: &mut bool,
     status_message: &mut String,
 ) {
-    if ui.add_sized([ui.available_width(), 40.0], egui::Button::new("Apply Settings")).clicked() {
-        let width: u32 = width_input.parse().unwrap_or(800).clamp(100, 4096);
-        let height: u32 = height_input.parse().unwrap_or(600).clamp(100, 4096);
-        let iterations: u32 = iterations_input.parse().unwrap_or(256).clamp(10, 10000);
-        
-        view.width = width;
-        view.height = height;
-        *needs_redraw = true;
-        *status_message = format!("Applied: {}×{}, {} iter", width, height, iterations);
-    }
-    
-    ui.add_space(5.0);
-    
-    if ui.add_sized([ui.available_width(), 30.0], egui::Button::new("Reset View")).clicked() {
-        view.reset();
-        *needs_redraw = true;
-        *status_message = String::from("Reset to defaults");
-    }
-    
-    ui.add_space(5.0);
-    
     if ui.add_sized([ui.available_width(), 30.0], egui::Button::new("Export (TODO)")).clicked() {
         *status_message = String::from("Export (TODO)");
     }
@@ -157,13 +361,4 @@ pub fn render_zoom_square(
 fn section_header(ui: &mut egui::Ui, title: &str) {
     ui.label(egui::RichText::new(title).strong());
     ui.add_space(5.0);
-}
-
-/// Render a labeled input row with consistent spacing
-fn input_row(ui: &mut egui::Ui, label: &str, input: &mut String, spacing: f32) {
-    ui.horizontal(|ui| {
-        ui.label(label);
-        ui.add_space(spacing);
-        ui.add(egui::TextEdit::singleline(input).desired_width(120.0));
-    });
 }

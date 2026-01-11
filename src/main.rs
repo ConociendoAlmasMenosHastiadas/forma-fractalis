@@ -40,6 +40,12 @@ struct MandelbrotApp {
     colormap: ColorMap,
     color_editor: ColorEditor,
     
+    // Color modulation
+    use_period: bool,
+    period_input: String,
+    use_interior_color: bool,
+    interior_color: [u8; 3],
+    
     // Fractal texture
     fractal_texture: Option<egui::TextureHandle>,
     needs_redraw: bool,
@@ -64,6 +70,10 @@ impl Default for MandelbrotApp {
             selected_scheme,
             colormap: selected_scheme.to_colormap(),
             color_editor: ColorEditor::new(),
+            use_period: false,
+            period_input: String::from("128"),
+            use_interior_color: false,
+            interior_color: [0, 0, 0],
             fractal_texture: None,
             needs_redraw: true,
             is_dragging: false,
@@ -80,7 +90,21 @@ impl MandelbrotApp {
         let width = self.view.width as usize;
         let height = self.view.height as usize;
         let mut buffer = vec![0u8; width * height * 4];
-        render_mandelbrot(&mut buffer, &self.view, &self.colormap);
+        
+        // Parse period and iterations values (default to 256 if invalid)
+        let period = self.period_input.parse::<u32>().unwrap_or(256);
+        let max_iterations = self.iterations_input.parse::<u32>().unwrap_or(256).clamp(10, 10000);
+        
+        render_mandelbrot(
+            &mut buffer,
+            &self.view,
+            &self.colormap,
+            max_iterations,
+            self.use_period,
+            period,
+            self.use_interior_color,
+            self.interior_color,
+        );
         
         // Convert to egui ColorImage
         let color_image = egui::ColorImage::from_rgba_unmultiplied(
@@ -115,27 +139,41 @@ impl eframe::App for MandelbrotApp {
             .default_width(300.0)
             .resizable(false)
             .show(ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                    ui.set_max_width(ui.available_width() - 10.0); // Leave space for scrollbar
                     ui.vertical(|ui| {
                         ui.heading("Controls");
                         ui.add_space(10.0);
                         
                         // Preview Window Dimensions
-                        gui::render_dimensions_section(ui, &mut self.width_input, &mut self.height_input);
+                        gui::render_dimensions_section(
+                            ui,
+                            &mut self.width_input,
+                            &mut self.height_input,
+                            &mut self.view,
+                            &mut self.needs_redraw,
+                        );
                         
                         ui.add_space(15.0);
                         ui.separator();
                         ui.add_space(10.0);
                         
                         // Fractal Settings
-                        gui::render_fractal_settings(ui, &mut self.iterations_input);
+                        gui::render_fractal_settings(ui, &mut self.iterations_input, &mut self.needs_redraw);
                         
                         ui.add_space(15.0);
                         ui.separator();
                         ui.add_space(10.0);
                         
                         // Current View
-                        gui::render_current_view_info(ui, &self.view);
+                        gui::render_current_view_info(
+                            ui,
+                            &mut self.view,
+                            &mut self.needs_redraw,
+                            &mut self.status_message,
+                        );
                         
                         ui.add_space(15.0);
                         ui.separator();
@@ -148,20 +186,22 @@ impl eframe::App for MandelbrotApp {
                             &mut self.colormap,
                             &mut self.needs_redraw,
                             &mut self.status_message,
+                            &mut self.use_period,
+                            &mut self.period_input,
+                            &mut self.use_interior_color,
+                            &mut self.interior_color,
                         );
                         
                         ui.add_space(10.0);
                         
-                        // Advanced Color Editor (collapsible)
-                        ui.collapsing("🎨 Advanced Color Editor", |ui| {
-                            if mandelrust::colorschemes_gui::render_color_editor_section(
-                                ui,
-                                &mut self.colormap,
-                                &mut self.color_editor,
-                            ) {
-                                self.needs_redraw = true;
-                            }
-                        });
+                        // Advanced Color Editor (always visible)
+                        if mandelrust::colorschemes_gui::render_color_editor_section(
+                            ui,
+                            &mut self.colormap,
+                            &mut self.color_editor,
+                        ) {
+                            self.needs_redraw = true;
+                        }
                         
                         ui.add_space(15.0);
                         ui.separator();
@@ -170,11 +210,6 @@ impl eframe::App for MandelbrotApp {
                         // Actions
                         gui::render_actions_section(
                             ui,
-                            &mut self.view,
-                            &self.width_input,
-                            &self.height_input,
-                            &self.iterations_input,
-                            &mut self.needs_redraw,
                             &mut self.status_message,
                         );
                         

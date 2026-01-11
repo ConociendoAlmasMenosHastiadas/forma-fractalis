@@ -21,7 +21,21 @@ pub const MAX_ITERATIONS: u32 = 256;
 /// * `frame` - Mutable reference to the pixel buffer (RGBA format)
 /// * `view` - View parameters (center, zoom, dimensions)
 /// * `colormap` - Colormap to use for rendering
-pub fn render_mandelbrot(frame: &mut [u8], view: &MandelbrotView, colormap: &ColorMap) {
+/// * `max_iterations` - Maximum iterations for Mandelbrot calculation
+/// * `use_period` - Whether to enable period modulation
+/// * `period` - Period value for modulo operation on iterations
+/// * `use_interior_color` - Whether to use custom interior color
+/// * `interior_color` - RGB color for points inside the set
+pub fn render_mandelbrot(
+    frame: &mut [u8],
+    view: &MandelbrotView,
+    colormap: &ColorMap,
+    max_iterations: u32,
+    use_period: bool,
+    period: u32,
+    use_interior_color: bool,
+    interior_color: [u8; 3],
+) {
     let rows: Vec<_> = (0..view.height).collect();
     
     // Parallel processing: each row is computed independently
@@ -31,8 +45,16 @@ pub fn render_mandelbrot(frame: &mut [u8], view: &MandelbrotView, colormap: &Col
             (0..view.width)
                 .map(|x| {
                     let (real, imag) = view.screen_to_complex(x, y);
-                    let iter = mandelbrot_iterations(real, imag, MAX_ITERATIONS);
-                    let color = color_from_iterations(iter, MAX_ITERATIONS, colormap);
+                    let iter = mandelbrot_iterations(real, imag, max_iterations);
+                    let color = color_from_iterations(
+                        iter,
+                        max_iterations,
+                        colormap,
+                        use_period,
+                        period,
+                        use_interior_color,
+                        interior_color,
+                    );
                     [color.r, color.g, color.b, 255]
                 })
                 .collect()
