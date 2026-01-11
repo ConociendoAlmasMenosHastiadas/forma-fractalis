@@ -63,8 +63,10 @@ if (Test-Path $zipPath) {
 }
 
 Write-Host "Creating zip archive..." -ForegroundColor Cyan
-# Use 7z with metadata-cleaning flags
-7z a -tzip -mtc=off -mta=off $zipPath "$distPath\*"
+# Use 7z with metadata-cleaning flags - cd into builds to avoid nested paths
+Push-Location $buildsDir
+7z a -tzip -mtc=off -mta=off "$distName.zip" "$distName\*"
+Pop-Location
 
 # Clean up distribution directory
 Remove-Item -Path $distPath -Recurse -Force
