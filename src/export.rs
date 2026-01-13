@@ -1,11 +1,13 @@
 //! Image Export System
 //!
 //! This module handles exporting fractal renders to image files.
-//! Supports scaling and various output formats, with PNG as the primary format.
+//! Uses the unified rendering pipeline with optional filtering and supersampling
+//! for professional-quality output.
 
 use crate::colorschemes::ColorMap;
+use crate::filtering::{apply_supersample_filter, calculate_supersample_dimensions, FilterType};
 use crate::fractal::MandelbrotView;
-use crate::rendering::render_mandelbrot;
+use crate::rendering_pipeline::{render_with_config, RenderConfig, RenderTarget};
 use image::{ImageBuffer, Rgba};
 use std::path::PathBuf;
 
@@ -19,6 +21,9 @@ use std::path::PathBuf;
 /// * `period` - Period value for modulation
 /// * `use_interior_color` - Whether to use custom interior color
 /// * `interior_color` - RGB color for interior points
+/// * `use_log_scale` - Whether to apply logarithmic color scaling
+/// * `filter_type` - Filter to apply for downsampling (None, Lanczos3, Gaussian)
+/// * `supersample` - Supersampling multiplier (1 = no supersample, 2 = 2x, etc.)
 /// * `scale` - Scaling factor (e.g., 3.0 for 3x the preview dimensions)
 /// * `output_dir` - Optional output directory (uses current directory if None)
 ///
@@ -32,46 +37,76 @@ pub fn export_png(
     period: u32,
     use_interior_color: bool,
     interior_color: [u8; 3],
+    use_log_scale: bool,
+    filter_type: FilterType,
+    supersample: u32,
     scale: f32,
     output_dir: Option<&PathBuf>,
 ) -> Result<String, String> {
-    // Calculate scaled dimensions
-    let output_width = (view.width as f32 * scale) as u32;
-    let output_height = (view.height as f32 * scale) as u32;
+    // Calculate target output dimensions (base size * scale)
+    let target_width = (view.width as f32 * scale) as u32;
+    let target_height = (view.height as f32 * scale) as u32;
 
-    // Create a scaled view
-    let mut scaled_view = view.clone();
-    scaled_view.width = output_width;
-    scaled_view.height = output_height;
-
-    // Render to buffer
-    let buffer_size = (output_width * output_height * 4) as usize;
-    let mut buffer = vec![0u8; buffer_size];
-
-    render_mandelbrot(
-        &mut buffer,
-        &scaled_view,
-        colormap,
-        max_iterations,
-        use_period,
-        period,
-        use_interior_color,
-        interior_color,
+    // Calculate supersample dimensions if filtering is enabled
+    let supersample = if filter_type == FilterType::None { 1 } else { supersample.max(1) };
+    let (render_width, render_height) = calculate_supersample_dimensions(
+        target_width,
+        target_height,
+        supersample,
     );
 
-    // Convert to image buffer
-    let img = ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(output_width, output_height, buffer)
-        .ok_or("Failed to create image buffer")?;
+    // Build render configuration
+    let config = RenderConfig::new(view.clone(), colormap, max_iterations)
+        .with_period(use_period, period)
+        .with_interior_color(use_interior_color, interior_color)
+        .with_log_scale(use_log_scale);
 
-    // Generate filename with timestamp
+    // Render at supersample resolution
+    let buffer = render_with_config(
+        &config,
+        RenderTarget::Export {
+            width: render_width,
+            height: render_height,
+        },
+    );
+
+    // Apply filtering if enabled (downsample from supersample to target)
+    let final_buffer = if filter_type != FilterType::None && supersample > 1 {
+        apply_supersample_filter(
+            &buffer,
+            render_width,
+            render_height,
+            target_width,
+            target_height,
+            filter_type,
+        )?
+    } else {
+        buffer
+    };
+
+    // Convert to image buffer (using final dimensions)
+    let img = ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(
+        target_width,
+        target_height,
+        final_buffer,
+    )
+    .ok_or("Failed to create image buffer")?;
+
+    // Generate filename with timestamp and filter info
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
 
+    let filter_suffix = if filter_type != FilterType::None && supersample > 1 {
+        format!("_{}x{}", supersample, filter_type.as_str())
+    } else {
+        String::new()
+    };
+
     let filename = format!(
-        "mandelbrot_{}x{}_{}.png",
-        output_width, output_height, timestamp
+        "mandelbrot_{}x{}{}{}.png",
+        target_width, target_height, filter_suffix, timestamp
     );
 
     // Construct full path

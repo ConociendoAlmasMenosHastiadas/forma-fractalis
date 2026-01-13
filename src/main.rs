@@ -1,7 +1,8 @@
 use eframe::egui;
 use mandelrust::{
     colorschemes::ColorMap, colorschemes_gui::ColorEditor, colorschemes_io,
-    fractal::MandelbrotView, gui, rendering::render_mandelbrot,
+    filtering::FilterType, fractal::MandelbrotView, gui,
+    rendering_pipeline::{render_with_config, RenderConfig, RenderTarget},
 };
 
 fn main() -> Result<(), eframe::Error> {
@@ -43,6 +44,10 @@ struct MandelbrotApp {
     period_input: String,
     use_interior_color: bool,
     interior_color: [u8; 3],
+    interior_color_r_text: String,
+    interior_color_g_text: String,
+    interior_color_b_text: String,
+    use_log_scale: bool,
 
     // Fractal texture
     fractal_texture: Option<egui::TextureHandle>,
@@ -56,6 +61,8 @@ struct MandelbrotApp {
     // Export
     export_scale_input: String,
     export_directory: Option<std::path::PathBuf>,
+    export_filter: FilterType,
+    export_supersample_input: String,
 
     // Status
     status_message: String,
@@ -87,6 +94,10 @@ impl Default for MandelbrotApp {
             period_input: String::from("128"),
             use_interior_color: false,
             interior_color: [0, 0, 0],
+            interior_color_r_text: String::from("0"),
+            interior_color_g_text: String::from("0"),
+            interior_color_b_text: String::from("0"),
+            use_log_scale: false,
             fractal_texture: None,
             needs_redraw: true,
             is_dragging: false,
@@ -94,6 +105,8 @@ impl Default for MandelbrotApp {
             zoom_square_size: 200.0,
             export_scale_input: String::from("3.0"),
             export_directory: None,
+            export_filter: FilterType::None,
+            export_supersample_input: String::from("2"),
             status_message: String::from("Ready - Click+drag to position zoom, scroll to resize"),
         }
     }
@@ -101,11 +114,6 @@ impl Default for MandelbrotApp {
 
 impl MandelbrotApp {
     fn render_fractal(&mut self, ctx: &egui::Context) {
-        // Render to buffer
-        let width = self.view.width as usize;
-        let height = self.view.height as usize;
-        let mut buffer = vec![0u8; width * height * 4];
-
         // Parse period and iterations values (default to 256 if invalid)
         let period = self.period_input.parse::<u32>().unwrap_or(256);
         let max_iterations = self
@@ -114,18 +122,18 @@ impl MandelbrotApp {
             .unwrap_or(256)
             .clamp(10, 10000);
 
-        render_mandelbrot(
-            &mut buffer,
-            &self.view,
-            &self.colormap,
-            max_iterations,
-            self.use_period,
-            period,
-            self.use_interior_color,
-            self.interior_color,
-        );
+        // Build render configuration
+        let config = RenderConfig::new(self.view.clone(), &self.colormap, max_iterations)
+            .with_period(self.use_period, period)
+            .with_interior_color(self.use_interior_color, self.interior_color)
+            .with_log_scale(self.use_log_scale);
+
+        // Render for preview (no filtering)
+        let buffer = render_with_config(&config, RenderTarget::Preview);
 
         // Convert to egui ColorImage
+        let width = self.view.width as usize;
+        let height = self.view.height as usize;
         let color_image = egui::ColorImage::from_rgba_unmultiplied([width, height], &buffer);
 
         // Update or create texture
@@ -208,6 +216,10 @@ impl eframe::App for MandelbrotApp {
                                 &mut self.period_input,
                                 &mut self.use_interior_color,
                                 &mut self.interior_color,
+                                &mut self.interior_color_r_text,
+                                &mut self.interior_color_g_text,
+                                &mut self.interior_color_b_text,
+                                &mut self.use_log_scale,
                             );
 
                             ui.add_space(10.0);
@@ -241,8 +253,11 @@ impl eframe::App for MandelbrotApp {
                                 period,
                                 self.use_interior_color,
                                 self.interior_color,
+                                self.use_log_scale,
                                 &mut self.export_scale_input,
                                 &mut self.export_directory,
+                                &mut self.export_filter,
+                                &mut self.export_supersample_input,
                                 &mut self.status_message,
                             );
 
@@ -272,8 +287,7 @@ impl eframe::App for MandelbrotApp {
                 let scroll_delta = ui.input(|i| i.scroll_delta.y);
                 if scroll_delta != 0.0 && self.is_dragging {
                     self.zoom_square_size = (self.zoom_square_size + scroll_delta * 2.0)
-                        .max(20.0)
-                        .min(2000.0);
+                        .clamp(20.0, 2000.0);
                     self.status_message = format!("Zoom size: {:.0}px", self.zoom_square_size);
                 }
 

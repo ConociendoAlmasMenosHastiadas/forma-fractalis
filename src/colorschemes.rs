@@ -296,6 +296,7 @@ pub fn color_from_iterations(
     period: u32,
     use_interior_color: bool,
     interior_color: [u8; 3],
+    use_log_scale: bool,
 ) -> Color {
     // Check if point is inside the set and custom interior color is enabled
     if iterations >= max_iterations && use_interior_color {
@@ -321,8 +322,12 @@ pub fn color_from_iterations(
     };
     let t = effective_iterations as f64 / divisor;
 
-    // Apply smooth coloring using log scale for better distribution
-    let smooth_t = (t * 10.0).log10() / 1.0; // log10(10) = 1
+    // Apply smooth coloring - use log scale if enabled, otherwise linear
+    let smooth_t = if use_log_scale {
+        (t * 10.0).log10() / 1.0 // log10(10) = 1
+    } else {
+        t // Linear scaling
+    };
 
     colormap.get_color(smooth_t.clamp(0.0, 1.0))
 }

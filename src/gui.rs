@@ -234,6 +234,10 @@ pub fn render_colormap_section(
     period_input: &mut String,
     use_interior_color: &mut bool,
     interior_color: &mut [u8; 3],
+    interior_color_r_text: &mut String,
+    interior_color_g_text: &mut String,
+    interior_color_b_text: &mut String,
+    use_log_scale: &mut bool,
 ) {
     section_header(ui, "Color Scheme");
 
@@ -313,9 +317,10 @@ pub fn render_colormap_section(
         ui.horizontal(|ui| {
             ui.label("R:");
             if ui
-                .add(egui::Slider::new(&mut interior_color[0], 0..=255).show_value(true))
+                .add(egui::Slider::new(&mut interior_color[0], 0..=255).fixed_decimals(0))
                 .changed()
             {
+                *interior_color_r_text = interior_color[0].to_string();
                 *needs_redraw = true;
             }
         });
@@ -323,9 +328,10 @@ pub fn render_colormap_section(
         ui.horizontal(|ui| {
             ui.label("G:");
             if ui
-                .add(egui::Slider::new(&mut interior_color[1], 0..=255).show_value(true))
+                .add(egui::Slider::new(&mut interior_color[1], 0..=255).fixed_decimals(0))
                 .changed()
             {
+                *interior_color_g_text = interior_color[1].to_string();
                 *needs_redraw = true;
             }
         });
@@ -333,9 +339,10 @@ pub fn render_colormap_section(
         ui.horizontal(|ui| {
             ui.label("B:");
             if ui
-                .add(egui::Slider::new(&mut interior_color[2], 0..=255).show_value(true))
+                .add(egui::Slider::new(&mut interior_color[2], 0..=255).fixed_decimals(0))
                 .changed()
             {
+                *interior_color_b_text = interior_color[2].to_string();
                 *needs_redraw = true;
             }
         });
@@ -353,6 +360,13 @@ pub fn render_colormap_section(
                 .rect_stroke(color_rect, 2.0, egui::Stroke::new(1.0, egui::Color32::GRAY));
         });
     }
+
+    ui.add_space(5.0);
+
+    // Logarithmic scaling checkbox
+    if ui.checkbox(use_log_scale, "Logarithmic Scale").changed() {
+        *needs_redraw = true;
+    }
 }
 
 /// Render action buttons section
@@ -365,8 +379,11 @@ pub fn render_actions_section(
     period: u32,
     use_interior_color: bool,
     interior_color: [u8; 3],
+    use_log_scale: bool,
     export_scale_input: &mut String,
     export_directory: &mut Option<std::path::PathBuf>,
+    export_filter: &mut crate::filtering::FilterType,
+    export_supersample_input: &mut String,
     status_message: &mut String,
 ) {
     section_header(ui, "Export Image");
@@ -383,8 +400,7 @@ pub fn render_actions_section(
     let scale = export_scale_input
         .parse::<f32>()
         .unwrap_or(3.0)
-        .max(0.1)
-        .min(10.0);
+        .clamp(0.1, 10.0);
     let (output_width, output_height) = crate::export::calculate_output_dimensions(view, scale);
 
     ui.label(
@@ -436,6 +452,48 @@ pub fn render_actions_section(
 
     ui.add_space(10.0);
 
+    // Filter selection
+    ui.horizontal(|ui| {
+        ui.label("Filter:");
+        egui::ComboBox::from_id_source("export_filter")
+            .selected_text(export_filter.as_str())
+            .show_ui(ui, |ui| {
+                for filter in crate::filtering::FilterType::ALL.iter() {
+                    ui.selectable_value(export_filter, *filter, filter.as_str());
+                }
+            });
+    });
+
+    // Supersample input (only when filter is enabled)
+    if *export_filter != crate::filtering::FilterType::None {
+        ui.horizontal(|ui| {
+            ui.label("Supersample:");
+            ui.add(egui::TextEdit::singleline(export_supersample_input).desired_width(40.0));
+            ui.label(
+                egui::RichText::new("(1-4 recommended)")
+                    .small()
+                    .italics()
+                    .color(egui::Color32::GRAY),
+            );
+        });
+        
+        ui.label(
+            egui::RichText::new("⚡ Higher supersample = better quality but slower")
+                .small()
+                .italics()
+                .color(egui::Color32::GRAY),
+        );
+    }
+
+    ui.label(
+        egui::RichText::new("ℹ Filter applied on export only (preview unaffected)")
+            .small()
+            .italics()
+            .color(egui::Color32::DARK_GRAY),
+    );
+
+    ui.add_space(10.0);
+
     // Export button
     if ui
         .add_sized(
@@ -444,6 +502,12 @@ pub fn render_actions_section(
         )
         .clicked()
     {
+        // Parse supersample value
+        let supersample = export_supersample_input
+            .parse::<u32>()
+            .unwrap_or(1)
+            .clamp(1, 4);
+
         // Export the image
         match crate::export::export_png(
             view,
@@ -453,6 +517,9 @@ pub fn render_actions_section(
             period,
             use_interior_color,
             interior_color,
+            use_log_scale,
+            *export_filter,
+            supersample,
             scale,
             export_directory.as_ref(),
         ) {

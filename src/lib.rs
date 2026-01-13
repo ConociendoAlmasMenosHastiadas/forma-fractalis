@@ -11,11 +11,15 @@
 //! - [`fractal`]: Mandelbrot set mathematics and viewport management
 //! - [`gui`]: Main application GUI layout
 //! - [`rendering`]: Parallel fractal rendering with Rayon
+/// - [`rendering_pipeline`]: Unified rendering system for preview and export
+/// - [`filtering`]: Image filtering and supersampling for high-quality exports
 
 pub mod colorschemes;
 pub mod colorschemes_gui;
 pub mod colorschemes_io;
 pub mod export;
+pub mod filtering;
 pub mod fractal;
 pub mod gui;
 pub mod rendering;
+pub mod rendering_pipeline;

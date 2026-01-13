@@ -26,6 +26,7 @@ pub const MAX_ITERATIONS: u32 = 256;
 /// * `period` - Period value for modulo operation on iterations
 /// * `use_interior_color` - Whether to use custom interior color
 /// * `interior_color` - RGB color for points inside the set
+/// * `use_log_scale` - Whether to apply logarithmic scaling to colors
 pub fn render_mandelbrot(
     frame: &mut [u8],
     view: &MandelbrotView,
@@ -35,6 +36,7 @@ pub fn render_mandelbrot(
     period: u32,
     use_interior_color: bool,
     interior_color: [u8; 3],
+    use_log_scale: bool,
 ) {
     let rows: Vec<_> = (0..view.height).collect();
 
@@ -54,6 +56,7 @@ pub fn render_mandelbrot(
                         period,
                         use_interior_color,
                         interior_color,
+                        use_log_scale,
                     );
                     [color.r, color.g, color.b, 255]
                 })
@@ -94,11 +97,9 @@ pub fn draw_rectangle(
 
     let x1 = center_x
         .saturating_sub(half_width)
-        .max(0)
         .min(buffer_width - 1);
     let y1 = center_y
         .saturating_sub(half_height)
-        .max(0)
         .min(buffer_height - 1);
     let x2 = (center_x + half_width).min(buffer_width - 1);
     let y2 = (center_y + half_height).min(buffer_height - 1);

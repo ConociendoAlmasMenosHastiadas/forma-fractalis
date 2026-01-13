@@ -1,6 +1,6 @@
 # Mandelrust - Interactive Mandelbrot Set Explorer
 
-An interactive Mandelbrot set explorer built in Rust with real-time rendering, advanced color mapping, and image export capabilities.  I should mention this project is like 95% vibes.  Its a recreation of an old project I made for a Java course back in college, but this time made in rust and using LLMs to include a bunch of features I wished I had but just never got around to using.  
+An interactive Mandelbrot set explorer built in Rust with real-time rendering, advanced color mapping, and image export capabilities.  I should mention this project is like 95% vibes.  Its a recreation of an old project I made for a Java course back in college, but this time made in rust and using LLMs to include a bunch of features I wished I had but just never got around to making.  
 
 The project is for-fun for those that want to take a look at the mandelbrot set in weird ways.  The initial version is just based around the mandelbrot set as the base-case.  If I stick with it I want to add weirder fractals in.  
 
@@ -8,7 +8,7 @@ This makes for cool wallpapers, banners, profile pics, etc.  I hope its fun and 
 
 > **NON-PROGRAMMERS**: Pre-built Windows executables are available in the [`builds/`](builds/) folder - just download the .zip file and run!
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-0.1.1-blue)
 ![Rust](https://img.shields.io/badge/rust-2021-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue)
 
@@ -21,6 +21,7 @@ This makes for cool wallpapers, banners, profile pics, etc.  I hope its fun and 
 - **Live Preview**: Real-time gradient visualization
 - **Color Stop Management**: Add, edit, delete, and position color stops with precision
 - **Named Colors**: Optional color names for documentation (e.g., "Celadon", "Tiffany Blue")
+- **Linear & Logarithmic Scaling**: Toggle between color distribution modes
 
 ### Interactive Navigation
 - **Click-and-Drag Zoom**: Position a zoom box and click to zoom in
@@ -31,6 +32,8 @@ This makes for cool wallpapers, banners, profile pics, etc.  I hope its fun and 
 ### High-Quality Export
 - **PNG Export**: Lossless image output
 - **Scalable Resolution**: 3x default (3840×2160 from 1280×720 preview)
+- **Image Filtering**: Lanczos3 & Gaussian filters for professional quality
+- **Supersampling**: Render at 2x-4x resolution, then downsample for ultra-sharp results
 - **Custom Output Directory**: Choose where to save your renders
 - **Timestamped Filenames**: Automatic file naming
 
@@ -38,7 +41,8 @@ This makes for cool wallpapers, banners, profile pics, etc.  I hope its fun and 
 - **Parallel Rendering**: Multi-threaded computation using Rayon
 - **Real-time Updates**: Smooth 60 FPS interface with egui
 - **Efficient Color Mapping**: Optimized gradient interpolation
-- **Smooth Coloring**: Logarithmic scaling for better color distribution
+- **Unified Pipeline**: Consistent behavior between preview and export
+- **Smooth Coloring**: Optional logarithmic scaling for better color distribution
 
 ### Advanced Options
 - **Period Modulation**: Create repeating color patterns
@@ -228,6 +232,42 @@ Dual-licensed under Apache-2.0 or MIT. See LICENSE-APACHE and LICENSE-MIT files 
 ## Third-Party Licenses
 
 See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for a comprehensive list of all dependency licenses.
+
+## Releases
+
+### v0.1.1 (January 12, 2026)
+
+**New Features:**
+- **Unified Rendering Pipeline**: Preview and export now use the same rendering codebase, eliminating duplication
+- **Professional Image Filtering**: Added Lanczos3 and Gaussian filters for export
+- **Supersampling Support**: Render at 2x-4x resolution, then downsample for ultra-sharp results
+- **Linear/Logarithmic Color Scaling**: Toggle between color distribution modes for smoother gradients
+
+**Architecture Improvements:**
+- New `rendering_pipeline.rs` module with unified rendering system
+- New `filtering.rs` module with extensible filter architecture
+- Refactored export system to use unified pipeline
+- Easy to extend with additional filters in the future
+
+**Quality of Life:**
+- Export-only filtering keeps preview fast and responsive
+- Default supersample set to 2x for better quality exports
+- Clear UI controls for filter selection
+- Export status indicator ("⏳ Exporting...")
+
+**Breaking Changes:** None - fully backward compatible. Default behavior (no filtering) matches v0.1.0.
+
+### v0.1.0 (Initial Release)
+
+**Core Features:**
+- Interactive Mandelbrot set explorer with real-time rendering
+- 10 built-in color schemes
+- Interactive color editor with drag-and-drop color stops
+- Save/load custom colormaps as JSON
+- Click-and-drag zoom navigation
+- PNG export at scalable resolutions
+- Parallel rendering with Rayon
+- Period modulation and custom interior colors
 
 ## Credits
 
