@@ -17,6 +17,21 @@ use crate::colorschemes::ColorMap;
 use crate::colorschemes_io;
 use crate::fractal::MandelbrotView;
 use eframe::egui;
+use std::collections::HashMap;
+
+/// Trait for fractal type operations needed by GUI
+pub trait FractalTypeOps {
+    fn get_name(&self) -> &str;
+    fn all_types() -> Vec<Self> where Self: Sized;
+    fn is_julia(&self) -> bool;
+    fn reset_view_and_params(
+        &self,
+        view: &mut MandelbrotView,
+        params: &mut HashMap<String, f64>,
+        julia_c_real_input: &str,
+        julia_c_imag_input: &str,
+    );
+}
 
 /// Render the preview window dimensions section
 pub fn render_dimensions_section(
@@ -37,7 +52,7 @@ pub fn render_dimensions_section(
             .changed()
         {
             if let Ok(val) = width_input.parse::<u32>() {
-                view.width = val.clamp(100, 4096);
+                view.width = val.max(100);
                 *needs_redraw = true;
             }
         }
@@ -46,7 +61,7 @@ pub fn render_dimensions_section(
             if let Ok(val) = width_input.parse::<u32>() {
                 let new_val = val * 2;
                 *width_input = new_val.to_string();
-                view.width = new_val.clamp(100, 4096);
+                view.width = new_val.max(100);
                 *needs_redraw = true;
             }
         }
@@ -54,7 +69,7 @@ pub fn render_dimensions_section(
             if let Ok(val) = width_input.parse::<u32>() {
                 let new_val = val / 2;
                 *width_input = new_val.to_string();
-                view.width = new_val.clamp(100, 4096);
+                view.width = new_val.max(100);
                 *needs_redraw = true;
             }
         }
@@ -62,7 +77,7 @@ pub fn render_dimensions_section(
             if let Ok(val) = width_input.parse::<u32>() {
                 let new_val = val * 10;
                 *width_input = new_val.to_string();
-                view.width = new_val.clamp(100, 4096);
+                view.width = new_val.max(100);
                 *needs_redraw = true;
             }
         }
@@ -70,7 +85,7 @@ pub fn render_dimensions_section(
             if let Ok(val) = width_input.parse::<u32>() {
                 let new_val = val / 10;
                 *width_input = new_val.to_string();
-                view.width = new_val.clamp(100, 4096);
+                view.width = new_val.max(100);
                 *needs_redraw = true;
             }
         }
@@ -99,7 +114,7 @@ pub fn render_dimensions_section(
             .changed()
         {
             if let Ok(val) = height_input.parse::<u32>() {
-                view.height = val.clamp(100, 4096);
+                view.height = val.max(100);
                 *needs_redraw = true;
             }
         }
@@ -108,7 +123,7 @@ pub fn render_dimensions_section(
             if let Ok(val) = height_input.parse::<u32>() {
                 let new_val = val * 2;
                 *height_input = new_val.to_string();
-                view.height = new_val.clamp(100, 4096);
+                view.height = new_val.max(100);
                 *needs_redraw = true;
             }
         }
@@ -116,7 +131,7 @@ pub fn render_dimensions_section(
             if let Ok(val) = height_input.parse::<u32>() {
                 let new_val = val / 2;
                 *height_input = new_val.to_string();
-                view.height = new_val.clamp(100, 4096);
+                view.height = new_val.max(100);
                 *needs_redraw = true;
             }
         }
@@ -124,7 +139,7 @@ pub fn render_dimensions_section(
             if let Ok(val) = height_input.parse::<u32>() {
                 let new_val = val * 10;
                 *height_input = new_val.to_string();
-                view.height = new_val.clamp(100, 4096);
+                view.height = new_val.max(100);
                 *needs_redraw = true;
             }
         }
@@ -132,7 +147,7 @@ pub fn render_dimensions_section(
             if let Ok(val) = height_input.parse::<u32>() {
                 let new_val = val / 10;
                 *height_input = new_val.to_string();
-                view.height = new_val.clamp(100, 4096);
+                view.height = new_val.max(100);
                 *needs_redraw = true;
             }
         }
@@ -148,12 +163,124 @@ pub fn render_dimensions_section(
 }
 
 /// Render the fractal settings section
-pub fn render_fractal_settings(
+pub fn render_fractal_settings<FT>(
     ui: &mut egui::Ui,
     iterations_input: &mut String,
     needs_redraw: &mut bool,
-) {
+    fractal_type: &mut FT,
+    fractal_parameters: &mut HashMap<String, f64>,
+    julia_c_real_input: &mut String,
+    julia_c_imag_input: &mut String,
+    view: &mut MandelbrotView,
+) 
+where
+    FT: Copy + PartialEq + std::fmt::Debug,
+    FT: FractalTypeOps,
+{
     section_header(ui, "Fractal Settings");
+
+    // Fractal type selector
+    ui.horizontal(|ui| {
+        ui.label("Type:");
+        ui.add_space(15.0);
+        
+        let current_name = fractal_type.get_name();
+        egui::ComboBox::from_id_source("fractal_type")
+            .selected_text(current_name)
+            .show_ui(ui, |ui| {
+                for ft in FT::all_types() {
+                    if ui.selectable_value(fractal_type, ft, ft.get_name()).clicked() {
+                        // Reset view to fractal's default when switching
+                        ft.reset_view_and_params(
+                            view,
+                            fractal_parameters,
+                            julia_c_real_input,
+                            julia_c_imag_input
+                        );
+                        *needs_redraw = true;
+                    }
+                }
+            });
+    });
+
+    ui.add_space(10.0);
+
+    // Dynamic fractal parameters (e.g., Julia Set sliders)
+    if fractal_type.is_julia() {
+        ui.label(
+            egui::RichText::new("Julia Set Parameters")
+                .strong()
+        );
+        ui.add_space(5.0);
+        
+        // C Real slider
+        let mut c_real = fractal_parameters.get("c_real").copied().unwrap_or(-0.7);
+        ui.horizontal(|ui| {
+            ui.label("C Real:");
+            ui.add_space(5.0);
+            if ui.add(egui::Slider::new(&mut c_real, -2.0..=2.0)
+                .text("")
+                .step_by(0.001)
+                .fixed_decimals(3))
+                .changed()
+            {
+                fractal_parameters.insert("c_real".to_string(), c_real);
+                *julia_c_real_input = format!("{:.6}", c_real);
+                *needs_redraw = true;
+            }
+        });
+        
+        // C Imaginary slider
+        let mut c_imag = fractal_parameters.get("c_imag").copied().unwrap_or(0.27015);
+        ui.horizontal(|ui| {
+            ui.label("C Imag:");
+            ui.add_space(3.0);
+            if ui.add(egui::Slider::new(&mut c_imag, -2.0..=2.0)
+                .text("")
+                .step_by(0.001)
+                .fixed_decimals(3))
+                .changed()
+            {
+                fractal_parameters.insert("c_imag".to_string(), c_imag);
+                *julia_c_imag_input = format!("{:.6}", c_imag);
+                *needs_redraw = true;
+            }
+        });
+        
+        // Show current values as editable text inputs below sliders
+        ui.add_space(5.0);
+        ui.collapsing("Advanced: Precise Values", |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Real:");
+                if ui
+                    .add(egui::TextEdit::singleline(julia_c_real_input).desired_width(100.0))
+                    .changed()
+                {
+                    if let Ok(val) = julia_c_real_input.parse::<f64>() {
+                        let clamped = val.clamp(-2.0, 2.0);
+                        fractal_parameters.insert("c_real".to_string(), clamped);
+                        *needs_redraw = true;
+                    }
+                }
+            });
+            
+            ui.horizontal(|ui| {
+                ui.label("Imag:");
+                if ui
+                    .add(egui::TextEdit::singleline(julia_c_imag_input).desired_width(100.0))
+                    .changed()
+                {
+                    if let Ok(val) = julia_c_imag_input.parse::<f64>() {
+                        let clamped = val.clamp(-2.0, 2.0);
+                        fractal_parameters.insert("c_imag".to_string(), clamped);
+                        *needs_redraw = true;
+                    }
+                }
+            });
+        });
+        
+        ui.add_space(10.0);
+    }
 
     // Iterations input with multiply/divide buttons
     ui.horizontal(|ui| {
@@ -375,6 +502,8 @@ pub fn render_actions_section(
     view: &MandelbrotView,
     colormap: &ColorMap,
     max_iterations: u32,
+    fractal: &dyn crate::fractals::Fractal,
+    fractal_parameters: &std::collections::HashMap<String, f64>,
     use_period: bool,
     period: u32,
     use_interior_color: bool,
@@ -400,7 +529,7 @@ pub fn render_actions_section(
     let scale = export_scale_input
         .parse::<f32>()
         .unwrap_or(3.0)
-        .clamp(0.1, 10.0);
+        .max(0.1);
     let (output_width, output_height) = crate::export::calculate_output_dimensions(view, scale);
 
     ui.label(
@@ -469,12 +598,6 @@ pub fn render_actions_section(
         ui.horizontal(|ui| {
             ui.label("Supersample:");
             ui.add(egui::TextEdit::singleline(export_supersample_input).desired_width(40.0));
-            ui.label(
-                egui::RichText::new("(1-4 recommended)")
-                    .small()
-                    .italics()
-                    .color(egui::Color32::GRAY),
-            );
         });
         
         ui.label(
@@ -506,13 +629,15 @@ pub fn render_actions_section(
         let supersample = export_supersample_input
             .parse::<u32>()
             .unwrap_or(1)
-            .clamp(1, 4);
+            .max(1);
 
         // Export the image
         match crate::export::export_png(
             view,
             colormap,
             max_iterations,
+            fractal,
+            fractal_parameters,
             use_period,
             period,
             use_interior_color,

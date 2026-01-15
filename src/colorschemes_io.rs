@@ -41,6 +41,7 @@ const MINT_LAVENDER_COLORMAP_JSON: &str = include_str!("colormaps/mint_lavender.
 const CORAL_SUNSET_COLORMAP_JSON: &str = include_str!("colormaps/coral_sunset.json");
 const OLIVE_SYMMETRY_COLORMAP_JSON: &str = include_str!("colormaps/olive_symmetry.json");
 const ORCHID_GARDEN_COLORMAP_JSON: &str = include_str!("colormaps/orchid_garden.json");
+const FROZEN_AMARANTH_COLORMAP_JSON: &str = include_str!("colormaps/frozen_amaranth.json");
 
 /// Error types for colormap I/O operations
 #[derive(Debug)]
@@ -99,7 +100,7 @@ pub fn get_colormaps_directory() -> Result<PathBuf> {
 
 /// Load a built-in colormap by name
 /// Available built-in colormaps: "Default", "Fire", "Ocean", "Grayscale", "Rainbow",
-/// "Academic", "Mint Lavender", "Coral Sunset", "Olive Symmetry", "Orchid Garden"
+/// "Academic", "Mint Lavender", "Coral Sunset", "Olive Symmetry", "Orchid Garden", "Frozen Amaranth"
 pub fn load_builtin_colormap(name: &str) -> Result<ColorMap> {
     let json_str = match name {
         "Default" => DEFAULT_COLORMAP_JSON,
@@ -112,6 +113,7 @@ pub fn load_builtin_colormap(name: &str) -> Result<ColorMap> {
         "Coral Sunset" => CORAL_SUNSET_COLORMAP_JSON,
         "Olive Symmetry" => OLIVE_SYMMETRY_COLORMAP_JSON,
         "Orchid Garden" => ORCHID_GARDEN_COLORMAP_JSON,
+        "Frozen Amaranth" => FROZEN_AMARANTH_COLORMAP_JSON,
         _ => return Err(ColorMapError::NotFound(name.to_string())),
     };
 
@@ -133,6 +135,7 @@ pub fn is_builtin_colormap(name: &str) -> bool {
             | "Coral Sunset"
             | "Olive Symmetry"
             | "Orchid Garden"
+            | "Frozen Amaranth"
     )
 }
 
@@ -222,6 +225,7 @@ pub fn list_available_colormaps() -> Result<Vec<ColorMapInfo>> {
         "Coral Sunset",
         "Olive Symmetry",
         "Orchid Garden",
+        "Frozen Amaranth",
     ] {
         colormaps.push(ColorMapInfo {
             name: name.to_string(),

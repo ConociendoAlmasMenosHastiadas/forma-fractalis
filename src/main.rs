@@ -1,30 +1,104 @@
 use eframe::egui;
 use mandelrust::{
     colorschemes::ColorMap, colorschemes_gui::ColorEditor, colorschemes_io,
-    filtering::FilterType, fractal::MandelbrotView, gui,
+    filtering::FilterType, fractal::MandelbrotView, fractals::{Mandelbrot, Julia, BurningShip}, gui,
     rendering_pipeline::{render_with_config, RenderConfig, RenderTarget},
 };
+use std::collections::HashMap;
 
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1580.0, 750.0]) // 300px sidebar + 1280x720 (16:9) display area
-            .with_title("Mandelbrot Set Explorer"),
+            .with_title("Fractal Explorer - MandelRust"),
         ..Default::default()
     };
 
     eframe::run_native(
-        "Mandelbrot Set Explorer",
+        "Fractal Explorer - MandelRust",
         options,
         Box::new(|cc| {
             // Enable high DPI scaling
             cc.egui_ctx.set_pixels_per_point(1.0);
-            Box::<MandelbrotApp>::default()
+            Box::<FractalApp>::default()
         }),
     )
 }
 
-struct MandelbrotApp {
+/// Available fractal types
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FractalType {
+    Mandelbrot,
+    Julia,
+    BurningShip,
+}
+
+impl FractalType {
+    pub fn name(&self) -> &str {
+        match self {
+            FractalType::Mandelbrot => "Mandelbrot",
+            FractalType::Julia => "Julia Set",
+            FractalType::BurningShip => "Burning Ship",
+        }
+    }
+
+    fn all() -> &'static [FractalType] {
+        &[FractalType::Mandelbrot, FractalType::Julia, FractalType::BurningShip]
+    }
+}
+
+impl gui::FractalTypeOps for FractalType {
+    fn get_name(&self) -> &str {
+        self.name()
+    }
+
+    fn all_types() -> Vec<Self> {
+        Self::all().to_vec()
+    }
+
+    fn is_julia(&self) -> bool {
+        matches!(self, FractalType::Julia)
+    }
+
+    fn reset_view_and_params(
+        &self,
+        view: &mut MandelbrotView,
+        params: &mut HashMap<String, f64>,
+        julia_c_real_input: &str,
+        julia_c_imag_input: &str,
+    ) {
+        match self {
+            FractalType::Mandelbrot => {
+                view.center_x = -0.5;
+                view.center_y = 0.0;
+                view.zoom = 1.0;
+                params.clear();
+            }
+            FractalType::Julia => {
+                view.center_x = 0.0;
+                view.center_y = 0.0;
+                view.zoom = 1.0;
+                // Keep existing Julia parameters when switching back
+                params.insert(
+                    "c_real".to_string(),
+                    julia_c_real_input.parse().unwrap_or(-0.7)
+                );
+                params.insert(
+                    "c_imag".to_string(),
+                    julia_c_imag_input.parse().unwrap_or(0.27015)
+                );
+            }
+            FractalType::BurningShip => {
+                view.center_x = -0.5;
+                view.center_y = -0.6;
+                view.zoom = 0.8;
+                params.clear();
+            }
+        }
+    }
+}
+
+struct FractalApp {
     // View state
     view: MandelbrotView,
 
@@ -32,6 +106,12 @@ struct MandelbrotApp {
     width_input: String,
     height_input: String,
     iterations_input: String,
+
+    // Fractal type and parameters
+    fractal_type: FractalType,
+    fractal_parameters: HashMap<String, f64>,
+    julia_c_real_input: String,
+    julia_c_imag_input: String,
 
     // Colormap
     available_colormaps: Vec<String>,
@@ -68,7 +148,7 @@ struct MandelbrotApp {
     status_message: String,
 }
 
-impl Default for MandelbrotApp {
+impl Default for FractalApp {
     fn default() -> Self {
         // Load all available colormaps
         let available_colormaps = colorschemes_io::list_available_colormaps()
@@ -81,11 +161,18 @@ impl Default for MandelbrotApp {
         let colormap = colorschemes_io::load_colormap(&selected_colormap_name)
             .unwrap_or_else(|_| ColorMap::default_scheme());
 
+        // Initialize Julia with random classic coordinates for discovery
+        let (julia_c_real, julia_c_imag) = Julia::random_classic_coordinates();
+
         Self {
             view: MandelbrotView::new(1280, 720),
             width_input: String::from("1280"),
             height_input: String::from("720"),
             iterations_input: String::from("256"),
+            fractal_type: FractalType::Mandelbrot,
+            fractal_parameters: HashMap::new(),
+            julia_c_real_input: format!("{:.6}", julia_c_real),
+            julia_c_imag_input: format!("{:.6}", julia_c_imag),
             available_colormaps,
             selected_colormap_name,
             colormap,
@@ -106,13 +193,13 @@ impl Default for MandelbrotApp {
             export_scale_input: String::from("3.0"),
             export_directory: None,
             export_filter: FilterType::None,
-            export_supersample_input: String::from("2"),
+            export_supersample_input: String::from("4"),
             status_message: String::from("Ready - Click+drag to position zoom, scroll to resize"),
         }
     }
 }
 
-impl MandelbrotApp {
+impl FractalApp {
     fn render_fractal(&mut self, ctx: &egui::Context) {
         // Parse period and iterations values (default to 256 if invalid)
         let period = self.period_input.parse::<u32>().unwrap_or(256);
@@ -120,13 +207,25 @@ impl MandelbrotApp {
             .iterations_input
             .parse::<u32>()
             .unwrap_or(256)
-            .clamp(10, 10000);
+            .max(1);
+
+        // Create fractal instance based on selected type
+        let mandelbrot = Mandelbrot::new();
+        let julia = Julia::new();
+        let burning_ship = BurningShip::new();
+        
+        let fractal: &dyn mandelrust::fractals::Fractal = match self.fractal_type {
+            FractalType::Mandelbrot => &mandelbrot,
+            FractalType::Julia => &julia,
+            FractalType::BurningShip => &burning_ship,
+        };
 
         // Build render configuration
-        let config = RenderConfig::new(self.view.clone(), &self.colormap, max_iterations)
+        let config = RenderConfig::new(self.view.clone(), &self.colormap, max_iterations, fractal)
             .with_period(self.use_period, period)
             .with_interior_color(self.use_interior_color, self.interior_color)
-            .with_log_scale(self.use_log_scale);
+            .with_log_scale(self.use_log_scale)
+            .with_fractal_parameters(self.fractal_parameters.clone());
 
         // Render for preview (no filtering)
         let buffer = render_with_config(&config, RenderTarget::Preview);
@@ -148,8 +247,11 @@ impl MandelbrotApp {
     }
 }
 
-impl eframe::App for MandelbrotApp {
+impl eframe::App for FractalApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Note: Window title is set once at startup in main()
+        // eframe 0.25 doesn't support dynamic title changes
+        
         // Render fractal if needed
         if self.needs_redraw {
             self.render_fractal(ctx);
@@ -186,6 +288,11 @@ impl eframe::App for MandelbrotApp {
                                 ui,
                                 &mut self.iterations_input,
                                 &mut self.needs_redraw,
+                                &mut self.fractal_type,
+                                &mut self.fractal_parameters,
+                                &mut self.julia_c_real_input,
+                                &mut self.julia_c_imag_input,
+                                &mut self.view,
                             );
 
                             ui.add_space(15.0);
@@ -242,13 +349,27 @@ impl eframe::App for MandelbrotApp {
                                 .iterations_input
                                 .parse::<u32>()
                                 .unwrap_or(256)
-                                .clamp(10, 10000);
+                                .max(1);
                             let period = self.period_input.parse::<u32>().unwrap_or(256);
+                            
+                            // Create fractal instance for export
+                            let mandelbrot = Mandelbrot::new();
+                            let julia = Julia::new();
+                            let burning_ship = BurningShip::new();
+                            
+                            let fractal: &dyn mandelrust::fractals::Fractal = match self.fractal_type {
+                                FractalType::Mandelbrot => &mandelbrot,
+                                FractalType::Julia => &julia,
+                                FractalType::BurningShip => &burning_ship,
+                            };
+                            
                             gui::render_actions_section(
                                 ui,
                                 &self.view,
                                 &self.colormap,
                                 max_iterations,
+                                fractal,
+                                &self.fractal_parameters,
                                 self.use_period,
                                 period,
                                 self.use_interior_color,
@@ -287,7 +408,7 @@ impl eframe::App for MandelbrotApp {
                 let scroll_delta = ui.input(|i| i.scroll_delta.y);
                 if scroll_delta != 0.0 && self.is_dragging {
                     self.zoom_square_size = (self.zoom_square_size + scroll_delta * 2.0)
-                        .clamp(20.0, 2000.0);
+                        .max(20.0);
                     self.status_message = format!("Zoom size: {:.0}px", self.zoom_square_size);
                 }
 

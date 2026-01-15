@@ -16,7 +16,9 @@
 
 use crate::colorschemes::ColorMap;
 use crate::fractal::MandelbrotView;
-use crate::rendering::render_mandelbrot;
+use crate::fractals::Fractal;
+use crate::rendering::render_fractal;
+use std::collections::HashMap;
 
 /// Configuration for a render operation
 #[derive(Clone)]
@@ -29,6 +31,8 @@ pub struct RenderConfig<'a> {
     pub use_interior_color: bool,
     pub interior_color: [u8; 3],
     pub use_log_scale: bool,
+    pub fractal: &'a dyn Fractal,
+    pub fractal_parameters: HashMap<String, f64>,
 }
 
 impl<'a> RenderConfig<'a> {
@@ -37,6 +41,7 @@ impl<'a> RenderConfig<'a> {
         view: MandelbrotView,
         colormap: &'a ColorMap,
         max_iterations: u32,
+        fractal: &'a dyn Fractal,
     ) -> Self {
         Self {
             view,
@@ -47,6 +52,8 @@ impl<'a> RenderConfig<'a> {
             use_interior_color: false,
             interior_color: [0, 0, 0],
             use_log_scale: false,
+            fractal,
+            fractal_parameters: HashMap::new(),
         }
     }
 
@@ -67,6 +74,12 @@ impl<'a> RenderConfig<'a> {
     /// Builder pattern: set logarithmic scaling
     pub fn with_log_scale(mut self, enabled: bool) -> Self {
         self.use_log_scale = enabled;
+        self
+    }
+
+    /// Builder pattern: set fractal parameters
+    pub fn with_fractal_parameters(mut self, parameters: HashMap<String, f64>) -> Self {
+        self.fractal_parameters = parameters;
         self
     }
 }
@@ -104,8 +117,8 @@ pub fn render_with_config(config: &RenderConfig, target: RenderTarget) -> Vec<u8
     let buffer_size = (width * height * 4) as usize;
     let mut buffer = vec![0u8; buffer_size];
 
-    // Render using existing mandelbrot renderer
-    render_mandelbrot(
+    // Render using fractal trait
+    render_fractal(
         &mut buffer,
         &target_view,
         config.colormap,
@@ -115,6 +128,8 @@ pub fn render_with_config(config: &RenderConfig, target: RenderTarget) -> Vec<u8
         config.use_interior_color,
         config.interior_color,
         config.use_log_scale,
+        config.fractal,
+        &config.fractal_parameters,
     );
 
     buffer
@@ -124,13 +139,15 @@ pub fn render_with_config(config: &RenderConfig, target: RenderTarget) -> Vec<u8
 mod tests {
     use super::*;
     use crate::colorschemes::ColorMap;
+    use crate::fractals::Mandelbrot;
 
     #[test]
     fn test_render_config_builder() {
         let view = MandelbrotView::new(100, 100);
         let colormap = ColorMap::default_scheme();
+        let mandelbrot = Mandelbrot::new();
 
-        let config = RenderConfig::new(view, &colormap, 256)
+        let config = RenderConfig::new(view, &colormap, 256, &mandelbrot)
             .with_period(true, 128)
             .with_interior_color(true, [255, 0, 0])
             .with_log_scale(true);
@@ -146,7 +163,8 @@ mod tests {
     fn test_render_target_dimensions() {
         let view = MandelbrotView::new(640, 480);
         let colormap = ColorMap::default_scheme();
-        let config = RenderConfig::new(view, &colormap, 128);
+        let mandelbrot = Mandelbrot::new();
+        let config = RenderConfig::new(view, &colormap, 128, &mandelbrot);
 
         // Preview uses view dimensions
         let buffer = render_with_config(&config, RenderTarget::Preview);

@@ -1,15 +1,23 @@
 //! Mandelbrot Set Mathematics and View Management
 //!
-//! This module provides the core mathematical functions for computing
-//! the Mandelbrot set and managing the viewport state for navigation.
+//! This module provides backward compatibility for the original Mandelbrot implementation.
+//! New code should use the `fractals` module with the trait-based system.
+//!
+//! # Deprecation Notice
+//! This module is maintained for backward compatibility. The new trait-based
+//! fractal system in `crate::fractals` provides a more flexible architecture.
 //!
 //! # Key Components
 //! - `MandelbrotView`: Viewport state (center, zoom, dimensions)
 //! - `mandelbrot_iterations()`: Core iteration counting algorithm
 //! - Navigation: zoom, pan, reset operations
-/// - View state management
+
+use crate::fractals::{Fractal, Mandelbrot};
+use std::collections::HashMap;
 
 /// Represents the view parameters for rendering the Mandelbrot set
+///
+/// **Deprecated**: Use `crate::fractals::FractalView` for new code
 #[derive(Clone)]
 pub struct MandelbrotView {
     pub center_x: f64,
@@ -77,6 +85,8 @@ impl MandelbrotView {
 
 /// Calculates the number of iterations before divergence for a complex number
 ///
+/// **Deprecated**: Use `crate::fractals::Mandelbrot` trait implementation for new code
+///
 /// # Arguments
 /// * `c_real` - Real part of the complex number
 /// * `c_imag` - Imaginary part of the complex number
@@ -85,25 +95,8 @@ impl MandelbrotView {
 /// # Returns
 /// Number of iterations before |z| > 2, or max_iter if in the set
 pub fn mandelbrot_iterations(c_real: f64, c_imag: f64, max_iter: u32) -> u32 {
-    let mut z_real = 0.0;
-    let mut z_imag = 0.0;
-    let mut iter = 0;
-
-    while iter < max_iter {
-        let z_real_sq = z_real * z_real;
-        let z_imag_sq = z_imag * z_imag;
-
-        if z_real_sq + z_imag_sq > 4.0 {
-            break;
-        }
-
-        let new_z_real = z_real_sq - z_imag_sq + c_real;
-        let new_z_imag = 2.0 * z_real * z_imag + c_imag;
-
-        z_real = new_z_real;
-        z_imag = new_z_imag;
-        iter += 1;
-    }
-
-    iter
+    // Delegate to the new trait-based implementation
+    let mandelbrot = Mandelbrot::new();
+    let params = HashMap::new();
+    mandelbrot.iterate(c_real, c_imag, &params, max_iter)
 }

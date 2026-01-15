@@ -1,6 +1,6 @@
 //! Parallel Fractal Rendering
 //!
-//! This module handles the conversion of Mandelbrot iteration counts into
+//! This module handles the conversion of fractal iteration counts into
 //! colored pixels using parallel processing via Rayon.
 //!
 //! # Features
@@ -10,12 +10,16 @@
 
 use crate::colorschemes::{color_from_iterations, ColorMap};
 use crate::fractal::{mandelbrot_iterations, MandelbrotView};
+use crate::fractals::Fractal;
 use rayon::prelude::*;
+use std::collections::HashMap;
 
 /// Maximum iterations for Mandelbrot calculation
 pub const MAX_ITERATIONS: u32 = 256;
 
 /// Renders the Mandelbrot set to a pixel buffer using parallel processing
+///
+/// **Deprecated**: Use `render_fractal` with a `Fractal` trait object for new code
 ///
 /// # Arguments
 /// * `frame` - Mutable reference to the pixel buffer (RGBA format)
@@ -47,7 +51,70 @@ pub fn render_mandelbrot(
             (0..view.width)
                 .map(|x| {
                     let (real, imag) = view.screen_to_complex(x, y);
+                    // Use deprecated function for backward compatibility
                     let iter = mandelbrot_iterations(real, imag, max_iterations);
+                    let color = color_from_iterations(
+                        iter,
+                        max_iterations,
+                        colormap,
+                        use_period,
+                        period,
+                        use_interior_color,
+                        interior_color,
+                        use_log_scale,
+                    );
+                    [color.r, color.g, color.b, 255]
+                })
+                .collect()
+        })
+        .collect();
+
+    // Copy computed pixels to frame buffer
+    for (y, row) in pixels.iter().enumerate() {
+        for (x, color) in row.iter().enumerate() {
+            let idx = (y * view.width as usize + x) * 4;
+            frame[idx..idx + 4].copy_from_slice(color);
+        }
+    }
+}
+
+/// Renders any fractal to a pixel buffer using parallel processing
+///
+/// # Arguments
+/// * `frame` - Mutable reference to the pixel buffer (RGBA format)
+/// * `view` - View parameters (center, zoom, dimensions)
+/// * `colormap` - Colormap to use for rendering
+/// * `max_iterations` - Maximum iterations for fractal calculation
+/// * `use_period` - Whether to enable period modulation
+/// * `period` - Period value for modulo operation on iterations
+/// * `use_interior_color` - Whether to use custom interior color
+/// * `interior_color` - RGB color for points inside the set
+/// * `use_log_scale` - Whether to apply logarithmic scaling to colors
+/// * `fractal` - The fractal implementation to render
+/// * `fractal_parameters` - Parameters specific to the fractal type
+pub fn render_fractal(
+    frame: &mut [u8],
+    view: &MandelbrotView,
+    colormap: &ColorMap,
+    max_iterations: u32,
+    use_period: bool,
+    period: u32,
+    use_interior_color: bool,
+    interior_color: [u8; 3],
+    use_log_scale: bool,
+    fractal: &dyn Fractal,
+    fractal_parameters: &HashMap<String, f64>,
+) {
+    let rows: Vec<_> = (0..view.height).collect();
+
+    // Parallel processing: each row is computed independently
+    let pixels: Vec<Vec<[u8; 4]>> = rows
+        .par_iter()
+        .map(|&y| {
+            (0..view.width)
+                .map(|x| {
+                    let (real, imag) = view.screen_to_complex(x, y);
+                    let iter = fractal.iterate(real, imag, fractal_parameters, max_iterations);
                     let color = color_from_iterations(
                         iter,
                         max_iterations,

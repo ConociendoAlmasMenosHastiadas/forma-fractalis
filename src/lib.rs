@@ -20,6 +20,7 @@ pub mod colorschemes_io;
 pub mod export;
 pub mod filtering;
 pub mod fractal;
+pub mod fractals;
 pub mod gui;
 pub mod rendering;
 pub mod rendering_pipeline;
