@@ -34,7 +34,9 @@ These are the crates explicitly listed in `Cargo.toml`:
 | eframe | 0.25 | Apache-2.0 OR MIT |
 | directories | 5.0 | Apache-2.0 OR MIT |
 | image | 0.24 | Apache-2.0 OR MIT |
+| png | 0.17 | Apache-2.0 OR MIT |
 | rfd | 0.12 | MIT |
+| num-complex | 0.4 | Apache-2.0 OR MIT |
 
 ## Transitive Dependencies by License Type
 
@@ -58,7 +60,7 @@ The majority of dependencies use this dual-license combination, allowing users t
 - generic-array, getrandom, gif, half, hashbrown, heck, hermit-abi, hex, home
 - idna, idna_adapter, image, indexmap, io-lifetimes, itoa
 - jni, jni-sys, jobserver, jpeg-decoder, libc, lock_api, log
-- memmap2, miniz_oxide, ndk, ndk-context, ndk-sys, nohash-hasher, num-traits
+- memmap2, miniz_oxide, ndk, ndk-context, ndk-sys, nohash-hasher, num-complex, num-traits
 - objc2-app-kit, objc2-core-foundation, objc2-core-graphics, objc2-foundation, objc2-io-surface
 - once_cell, ordered-stream, parking, parking_lot, parking_lot_core, paste, percent-encoding
 - pin-project-lite, pin-utils, piper, pkg-config, png, polling
@@ -221,4 +223,4 @@ cargo license --json > licenses.json
 cargo license --do-not-bundle
 ```
 
-Last updated: January 11, 2026
+Last updated: January 14, 2026

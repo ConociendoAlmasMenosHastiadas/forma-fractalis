@@ -1,6 +1,6 @@
 [package]
 name = "mandelrust"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 
 [dependencies]
@@ -11,7 +11,9 @@ once_cell = "1.19"
 eframe = "0.25"  # egui framework
 directories = "5.0"  # Platform-specific config directories
 image = "0.24"  # Image encoding/decoding for PNG export
+png = "0.17"  # PNG encoder with metadata support
 rfd = "0.12"  # Cross-platform file dialogs
+num-complex = "0.4"  # Complex number arithmetic for fractals
 
 # Windows-specific dependencies
 [target.'cfg(windows)'.dependencies]

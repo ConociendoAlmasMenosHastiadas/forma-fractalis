@@ -1,21 +1,30 @@
-# Mandelrust - Interactive Mandelbrot Set Explorer
+# Mandelrust - Interactive Fractal Explorer
 
-An interactive Mandelbrot set explorer built in Rust with real-time rendering, advanced color mapping, and image export capabilities.  I should mention this project is like 95% vibes.  Its a recreation of an old project I made for a Java course back in college, but this time made in rust and using LLMs to include a bunch of features I wished I had but just never got around to making.  
+An interactive fractal explorer built in Rust with real-time rendering, advanced color mapping, and image export capabilities. Explore the Mandelbrot set, Julia sets, and Burning Ship fractal with a modern, high-performance interface. I should mention this project is like 95% vibes. It's a recreation of an old project I made for a Java course back in college, but this time made in Rust and using LLMs to include a bunch of features I wished I had but just never got around to making.
 
-The project is for-fun for those that want to take a look at the mandelbrot set in weird ways.  The initial version is just based around the mandelbrot set as the base-case.  If I stick with it I want to add weirder fractals in.  
+The project is for-fun for those that want to explore fractals in weird ways. Now featuring multiple fractal types with more to come!  
 
 This makes for cool wallpapers, banners, profile pics, etc.  I hope its fun and if you have cool ideas I can take them under advisement.  
 
 > **NON-PROGRAMMERS**: Pre-built Windows executables are available in the [`builds/`](builds/) folder - just download the .zip file and run!
 
-![Version](https://img.shields.io/badge/version-0.1.1-blue)
+![Version](https://img.shields.io/badge/version-0.1.2-blue)
 ![Rust](https://img.shields.io/badge/rust-2021-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue)
 
 ## Features
 
+### Multi-Fractal Support
+- **Three Fractal Types**: Mandelbrot Set, Julia Set, and Burning Ship
+- **Interactive Fractal Selector**: Switch between fractals instantly
+- **Fractal-Specific Parameters**: 
+  - Julia Set: Adjustable c_real and c_imag parameters with real-time sliders
+  - Classic Julia coordinates presets for quick discovery
+- **Optimized Default Views**: Each fractal loads with ideal starting position and zoom
+- **Trait-Based Architecture**: Extensible framework for adding more fractals
+
 ### Advanced Color Mapping
-- **10 Built-in Color Schemes**: Default, Fire, Ocean, Grayscale, Rainbow, Academic, Mint Lavender, Coral Sunset, Olive Symmetry, Orchid Garden
+- **10 Built-in Color Schemes**: Default, Fire, Ocean, Grayscale, Rainbow, Academic, Mint Lavender, Coral Sunset, Olive Symmetry, Orchid Garden, Frozen Amaranth
 - **Interactive Color Editor**: Create custom gradients with drag-and-drop color stops
 - **Save/Load Custom Colormaps**: Persist your color schemes as JSON files
 - **Live Preview**: Real-time gradient visualization
@@ -33,9 +42,18 @@ This makes for cool wallpapers, banners, profile pics, etc.  I hope its fun and 
 - **PNG Export**: Lossless image output
 - **Scalable Resolution**: 3x default (3840×2160 from 1280×720 preview)
 - **Image Filtering**: Lanczos3 & Gaussian filters for professional quality
-- **Supersampling**: Render at 2x-4x resolution, then downsample for ultra-sharp results
+- **Supersampling**: Render at 8x resolution (recommended), then downsample for ultra-sharp results
+- **PNG Metadata Embedding**: All render settings saved in PNG tEXt chunks
+  - Fractal type (Mandelbrot, Julia Set, Burning Ship)
+  - View coordinates (center_x, center_y, zoom level)
+  - Fractal parameters (e.g., Julia c values)
+  - Complete colormap data (name and full color stops)
+  - Color modulation settings (period, interior color, log scale)
+  - Export settings (filter type, supersample, scale)
+  - **Reproducible renders**: Load any exported PNG and recreate the exact same image
+  - **Metadata reader available**: [PNG Meta Reader](https://github.com/ConociendoAlmasMenosHastiadas/png_meta_reader)
 - **Custom Output Directory**: Choose where to save your renders
-- **Timestamped Filenames**: Automatic file naming
+- **Timestamped Filenames**: Automatic file naming with fractal type
 
 ### Performance
 - **Parallel Rendering**: Multi-threaded computation using Rayon
@@ -149,13 +167,20 @@ mandelrust/
 ├── src/
 │   ├── main.rs              # Application entry point & GUI state
 │   ├── lib.rs               # Library exports
-│   ├── fractal.rs           # Mandelbrot mathematics
+│   ├── fractal.rs           # Legacy compatibility layer (deprecated)
 │   ├── rendering.rs         # Parallel rendering engine
+│   ├── rendering_pipeline.rs # Unified rendering pipeline
+│   ├── filtering.rs         # Image filtering algorithms
 │   ├── colorschemes.rs      # Color types & gradient system
 │   ├── colorschemes_io.rs   # Save/load functionality
 │   ├── colorschemes_gui.rs  # Color editor widgets
 │   ├── gui.rs               # UI sections & helpers
-│   ├── export.rs            # PNG export functionality
+│   ├── export.rs            # PNG export with metadata
+│   ├── fractals/            # Fractal implementations
+│   │   ├── mod.rs           # Fractal trait & types
+│   │   ├── mandelbrot.rs    # Mandelbrot Set
+│   │   ├── julia.rs         # Julia Set
+│   │   └── burning_ship.rs  # Burning Ship
 │   └── colormaps/           # Built-in colormap JSON files
 │       ├── default.json
 │       ├── fire.json
@@ -166,7 +191,8 @@ mandelrust/
 │       ├── mint_lavender.json
 │       ├── coral_sunset.json
 │       ├── olive_symmetry.json
-│       └── orchid_garden.json
+│       ├── orchid_garden.json
+│       └── frozen_amaranth.json
 └── examples/
     ├── colormap_io.rs       # ColorMap save/load demo
     └── colormap_names.rs    # Color names demo
@@ -176,8 +202,10 @@ mandelrust/
 
 - **egui/eframe**: Immediate mode GUI framework
 - **Rayon**: Data parallelism for rendering
-- **image**: PNG encoding/decoding
-- **serde/serde_json**: ColorMap serialization
+- **image**: Image processing and filtering
+- **png**: Direct PNG encoding with metadata support
+- **num-complex**: Complex number operations for fractals
+- **serde/serde_json**: ColorMap and metadata serialization
 - **directories**: Platform-specific config paths
 - **rfd**: Native file dialogs
 
@@ -219,9 +247,10 @@ Customize in the GUI or modify default values in `src/main.rs`
 ## Contributing
 
 Contributions welcome! Areas for improvement:
-- Additional fractal types (Julia sets, Burning Ship, etc.)
+- Additional fractal types (Tertation, Newton, etc.)
 - More color interpolation modes (HSV, LAB)
 - Animation/zoom sequence export
+- Load settings from PNG metadata ("Load from PNG" feature)
 - Saved location bookmarks
 - Undo/redo for color editing
 
@@ -234,6 +263,42 @@ Dual-licensed under Apache-2.0 or MIT. See LICENSE-APACHE and LICENSE-MIT files 
 See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for a comprehensive list of all dependency licenses.
 
 ## Releases
+
+### v0.1.2 (January 14, 2026)
+
+**Major Features:**
+- **Multi-Fractal Support**: Explore three fractal types:
+  - **Mandelbrot Set**: Classic fractal with deep zoom capability
+  - **Julia Set**: Interactive parameters (c_real, c_imag) with real-time sliders and curated classic coordinates
+  - **Burning Ship**: Unique fractal with ship-like structures
+- **PNG Metadata Export**: All render settings embedded in PNG tEXt chunks
+  - Fractal type, view coordinates, zoom level
+  - Fractal parameters (Julia c values, etc.)
+  - Complete colormap data for exact reproduction
+  - Color modulation settings (period, interior color, log scale)
+  - Export settings (filter, supersample, scale)
+  - Future-ready for "Load from PNG" feature
+  - [Metadata Reader Tool](https://github.com/ConociendoAlmasMenosHastiadas/png_meta_reader) available
+- **New Color Scheme**: Frozen Amaranth - beautiful purple/pink gradient
+
+**Architecture:**
+- **Trait-Based Fractal System**: Extensible framework with `Fractal` trait
+- **num-complex Integration**: Cleaner complex number operations
+- **Dynamic GUI**: Parameter controls adapt to selected fractal type
+- **Unified Export Pipeline**: Metadata embedded seamlessly in PNG export
+
+**Quality of Life:**
+- Recommended supersampling increased to 8x for sharper exports
+- Fractal type shown in window title
+- Export filenames include fractal type
+- Random classic Julia coordinates on fractal switch
+- Removed examples folder (demo code consolidated)
+
+**Technical:**
+- New `src/fractals/` module with Mandelbrot, Julia, and BurningShip implementations
+- `FractalView` replaces `MandelbrotView` (backward compatibility maintained)
+- Parameter system for fractal-specific controls
+- PNG crate integration for direct tEXt chunk control
 
 ### v0.1.1 (January 12, 2026)
 
