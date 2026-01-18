@@ -126,7 +126,7 @@ cargo run --release
 
 #### Using Built-in Schemes
 1. Open the "Color Scheme" dropdown
-2. Select from 10 pre-built colormaps
+2. Select from 11 pre-built colormaps
 
 #### Creating Custom Colormaps
 1. Open the "Save/Load ColorMap" collapsible section
@@ -180,7 +180,8 @@ forma-fractalis/
 │   │   ├── mod.rs           # Fractal trait & FractalView
 │   │   ├── mandelbrot.rs    # Mandelbrot Set
 │   │   ├── julia.rs         # Julia Set
-│   │   └── burning_ship.rs  # Burning Ship
+│   │   ├── burning_ship.rs  # Burning Ship
+│   │   └── tippets_mandelbrot.rs  # Tippets Mandelbrot
 │   └── colormaps/           # Built-in colormap JSON files
 │       ├── default.json
 │       ├── fire.json
@@ -188,12 +189,13 @@ forma-fractalis/
 │       ├── grayscale.json
 │       ├── rainbow.json
 │       ├── academic.json
-│       ├── mint_lavender.json
 │       ├── coral_sunset.json
 │       ├── olive_symmetry.json
 │       ├── orchid_garden.json
-│       └── frozen_amaranth.json
+│       ├── frozen_amaranth.json
+│       └── twilight_garden.json
 └── examples/
+    ├── mandelpath.rs        # Iteration path visualizer
     ├── colormap_io.rs       # ColorMap save/load demo
     └── colormap_names.rs    # Color names demo
 ```
@@ -263,10 +265,16 @@ Contributions welcome! Areas for improvement:
 
 Dual-licensed under Apache-2.0 or MIT. See LICENSE-APACHE and LICENSE-MIT files for details.
 
-## Third-Party Licens8, 2026)
+## Third-Party Licenses
+
+See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for a comprehensive list of all dependency licenses.
+
+## Releases
+
+### v0.1.3 (January 18, 2026)
 
 **New Fractals:**
-- **Tippets Mandelbrot**: A variation with reciprocal term (z² + c + 1/z) creating unique distortions
+- **Tippets Mandelbrot**: A variation with an order-of-operations "bug" - updates x first, then y uses the new x value, creating unique distortions
 
 **New Colormaps:**
 - **Twilight Garden**: Soft, natural palette with peachy tones, mint greens, deep teals, and mauve
@@ -305,13 +313,7 @@ Dual-licensed under Apache-2.0 or MIT. See LICENSE-APACHE and LICENSE-MIT files 
   - Zero compilation warnings
   - Updated documentation
 
-**Files Modified**: 16 files across core modules, examples, and planning documentsn to reflect multi-fractal architecture
-
-**Technical:**
-- All deprecated code paths removed
-- FractalView fully replaces MandelbrotView across all modules
-- Compilation produces zero warnings
-- Test suite updated and passing
+**Files Modified**: 16 files across core modules, examples, and planning documents
 
 ### v0.1.2 (January 14, 2026)
 
