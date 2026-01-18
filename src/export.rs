@@ -6,8 +6,7 @@
 
 use crate::colorschemes::ColorMap;
 use crate::filtering::{apply_supersample_filter, calculate_supersample_dimensions, FilterType};
-use crate::fractal::MandelbrotView;
-use crate::fractals::Fractal;
+use crate::fractals::{Fractal, FractalView};
 use crate::rendering_pipeline::{render_with_config, RenderConfig, RenderTarget};
 use std::collections::HashMap;
 use std::fs::File;
@@ -19,7 +18,7 @@ use std::path::PathBuf;
 /// Stores all fractal parameters, view settings, colormap, and render settings
 /// as tEXt chunks for reproducibility
 fn create_png_metadata(
-    view: &MandelbrotView,
+    view: &FractalView,
     colormap: &ColorMap,
     max_iterations: u32,
     fractal: &dyn Fractal,
@@ -79,7 +78,7 @@ fn create_png_metadata(
     metadata.push(("Export-Scale".to_string(), scale.to_string()));
     
     // Metadata version for future compatibility
-    metadata.push(("MandelRust-Version".to_string(), env!("CARGO_PKG_VERSION").to_string()));
+    metadata.push(("Forma-Fractalis-Version".to_string(), env!("CARGO_PKG_VERSION").to_string()));
     metadata.push(("Metadata-Version".to_string(), "1.0".to_string()));
 
     metadata
@@ -106,7 +105,7 @@ fn create_png_metadata(
 /// # Returns
 /// Result with the path to the saved file, or an error message
 pub fn export_png(
-    view: &MandelbrotView,
+    view: &FractalView,
     colormap: &ColorMap,
     max_iterations: u32,
     fractal: &dyn Fractal,
@@ -178,8 +177,8 @@ pub fn export_png(
     // Use fractal name in filename (lowercase, replace spaces with underscores)
     let fractal_name = fractal.name().to_lowercase().replace(' ', "_");
     let filename = format!(
-        "{}_{}{}{}.png",
-        fractal_name, target_width, filter_suffix, timestamp
+        "{}_{}x{}{}{}.png",
+        fractal_name, target_width, target_height, filter_suffix, timestamp
     );
 
     // Construct full path
@@ -233,7 +232,7 @@ pub fn export_png(
 }
 
 /// Calculate the output dimensions for a given scale
-pub fn calculate_output_dimensions(view: &MandelbrotView, scale: f32) -> (u32, u32) {
+pub fn calculate_output_dimensions(view: &FractalView, scale: f32) -> (u32, u32) {
     let output_width = (view.width as f32 * scale) as u32;
     let output_height = (view.height as f32 * scale) as u32;
     (output_width, output_height)
@@ -245,7 +244,7 @@ mod tests {
 
     #[test]
     fn test_calculate_output_dimensions() {
-        let view = MandelbrotView::new(1280, 720);
+        let view = FractalView::new(1280, 720);
 
         let (w, h) = calculate_output_dimensions(&view, 1.0);
         assert_eq!(w, 1280);

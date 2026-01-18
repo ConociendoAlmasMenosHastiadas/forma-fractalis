@@ -15,7 +15,7 @@
 
 use crate::colorschemes::ColorMap;
 use crate::colorschemes_io;
-use crate::fractal::MandelbrotView;
+use crate::fractals::FractalView;
 use eframe::egui;
 use std::collections::HashMap;
 
@@ -26,7 +26,7 @@ pub trait FractalTypeOps {
     fn is_julia(&self) -> bool;
     fn reset_view_and_params(
         &self,
-        view: &mut MandelbrotView,
+        view: &mut FractalView,
         params: &mut HashMap<String, f64>,
         julia_c_real_input: &str,
         julia_c_imag_input: &str,
@@ -38,7 +38,7 @@ pub fn render_dimensions_section(
     ui: &mut egui::Ui,
     width_input: &mut String,
     height_input: &mut String,
-    view: &mut MandelbrotView,
+    view: &mut FractalView,
     needs_redraw: &mut bool,
 ) {
     section_header(ui, "Preview Window Dimensions");
@@ -171,7 +171,7 @@ pub fn render_fractal_settings<FT>(
     fractal_parameters: &mut HashMap<String, f64>,
     julia_c_real_input: &mut String,
     julia_c_imag_input: &mut String,
-    view: &mut MandelbrotView,
+    view: &mut FractalView,
 ) 
 where
     FT: Copy + PartialEq + std::fmt::Debug,
@@ -323,7 +323,7 @@ where
 /// Render the current view information section
 pub fn render_current_view_info(
     ui: &mut egui::Ui,
-    view: &mut MandelbrotView,
+    view: &mut FractalView,
     needs_redraw: &mut bool,
     status_message: &mut String,
 ) {
@@ -499,7 +499,7 @@ pub fn render_colormap_section(
 /// Render action buttons section
 pub fn render_actions_section(
     ui: &mut egui::Ui,
-    view: &MandelbrotView,
+    view: &FractalView,
     colormap: &ColorMap,
     max_iterations: u32,
     fractal: &dyn crate::fractals::Fractal,

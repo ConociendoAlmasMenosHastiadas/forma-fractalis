@@ -37,7 +37,7 @@ const OCEAN_COLORMAP_JSON: &str = include_str!("colormaps/ocean.json");
 const GRAYSCALE_COLORMAP_JSON: &str = include_str!("colormaps/grayscale.json");
 const RAINBOW_COLORMAP_JSON: &str = include_str!("colormaps/rainbow.json");
 const ACADEMIC_COLORMAP_JSON: &str = include_str!("colormaps/academic.json");
-const MINT_LAVENDER_COLORMAP_JSON: &str = include_str!("colormaps/mint_lavender.json");
+const TWILIGHT_GARDEN_COLORMAP_JSON: &str = include_str!("colormaps/twilight_garden.json");
 const CORAL_SUNSET_COLORMAP_JSON: &str = include_str!("colormaps/coral_sunset.json");
 const OLIVE_SYMMETRY_COLORMAP_JSON: &str = include_str!("colormaps/olive_symmetry.json");
 const ORCHID_GARDEN_COLORMAP_JSON: &str = include_str!("colormaps/orchid_garden.json");
@@ -81,11 +81,11 @@ pub type Result<T> = std::result::Result<T, ColorMapError>;
 
 /// Get the directory where custom colormaps are stored
 /// Returns platform-specific config directory:
-/// - Windows: %APPDATA%\mandelrust\colormaps\
-/// - Linux: ~/.config/mandelrust/colormaps/
-/// - macOS: ~/Library/Application Support/mandelrust/colormaps/
+/// - Windows: %APPDATA%\forma-fractalis\colormaps\
+/// - Linux: ~/.config/forma-fractalis/colormaps/
+/// - macOS: ~/Library/Application Support/forma-fractalis/colormaps/
 pub fn get_colormaps_directory() -> Result<PathBuf> {
-    let base_dir = directories::ProjectDirs::from("", "", "mandelrust")
+    let base_dir = directories::ProjectDirs::from("", "", "forma-fractalis")
         .ok_or(ColorMapError::NoConfigDirectory)?;
 
     let colormaps_dir = base_dir.config_dir().join("colormaps");
@@ -100,7 +100,7 @@ pub fn get_colormaps_directory() -> Result<PathBuf> {
 
 /// Load a built-in colormap by name
 /// Available built-in colormaps: "Default", "Fire", "Ocean", "Grayscale", "Rainbow",
-/// "Academic", "Mint Lavender", "Coral Sunset", "Olive Symmetry", "Orchid Garden", "Frozen Amaranth"
+/// "Academic", "Twilight Garden", "Coral Sunset", "Olive Symmetry", "Orchid Garden", "Frozen Amaranth"
 pub fn load_builtin_colormap(name: &str) -> Result<ColorMap> {
     let json_str = match name {
         "Default" => DEFAULT_COLORMAP_JSON,
@@ -109,7 +109,7 @@ pub fn load_builtin_colormap(name: &str) -> Result<ColorMap> {
         "Grayscale" => GRAYSCALE_COLORMAP_JSON,
         "Rainbow" => RAINBOW_COLORMAP_JSON,
         "Academic" => ACADEMIC_COLORMAP_JSON,
-        "Mint Lavender" => MINT_LAVENDER_COLORMAP_JSON,
+        "Twilight Garden" => TWILIGHT_GARDEN_COLORMAP_JSON,
         "Coral Sunset" => CORAL_SUNSET_COLORMAP_JSON,
         "Olive Symmetry" => OLIVE_SYMMETRY_COLORMAP_JSON,
         "Orchid Garden" => ORCHID_GARDEN_COLORMAP_JSON,
@@ -131,7 +131,7 @@ pub fn is_builtin_colormap(name: &str) -> bool {
             | "Grayscale"
             | "Rainbow"
             | "Academic"
-            | "Mint Lavender"
+            | "Twilight Garden"
             | "Coral Sunset"
             | "Olive Symmetry"
             | "Orchid Garden"
@@ -221,7 +221,7 @@ pub fn list_available_colormaps() -> Result<Vec<ColorMapInfo>> {
         "Grayscale",
         "Rainbow",
         "Academic",
-        "Mint Lavender",
+        "Twilight Garden",
         "Coral Sunset",
         "Olive Symmetry",
         "Orchid Garden",
@@ -280,7 +280,7 @@ mod tests {
             "Grayscale",
             "Rainbow",
             "Academic",
-            "Mint Lavender",
+            "Twilight Garden",
             "Coral Sunset",
             "Olive Symmetry",
             "Orchid Garden",

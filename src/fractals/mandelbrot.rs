@@ -55,3 +55,38 @@ impl Fractal for Mandelbrot {
 
     // Mandelbrot has no parameters, so we use the default empty Vec
 }
+
+impl Mandelbrot {
+    /// Returns the sequence of all complex numbers generated during iteration
+    /// 
+    /// This function performs the same iteration as `iterate()` but instead of
+    /// returning the escape count, it returns a Vec of all z values encountered
+    /// during the iteration process. Useful for visualizing the iteration path.
+    /// 
+    /// # Arguments
+    /// * `c_real` - Real component of the complex constant c
+    /// * `c_imag` - Imaginary component of the complex constant c
+    /// * `max_iter` - Maximum number of iterations
+    /// 
+    /// # Returns
+    /// Vec<Complex64> containing all z values from z0 to the final iteration
+    pub fn mandelseries(c_real: f64, c_imag: f64, max_iter: u32) -> Vec<Complex64> {
+        let c = Complex64::new(c_real, c_imag);
+        let mut z = Complex64::new(0.0, 0.0);
+        let mut series = Vec::with_capacity(max_iter as usize + 1);
+        
+        // Always include the starting point
+        series.push(z);
+        
+        for _ in 0..max_iter {
+            if z.norm_sqr() > 4.0 {
+                break;
+            }
+            
+            z = z * z + c;
+            series.push(z);
+        }
+        
+        series
+    }
+}

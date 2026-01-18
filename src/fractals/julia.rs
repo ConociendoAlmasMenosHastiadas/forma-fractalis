@@ -83,7 +83,9 @@ impl Fractal for Julia {
         let mut view = FractalView::new(width, height);
         view.center_x = 0.0;
         view.center_y = 0.0;
-        view.zoom = 1.0;
+        // Julia sets typically look good at zoom level around 0.7 to show the full set
+        // This gives approximately -2 to 2 range in both axes
+        view.zoom = 0.7;
         
         // Set random classic Julia constant for discovery
         let (c_real, c_imag) = Self::random_classic_coordinates();

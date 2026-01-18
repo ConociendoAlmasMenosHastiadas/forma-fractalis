@@ -22,11 +22,13 @@ use std::collections::HashMap;
 pub mod mandelbrot;
 pub mod julia;
 pub mod burning_ship;
+pub mod tippets_mandelbrot;
 
 // Re-export for convenience
 pub use mandelbrot::Mandelbrot;
 pub use julia::Julia;
 pub use burning_ship::BurningShip;
+pub use tippets_mandelbrot::TippetsMandelbrot;
 
 /// Represents the view parameters for rendering any fractal
 /// This replaces the old MandelbrotView with a more generic structure
@@ -102,6 +104,15 @@ impl FractalView {
     /// Gets a fractal-specific parameter, or None if not set
     pub fn get_parameter(&self, name: &str) -> Option<f64> {
         self.parameters.get(name).copied()
+    }
+
+    /// Resets the view to default coordinates (centered at origin, zoom 1.0)
+    /// Note: This does not reset fractal-specific parameters
+    pub fn reset(&mut self) {
+        self.center_x = 0.0;
+        self.center_y = 0.0;
+        self.zoom = 1.0;
+        // Note: parameters are intentionally not cleared to preserve fractal settings
     }
 }
 

@@ -15,15 +15,15 @@
 //! ```
 
 use crate::colorschemes::ColorMap;
-use crate::fractal::MandelbrotView;
-use crate::fractals::Fractal;
+use crate::fractals::{Fractal, FractalView};
 use crate::rendering::render_fractal;
 use std::collections::HashMap;
+use std::time::Instant;
 
 /// Configuration for a render operation
 #[derive(Clone)]
 pub struct RenderConfig<'a> {
-    pub view: MandelbrotView,
+    pub view: FractalView,
     pub colormap: &'a ColorMap,
     pub max_iterations: u32,
     pub use_period: bool,
@@ -38,7 +38,7 @@ pub struct RenderConfig<'a> {
 impl<'a> RenderConfig<'a> {
     /// Create a new render configuration
     pub fn new(
-        view: MandelbrotView,
+        view: FractalView,
         colormap: &'a ColorMap,
         max_iterations: u32,
         fractal: &'a dyn Fractal,
@@ -102,6 +102,8 @@ pub enum RenderTarget {
 /// # Returns
 /// RGBA buffer ready for use (texture upload or image encoding)
 pub fn render_with_config(config: &RenderConfig, target: RenderTarget) -> Vec<u8> {
+    let _total_timer = Instant::now();
+    
     // Determine output dimensions based on target
     let (width, height) = match target {
         RenderTarget::Preview => (config.view.width, config.view.height),
@@ -114,10 +116,13 @@ pub fn render_with_config(config: &RenderConfig, target: RenderTarget) -> Vec<u8
     target_view.height = height;
 
     // Allocate buffer
+    let alloc_timer = Instant::now();
     let buffer_size = (width * height * 4) as usize;
     let mut buffer = vec![0u8; buffer_size];
+    let alloc_time = alloc_timer.elapsed();
 
     // Render using fractal trait
+    let render_timer = Instant::now();
     render_fractal(
         &mut buffer,
         &target_view,
@@ -131,6 +136,15 @@ pub fn render_with_config(config: &RenderConfig, target: RenderTarget) -> Vec<u8
         config.fractal,
         &config.fractal_parameters,
     );
+    let render_time = render_timer.elapsed();
+
+    // Performance logging (only for preview, to avoid spamming during export)
+    if matches!(target, RenderTarget::Preview) {
+        let total_time = _total_timer.elapsed();
+        println!("[PERF] Render {}x{} @ {} iter: total={:.2?} (alloc={:.2?}, render={:.2?})",
+            width, height, config.max_iterations,
+            total_time, alloc_time, render_time);
+    }
 
     buffer
 }
@@ -143,7 +157,7 @@ mod tests {
 
     #[test]
     fn test_render_config_builder() {
-        let view = MandelbrotView::new(100, 100);
+        let view = FractalView::new(100, 100);
         let colormap = ColorMap::default_scheme();
         let mandelbrot = Mandelbrot::new();
 
@@ -161,7 +175,7 @@ mod tests {
 
     #[test]
     fn test_render_target_dimensions() {
-        let view = MandelbrotView::new(640, 480);
+        let view = FractalView::new(640, 480);
         let colormap = ColorMap::default_scheme();
         let mandelbrot = Mandelbrot::new();
         let config = RenderConfig::new(view, &colormap, 128, &mandelbrot);

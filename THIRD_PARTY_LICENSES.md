@@ -1,6 +1,6 @@
 # Third-Party Licenses
 
-This document lists all third-party dependencies used by Mandelrust and their respective licenses.
+This document lists all third-party dependencies used by Forma Fractalis and their respective licenses.
 
 ## License Summary
 

@@ -1,9 +1,9 @@
-# Windows Build Script for mandelrust
+# Windows Build Script for Forma Fractalis
 # Creates a distribution package with executable and license files
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "Building mandelrust for Windows (release mode)..." -ForegroundColor Cyan
+Write-Host "Building Forma Fractalis for Windows (release mode)..." -ForegroundColor Cyan
 
 # Build the release executable
 cargo build --release
@@ -31,7 +31,7 @@ if ($cargoToml -match 'version\s*=\s*"([^"]+)"') {
 }
 
 # Create distribution directory name
-$distName = "mandelrust_v${version}_windows"
+$distName = "forma-fractalis_v${version}_windows"
 $distPath = Join-Path $buildsDir $distName
 
 # Remove old distribution directory if it exists
@@ -45,7 +45,7 @@ New-Item -ItemType Directory -Path $distPath | Out-Null
 Write-Host "Copying files to distribution directory..." -ForegroundColor Cyan
 
 # Copy executable
-Copy-Item "target\release\mandelrust.exe" -Destination $distPath
+Copy-Item "target\release\forma-fractalis.exe" -Destination $distPath
 
 # Copy license files
 Copy-Item "LICENSE-APACHE" -Destination (Join-Path $distPath "LICENSE-APACHE.txt")

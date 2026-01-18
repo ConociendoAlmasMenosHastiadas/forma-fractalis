@@ -1,21 +1,22 @@
 use eframe::egui;
-use mandelrust::{
+use forma_fractalis::{
     colorschemes::ColorMap, colorschemes_gui::ColorEditor, colorschemes_io,
-    filtering::FilterType, fractal::MandelbrotView, fractals::{Mandelbrot, Julia, BurningShip}, gui,
+    filtering::FilterType, fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, FractalView}, gui,
     rendering_pipeline::{render_with_config, RenderConfig, RenderTarget},
 };
 use std::collections::HashMap;
+use std::time::Instant;
 
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1580.0, 750.0]) // 300px sidebar + 1280x720 (16:9) display area
-            .with_title("Fractal Explorer - MandelRust"),
+            .with_title("Fractal Explorer - Forma Fractalis"),
         ..Default::default()
     };
 
     eframe::run_native(
-        "Fractal Explorer - MandelRust",
+        "Fractal Explorer - Forma Fractalis",
         options,
         Box::new(|cc| {
             // Enable high DPI scaling
@@ -31,6 +32,7 @@ pub enum FractalType {
     Mandelbrot,
     Julia,
     BurningShip,
+    TippetsMandelbrot,
 }
 
 impl FractalType {
@@ -39,11 +41,25 @@ impl FractalType {
             FractalType::Mandelbrot => "Mandelbrot",
             FractalType::Julia => "Julia Set",
             FractalType::BurningShip => "Burning Ship",
+            FractalType::TippetsMandelbrot => "Tippets Mandelbrot",
         }
     }
 
     fn all() -> &'static [FractalType] {
-        &[FractalType::Mandelbrot, FractalType::Julia, FractalType::BurningShip]
+        &[FractalType::Mandelbrot, FractalType::Julia, FractalType::BurningShip, FractalType::TippetsMandelbrot]
+    }
+
+    /// Creates a fractal instance from the enum type
+    /// 
+    /// This helper eliminates code duplication when creating fractals
+    /// for rendering or export operations.
+    pub fn create_instance(&self) -> Box<dyn forma_fractalis::fractals::Fractal> {
+        match self {
+            FractalType::Mandelbrot => Box::new(Mandelbrot::new()),
+            FractalType::Julia => Box::new(Julia::new()),
+            FractalType::BurningShip => Box::new(BurningShip::new()),
+            FractalType::TippetsMandelbrot => Box::new(TippetsMandelbrot::new()),
+        }
     }
 }
 
@@ -62,7 +78,7 @@ impl gui::FractalTypeOps for FractalType {
 
     fn reset_view_and_params(
         &self,
-        view: &mut MandelbrotView,
+        view: &mut FractalView,
         params: &mut HashMap<String, f64>,
         julia_c_real_input: &str,
         julia_c_imag_input: &str,
@@ -94,13 +110,19 @@ impl gui::FractalTypeOps for FractalType {
                 view.zoom = 0.8;
                 params.clear();
             }
+            FractalType::TippetsMandelbrot => {
+                view.center_x = -0.5;
+                view.center_y = 0.0;
+                view.zoom = 0.8;
+                params.clear();
+            }
         }
     }
 }
 
 struct FractalApp {
     // View state
-    view: MandelbrotView,
+    view: FractalView,
 
     // UI inputs
     width_input: String,
@@ -165,7 +187,7 @@ impl Default for FractalApp {
         let (julia_c_real, julia_c_imag) = Julia::random_classic_coordinates();
 
         Self {
-            view: MandelbrotView::new(1280, 720),
+            view: FractalView::new(1280, 720),
             width_input: String::from("1280"),
             height_input: String::from("720"),
             iterations_input: String::from("256"),
@@ -201,6 +223,8 @@ impl Default for FractalApp {
 
 impl FractalApp {
     fn render_fractal(&mut self, ctx: &egui::Context) {
+        let total_timer = Instant::now();
+        
         // Parse period and iterations values (default to 256 if invalid)
         let period = self.period_input.parse::<u32>().unwrap_or(256);
         let max_iterations = self
@@ -213,11 +237,13 @@ impl FractalApp {
         let mandelbrot = Mandelbrot::new();
         let julia = Julia::new();
         let burning_ship = BurningShip::new();
+        let tippets_mandelbrot = TippetsMandelbrot::new();
         
-        let fractal: &dyn mandelrust::fractals::Fractal = match self.fractal_type {
+        let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal_type {
             FractalType::Mandelbrot => &mandelbrot,
             FractalType::Julia => &julia,
             FractalType::BurningShip => &burning_ship,
+            FractalType::TippetsMandelbrot => &tippets_mandelbrot,
         };
 
         // Build render configuration
@@ -231,17 +257,25 @@ impl FractalApp {
         let buffer = render_with_config(&config, RenderTarget::Preview);
 
         // Convert to egui ColorImage
+        let image_timer = Instant::now();
         let width = self.view.width as usize;
         let height = self.view.height as usize;
         let color_image = egui::ColorImage::from_rgba_unmultiplied([width, height], &buffer);
+        let image_time = image_timer.elapsed();
 
         // Update or create texture
+        let texture_timer = Instant::now();
         if let Some(texture) = &mut self.fractal_texture {
             texture.set(color_image, egui::TextureOptions::NEAREST);
         } else {
             self.fractal_texture =
                 Some(ctx.load_texture("mandelbrot", color_image, egui::TextureOptions::NEAREST));
         }
+        let texture_time = texture_timer.elapsed();
+        
+        let total_time = total_timer.elapsed();
+        println!("[PERF] GUI overhead: image_convert={:.2?}, texture_upload={:.2?}, total_gui={:.2?}",
+            image_time, texture_time, total_time);
 
         self.needs_redraw = false;
     }
@@ -332,7 +366,7 @@ impl eframe::App for FractalApp {
                             ui.add_space(10.0);
 
                             // Advanced Color Editor (always visible)
-                            if mandelrust::colorschemes_gui::render_color_editor_section(
+                        if forma_fractalis::colorschemes_gui::render_color_editor_section(
                                 ui,
                                 &mut self.colormap,
                                 &mut self.color_editor,
@@ -356,11 +390,13 @@ impl eframe::App for FractalApp {
                             let mandelbrot = Mandelbrot::new();
                             let julia = Julia::new();
                             let burning_ship = BurningShip::new();
+                            let tippets_mandelbrot = TippetsMandelbrot::new();
                             
-                            let fractal: &dyn mandelrust::fractals::Fractal = match self.fractal_type {
+                            let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal_type {
                                 FractalType::Mandelbrot => &mandelbrot,
                                 FractalType::Julia => &julia,
                                 FractalType::BurningShip => &burning_ship,
+                                FractalType::TippetsMandelbrot => &tippets_mandelbrot,
                             };
                             
                             gui::render_actions_section(
@@ -404,7 +440,12 @@ impl eframe::App for FractalApp {
                 let (rect, response) =
                     ui.allocate_exact_size(display_size, egui::Sense::click_and_drag());
 
-                // Handle scroll wheel for zoom square resize
+                // Check which mouse button is being used
+                let pointer_state = ui.input(|i| i.pointer.clone());
+                let primary_down = pointer_state.primary_down();
+                let secondary_down = pointer_state.secondary_down();
+
+                // Handle scroll wheel for zoom square resize (only when dragging with primary)
                 let scroll_delta = ui.input(|i| i.scroll_delta.y);
                 if scroll_delta != 0.0 && self.is_dragging {
                     self.zoom_square_size = (self.zoom_square_size + scroll_delta * 2.0)
@@ -412,14 +453,15 @@ impl eframe::App for FractalApp {
                     self.status_message = format!("Zoom size: {:.0}px", self.zoom_square_size);
                 }
 
-                // Handle mouse interactions
-                if response.drag_started() {
+                // Handle left-click drag for zoom rectangle
+                // Only start dragging if primary button is pressed (not secondary)
+                if response.drag_started() && primary_down && !secondary_down {
                     self.is_dragging = true;
                     self.zoom_square_center = response.interact_pointer_pos();
                 }
 
-                // Update square position while dragging
-                if self.is_dragging {
+                // Update square position while dragging (only for primary button)
+                if self.is_dragging && primary_down {
                     if let Some(pos) = response.interact_pointer_pos() {
                         self.zoom_square_center = Some(pos);
                     }
@@ -445,18 +487,8 @@ impl eframe::App for FractalApp {
                     self.zoom_square_center = None;
                 }
 
-                // Right click to zoom out
-                if response.secondary_clicked() {
-                    if let Some(pos) = response.interact_pointer_pos() {
-                        let rel_pos = (pos - rect.min) / scale;
-                        let pixel_x = rel_pos.x as u32;
-                        let pixel_y = rel_pos.y as u32;
-
-                        self.view.zoom_at(pixel_x, pixel_y, 0.5);
-                        self.needs_redraw = true;
-                        self.status_message = format!("Zoomed out to {:.2}x", self.view.zoom);
-                    }
-                }
+                // Right-click is reserved for future functionality
+                // (Currently no action on right-click in main app)
 
                 // Draw the fractal
                 ui.painter().image(
