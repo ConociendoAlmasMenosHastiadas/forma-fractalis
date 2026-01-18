@@ -225,6 +225,7 @@ See [COLORMAP_SAVELOAD.md](COLORMAP_SAVELOAD.md) for detailed documentation on:
 - **Period modulation** can create interesting effects at lower iteration counts
 
 ## Examples
+
 Explore specialized fractal visualization tools:
 
 ```bash
@@ -238,8 +239,7 @@ cargo run --example colormap_io
 cargo run --example colormap_names
 ```
 
-**mandelpath**: Interactive tool to visualize how points iterate in the Mandelbrot set. Right-click to generate iteration paths with visual arrows showing the trajectory.go run --example colormap_names
-```
+**mandelpath**: Interactive tool to visualize how points iterate in the Mandelbrot set. Right-click to generate iteration paths with visual arrows showing the trajectory.
 
 ## Configuration
 
