@@ -6,6 +6,7 @@ use forma_fractalis::{
 };
 use num_complex::Complex64;
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 /// Render a section header with consistent styling
 fn section_header(ui: &mut egui::Ui, title: &str) {
@@ -30,6 +31,9 @@ fn main() -> Result<(), eframe::Error> {
         }),
     )
 }
+
+/// Debounce delay for text input to prevent lag during typing
+const INPUT_DEBOUNCE_DELAY: Duration = Duration::from_millis(500);
 
 /// A path representing the iteration sequence for a specific point
 #[derive(Clone)]
@@ -68,6 +72,10 @@ struct MandelPathApp {
     // Fractal texture
     fractal_texture: Option<egui::TextureHandle>,
     needs_redraw: bool,
+
+    // Input debouncing for text fields
+    input_debounce_timer: Option<Instant>,
+    pending_redraw: bool,
 
     // Mouse interaction for zoom
     is_dragging: bool,
@@ -118,6 +126,8 @@ impl Default for MandelPathApp {
             use_log_scale: false,
             fractal_texture: None,
             needs_redraw: true,
+            input_debounce_timer: None,
+            pending_redraw: false,
             is_dragging: false,
             zoom_square_center: None,
             zoom_square_size: 100.0,
@@ -284,6 +294,17 @@ impl MandelPathApp {
 
 impl eframe::App for MandelPathApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Check if debounced input should trigger redraw
+        if let Some(timer) = self.input_debounce_timer {
+            if timer.elapsed() >= INPUT_DEBOUNCE_DELAY && self.pending_redraw {
+                self.needs_redraw = true;
+                self.pending_redraw = false;
+                self.input_debounce_timer = None;
+            } else if self.pending_redraw {
+                ctx.request_repaint_after(INPUT_DEBOUNCE_DELAY - timer.elapsed());
+            }
+        }
+        
         // Render fractal if needed
         if self.needs_redraw {
             self.render_fractal(ctx);
@@ -312,6 +333,8 @@ impl eframe::App for MandelPathApp {
                             &mut self.height_input,
                             &mut self.view,
                             &mut self.needs_redraw,
+                            &mut self.input_debounce_timer,
+                            &mut self.pending_redraw,
                         );
 
                         ui.add_space(15.0);
@@ -327,7 +350,8 @@ impl eframe::App for MandelPathApp {
                                 .add(egui::TextEdit::singleline(&mut self.iterations_input).desired_width(80.0))
                                 .changed()
                             {
-                                self.needs_redraw = true;
+                                self.input_debounce_timer = Some(Instant::now());
+                                self.pending_redraw = true;
                             }
                             if ui.small_button("×2").clicked() {
                                 if let Ok(val) = self.iterations_input.parse::<u32>() {
@@ -374,6 +398,8 @@ impl eframe::App for MandelPathApp {
                             &mut self.interior_color_g_text,
                             &mut self.interior_color_b_text,
                             &mut self.use_log_scale,
+                            &mut self.input_debounce_timer,
+                            &mut self.pending_redraw,
                         );
 
                         ui.add_space(15.0);
@@ -442,8 +468,8 @@ impl eframe::App for MandelPathApp {
                         // Get max iterations
                         let max_iterations = self.iterations_input.parse::<u32>().unwrap_or(256).max(1);
                         
-                        // Generate the iteration series
-                        let series = Mandelbrot::mandelseries(c_real, c_imag, max_iterations);
+                        // Generate the iteration series (using power = 2.0 for classic Mandelbrot)
+                        let series = Mandelbrot::mandelseries(c_real, c_imag, 2.0, max_iterations);
                         let c = Complex64::new(c_real, c_imag);
                         
                         self.iteration_paths.push(IterationPath { c, series });

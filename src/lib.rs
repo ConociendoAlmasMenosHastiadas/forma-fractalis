@@ -23,3 +23,28 @@ pub mod fractals;
 pub mod gui;
 pub mod rendering;
 pub mod rendering_pipeline;
+
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Global flag to enable/disable performance logging
+static PROFILING_ENABLED: AtomicBool = AtomicBool::new(false);
+
+/// Check if profiling is enabled
+pub fn is_profiling_enabled() -> bool {
+    PROFILING_ENABLED.load(Ordering::Relaxed)
+}
+
+/// Enable profiling (called from main with --profiling flag)
+pub fn enable_profiling() {
+    PROFILING_ENABLED.store(true, Ordering::Relaxed);
+}
+
+/// Macro for conditional profiling output
+#[macro_export]
+macro_rules! perf_log {
+    ($($arg:tt)*) => {
+        if $crate::is_profiling_enabled() {
+            println!($($arg)*);
+        }
+    };
+}

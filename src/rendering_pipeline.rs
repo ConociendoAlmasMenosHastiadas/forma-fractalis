@@ -16,6 +16,7 @@
 
 use crate::colorschemes::ColorMap;
 use crate::fractals::{Fractal, FractalView};
+use crate::perf_log;
 use crate::rendering::render_fractal;
 use std::collections::HashMap;
 use std::time::Instant;
@@ -141,7 +142,7 @@ pub fn render_with_config(config: &RenderConfig, target: RenderTarget) -> Vec<u8
     // Performance logging (only for preview, to avoid spamming during export)
     if matches!(target, RenderTarget::Preview) {
         let total_time = _total_timer.elapsed();
-        println!("[PERF] Render {}x{} @ {} iter: total={:.2?} (alloc={:.2?}, render={:.2?})",
+        perf_log!("[PERF] Render {}x{} @ {} iter: total={:.2?} (alloc={:.2?}, render={:.2?})",
             width, height, config.max_iterations,
             total_time, alloc_time, render_time);
     }

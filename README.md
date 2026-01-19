@@ -8,7 +8,7 @@ This makes for cool wallpapers, banners, profile pics, etc.  I hope its fun and 
 
 > **NON-PROGRAMMERS**: Pre-built Windows executables are available in the [`builds/`](builds/) folder - just download the .zip file and run!
 
-![Version](https://img.shields.io/badge/version-0.1.3-blue)
+![Version](https://img.shields.io/badge/version-0.1.4-blue)
 ![Rust](https://img.shields.io/badge/rust-2021-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue)
 
@@ -271,119 +271,18 @@ See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for a comprehensive list 
 
 ## Releases
 
-### v0.1.3 (January 18, 2026)
+For detailed release notes and version history, see [CHANGELOG.md](CHANGELOG.md).
 
-**New Fractals:**
-- **Tippets Mandelbrot**: A variation with an order-of-operations "bug" - updates x first, then y uses the new x value, creating unique distortions
-
-**New Colormaps:**
-- **Twilight Garden**: Soft, natural palette with peachy tones, mint greens, deep teals, and mauve
-- Removed: Mint Lavender (replaced by Twilight Garden)
-
-**Examples & Tools:**
-- **mandelpath.rs**: Interactive visualization of Mandelbrot iteration paths
-  - Right-click to generate iteration sequences
-  - Visual arrows show trajectory through complex plane
-  - Left-click drag for zoom, scroll wheel for zoom box size
-
-**Mouse Interaction Improvements:**
-- Standardized mouse controls: left-click only triggers zoom rectangle
-- Right-click reserved for future features/specialized examples
-- Improved pointer state checking for better interaction
-
-**Performance Analysis:**
-- Added performance profiling instrumentation
-  - Measures render time, buffer allocation, image conversion, texture upload
-  - Console output shows timing breakdown
-  - Verified performance: 1280x720 @ 256 iterations renders in ~9-13ms (60-80 FPS)
-  - Confirmed rayon parallelization working correctly
-- Note: Profiling output planned to move behind `--profiling` flag in v0.1.4
-
-**Code Cleanup & Architecture:**
-- **Complete Migration to FractalView**: Removed all backward compatibility layers
-  - Deleted deprecated `fractal.rs` module
-  - FractalView now used consistently throughout codebase
-  - Removed `render_mandelbrot()` legacy function
-- **Bug Fixes**:
-  - Export filenames now correctly include both width and height
-  - Julia Set default view adjusted for better initial display
-- **Code Quality**:
-  - Added helper methods to FractalType enum and FractalView
-  - Cleaner, more maintainable codebase
-  - Zero compilation warnings
-  - Updated documentation
-
-**Files Modified**: 16 files across core modules, examples, and planning documents
-
-### v0.1.2 (January 14, 2026)
-
-**Major Features:**
-- **Multi-Fractal Support**: Explore three fractal types:
-  - **Mandelbrot Set**: Classic fractal with deep zoom capability
-  - **Julia Set**: Interactive parameters (c_real, c_imag) with real-time sliders and curated classic coordinates
-  - **Burning Ship**: Unique fractal with ship-like structures
-- **PNG Metadata Export**: All render settings embedded in PNG tEXt chunks
-  - Fractal type, view coordinates, zoom level
-  - Fractal parameters (Julia c values, etc.)
-  - Complete colormap data for exact reproduction
-  - Color modulation settings (period, interior color, log scale)
-  - Export settings (filter, supersample, scale)
-  - Future-ready for "Load from PNG" feature
-  - [Metadata Reader Tool](https://github.com/ConociendoAlmasMenosHastiadas/png_meta_reader) available
-- **New Color Scheme**: Frozen Amaranth - beautiful purple/pink gradient
-
-**Architecture:**
-- **Trait-Based Fractal System**: Extensible framework with `Fractal` trait
-- **num-complex Integration**: Cleaner complex number operations
-- **Dynamic GUI**: Parameter controls adapt to selected fractal type
-- **Unified Export Pipeline**: Metadata embedded seamlessly in PNG export
-
-**Quality of Life:**
-- Recommended supersampling increased to 8x for sharper exports
-- Fractal type shown in window title
-- Export filenames include fractal type
-- Random classic Julia coordinates on fractal switch
-- Removed examples folder (demo code consolidated)
-
-**Technical:**
-- New `src/fractals/` module with Mandelbrot, Julia, and BurningShip implementations
-- `FractalView` replaces `MandelbrotView` (backward compatibility maintained)
-- Parameter system for fractal-specific controls
-- PNG crate integration for direct tEXt chunk control
-
-### v0.1.1 (January 12, 2026)
-
-**New Features:**
-- **Unified Rendering Pipeline**: Preview and export now use the same rendering codebase, eliminating duplication
-- **Professional Image Filtering**: Added Lanczos3 and Gaussian filters for export
-- **Supersampling Support**: Render at 2x-4x resolution, then downsample for ultra-sharp results
-- **Linear/Logarithmic Color Scaling**: Toggle between color distribution modes for smoother gradients
-
-**Architecture Improvements:**
-- New `rendering_pipeline.rs` module with unified rendering system
-- New `filtering.rs` module with extensible filter architecture
-- Refactored export system to use unified pipeline
-- Easy to extend with additional filters in the future
-
-**Quality of Life:**
-- Export-only filtering keeps preview fast and responsive
-- Default supersample set to 2x for better quality exports
-- Clear UI controls for filter selection
-- Export status indicator ("⏳ Exporting...")
-
-**Breaking Changes:** None - fully backward compatible. Default behavior (no filtering) matches v0.1.0.
-
-### v0.1.0 (Initial Release)
-
-**Core Features:**
-- Interactive Mandelbrot set explorer with real-time rendering
-- 10 built-in color schemes
-- Interactive color editor with drag-and-drop color stops
-- Save/load custom colormaps as JSON
-- Click-and-drag zoom navigation
-- PNG export at scalable resolutions
-- Parallel rendering with Rayon
-- Period modulation and custom interior colors
+### Latest: v0.1.4 (January 19, 2026)
+- Powerbrot: Mandelbrot with configurable power (-10.0 to 10.0)
+- Profiling command-line flag (--profiling) for performance logs
+- Benchmark suite with v0.1.3 baseline
+- CHANGELOG.md for professional version tracking
+- Colormap parser utility for coolors.co palettes
+- Electric Neon colormap
+- Input debouncing (fixes typing lag)
+- Export performance monitoring
+- Open Directory button
 
 ## Credits
 

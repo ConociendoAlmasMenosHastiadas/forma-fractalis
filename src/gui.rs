@@ -13,24 +13,64 @@
 //!
 //! All functions take `&mut egui::Ui` for rendering within egui layouts.
 
+use crate::perf_log;
 use crate::colorschemes::ColorMap;
 use crate::colorschemes_io;
 use crate::fractals::FractalView;
 use eframe::egui;
 use std::collections::HashMap;
+use std::path::Path;
+use std::time::Instant;
+
+/// Open a directory in the system file explorer
+fn open_directory_in_explorer(path: &Path) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(path)
+            .spawn()
+            .map_err(|e| format!("Failed to open explorer: {}", e))?;
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| format!("Failed to open finder: {}", e))?;
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| format!("Failed to open file manager: {}", e))?;
+    }
+    
+    Ok(())
+}
 
 /// Trait for fractal type operations needed by GUI
 pub trait FractalTypeOps {
     fn get_name(&self) -> &str;
     fn all_types() -> Vec<Self> where Self: Sized;
     fn is_julia(&self) -> bool;
+    fn is_mandelbrot(&self) -> bool;
     fn reset_view_and_params(
         &self,
         view: &mut FractalView,
         params: &mut HashMap<String, f64>,
         julia_c_real_input: &str,
         julia_c_imag_input: &str,
+        mandelbrot_power_input: &str,
     );
+}
+
+/// Helper to trigger debounced redraw (for text inputs)
+fn trigger_debounced_redraw(timer: &mut Option<Instant>, pending: &mut bool) {
+    *timer = Some(Instant::now());
+    *pending = true;
 }
 
 /// Render the preview window dimensions section
@@ -40,6 +80,8 @@ pub fn render_dimensions_section(
     height_input: &mut String,
     view: &mut FractalView,
     needs_redraw: &mut bool,
+    input_debounce_timer: &mut Option<Instant>,
+    pending_redraw: &mut bool,
 ) {
     section_header(ui, "Preview Window Dimensions");
 
@@ -53,7 +95,7 @@ pub fn render_dimensions_section(
         {
             if let Ok(val) = width_input.parse::<u32>() {
                 view.width = val.max(100);
-                *needs_redraw = true;
+                trigger_debounced_redraw(input_debounce_timer, pending_redraw);
             }
         }
 
@@ -115,7 +157,7 @@ pub fn render_dimensions_section(
         {
             if let Ok(val) = height_input.parse::<u32>() {
                 view.height = val.max(100);
-                *needs_redraw = true;
+                trigger_debounced_redraw(input_debounce_timer, pending_redraw);
             }
         }
 
@@ -171,7 +213,10 @@ pub fn render_fractal_settings<FT>(
     fractal_parameters: &mut HashMap<String, f64>,
     julia_c_real_input: &mut String,
     julia_c_imag_input: &mut String,
+    mandelbrot_power_input: &mut String,
     view: &mut FractalView,
+    input_debounce_timer: &mut Option<Instant>,
+    pending_redraw: &mut bool,
 ) 
 where
     FT: Copy + PartialEq + std::fmt::Debug,
@@ -195,7 +240,8 @@ where
                             view,
                             fractal_parameters,
                             julia_c_real_input,
-                            julia_c_imag_input
+                            julia_c_imag_input,
+                            mandelbrot_power_input
                         );
                         *needs_redraw = true;
                     }
@@ -259,7 +305,7 @@ where
                     if let Ok(val) = julia_c_real_input.parse::<f64>() {
                         let clamped = val.clamp(-2.0, 2.0);
                         fractal_parameters.insert("c_real".to_string(), clamped);
-                        *needs_redraw = true;
+                        trigger_debounced_redraw(input_debounce_timer, pending_redraw);
                     }
                 }
             });
@@ -273,10 +319,63 @@ where
                     if let Ok(val) = julia_c_imag_input.parse::<f64>() {
                         let clamped = val.clamp(-2.0, 2.0);
                         fractal_parameters.insert("c_imag".to_string(), clamped);
-                        *needs_redraw = true;
+                        trigger_debounced_redraw(input_debounce_timer, pending_redraw);
                     }
                 }
             });
+        });
+        
+        ui.add_space(10.0);
+    }
+
+    // Mandelbrot power parameter
+    if fractal_type.is_mandelbrot() {
+        ui.label(
+            egui::RichText::new("Mandelbrot Power")
+                .strong()
+        );
+        ui.add_space(5.0);
+        
+        // Get parameter definition for bounds (supports arbitrary f64 range)
+        let power_min = -10.0; // Can be adjusted to any f64 value
+        let power_max = 10.0;  // Can be adjusted to any f64 value
+        
+        // Power slider (range determined by parameter bounds)
+        let mut power = fractal_parameters.get("power").copied().unwrap_or(2.0);
+        ui.horizontal(|ui| {
+            ui.label("Power:");
+            ui.add_space(5.0);
+            if ui.add(egui::Slider::new(&mut power, power_min..=power_max)
+                .text("")
+                .step_by(0.1)
+                .fixed_decimals(1))
+                .changed()
+            {
+                fractal_parameters.insert("power".to_string(), power);
+                *mandelbrot_power_input = format!("{:.1}", power);
+                *needs_redraw = true;
+            }
+        });
+        
+        // Show current value as editable text input (no clamping - full f64 range)
+        ui.add_space(5.0);
+        ui.collapsing("Advanced: Precise Value", |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Power:");
+                if ui
+                    .add(egui::TextEdit::singleline(mandelbrot_power_input).desired_width(100.0))
+                    .changed()
+                {
+                    if let Ok(val) = mandelbrot_power_input.parse::<f64>() {
+                        // No clamping - accept any valid f64 value
+                        fractal_parameters.insert("power".to_string(), val);
+                        trigger_debounced_redraw(input_debounce_timer, pending_redraw);
+                    }
+                }
+            });
+            ui.label(egui::RichText::new(
+                format!("Range: slider [{:.1}, {:.1}], text input: full f64", power_min, power_max)
+            ).small().weak());
         });
         
         ui.add_space(10.0);
@@ -290,7 +389,7 @@ where
             .add(egui::TextEdit::singleline(iterations_input).desired_width(80.0))
             .changed()
         {
-            *needs_redraw = true;
+            trigger_debounced_redraw(input_debounce_timer, pending_redraw);
         }
 
         if ui.small_button("×2").clicked() {
@@ -326,6 +425,8 @@ pub fn render_current_view_info(
     view: &mut FractalView,
     needs_redraw: &mut bool,
     status_message: &mut String,
+    _input_debounce_timer: &mut Option<Instant>,
+    _pending_redraw: &mut bool,
 ) {
     section_header(ui, "Current View");
 
@@ -365,6 +466,8 @@ pub fn render_colormap_section(
     interior_color_g_text: &mut String,
     interior_color_b_text: &mut String,
     use_log_scale: &mut bool,
+    input_debounce_timer: &mut Option<Instant>,
+    pending_redraw: &mut bool,
 ) {
     section_header(ui, "Color Scheme");
 
@@ -376,13 +479,19 @@ pub fn render_colormap_section(
                     .selectable_label(*selected_colormap_name == *colormap_name, colormap_name)
                     .clicked()
                 {
-                    if let Ok(loaded_colormap) = colorschemes_io::load_colormap(colormap_name) {
-                        *colormap = loaded_colormap;
-                        *selected_colormap_name = colormap_name.clone();
-                        *needs_redraw = true;
-                        *status_message = format!("Loaded colormap: {}", colormap_name);
-                    } else {
-                        *status_message = format!("Failed to load colormap: {}", colormap_name);
+                    perf_log!("[DEBUG] Attempting to load colormap: '{}'", colormap_name);
+                    match colorschemes_io::load_colormap(colormap_name) {
+                        Ok(loaded_colormap) => {
+                            perf_log!("[DEBUG] Successfully loaded: {} with {} stops", loaded_colormap.name, loaded_colormap.stops.len());
+                            *colormap = loaded_colormap;
+                            *selected_colormap_name = colormap_name.clone();
+                            *needs_redraw = true;
+                            *status_message = format!("Loaded colormap: {}", colormap_name);
+                        }
+                        Err(e) => {
+                            perf_log!("[DEBUG] Failed to load '{}': {}", colormap_name, e);
+                            *status_message = format!("Failed to load colormap: {} - {}", colormap_name, e);
+                        }
                     }
                 }
             }
@@ -401,7 +510,7 @@ pub fn render_colormap_section(
                 .add(egui::TextEdit::singleline(period_input).desired_width(60.0))
                 .changed()
             {
-                *needs_redraw = true;
+                trigger_debounced_redraw(input_debounce_timer, pending_redraw);
             }
 
             if ui.small_button("×2").clicked() {
@@ -560,6 +669,16 @@ pub fn render_actions_section(
                 *export_directory = None;
                 *status_message =
                     String::from("Export directory cleared (using current directory)");
+            }
+            
+            if ui.button("📂 Open Directory").clicked() {
+                if let Some(dir) = export_directory {
+                    let result = open_directory_in_explorer(dir);
+                    *status_message = match result {
+                        Ok(_) => format!("Opened directory: {}", dir.display()),
+                        Err(e) => format!("Failed to open directory: {}", e),
+                    };
+                }
             }
         }
     });

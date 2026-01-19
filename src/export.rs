@@ -7,6 +7,7 @@
 use crate::colorschemes::ColorMap;
 use crate::filtering::{apply_supersample_filter, calculate_supersample_dimensions, FilterType};
 use crate::fractals::{Fractal, FractalView};
+use crate::perf_log;
 use crate::rendering_pipeline::{render_with_config, RenderConfig, RenderTarget};
 use std::collections::HashMap;
 use std::fs::File;
@@ -120,6 +121,8 @@ pub fn export_png(
     scale: f32,
     output_dir: Option<&PathBuf>,
 ) -> Result<String, String> {
+    let export_timer = std::time::Instant::now();
+    
     // Calculate target output dimensions (base size * scale)
     let target_width = (view.width as f32 * scale) as u32;
     let target_height = (view.height as f32 * scale) as u32;
@@ -131,6 +134,11 @@ pub fn export_png(
         target_height,
         supersample,
     );
+    
+    let setup_time = export_timer.elapsed();
+    perf_log!("[EXPORT-PERF] Setup complete: {:?}", setup_time);
+    perf_log!("[EXPORT-PERF] Target: {}x{}, Render: {}x{} ({}x SS)", 
+        target_width, target_height, render_width, render_height, supersample);
 
     // Build render configuration with provided fractal
     let config = RenderConfig::new(view.clone(), colormap, max_iterations, fractal)
@@ -140,6 +148,7 @@ pub fn export_png(
         .with_log_scale(use_log_scale);
 
     // Render at supersample resolution
+    let render_start = std::time::Instant::now();
     let buffer = render_with_config(
         &config,
         RenderTarget::Export {
@@ -147,18 +156,25 @@ pub fn export_png(
             height: render_height,
         },
     );
+    let render_time = render_start.elapsed();
+    perf_log!("[EXPORT-PERF] Render complete: {:?}", render_time);
 
     // Apply filtering if enabled (downsample from supersample to target)
+    let filter_start = std::time::Instant::now();
     let final_buffer = if filter_type != FilterType::None && supersample > 1 {
-        apply_supersample_filter(
+        let filtered = apply_supersample_filter(
             &buffer,
             render_width,
             render_height,
             target_width,
             target_height,
             filter_type,
-        )?
+        )?;
+        let filter_time = filter_start.elapsed();
+        perf_log!("[EXPORT-PERF] Filtering complete: {:?}", filter_time);
+        filtered
     } else {
+        perf_log!("[EXPORT-PERF] Filtering skipped (no filter or supersample=1)");
         buffer
     };
 
@@ -189,6 +205,7 @@ pub fn export_png(
     };
 
     // Create metadata
+    let metadata_start = std::time::Instant::now();
     let metadata = create_png_metadata(
         view,
         colormap,
@@ -204,8 +221,11 @@ pub fn export_png(
         supersample,
         scale,
     );
+    let metadata_time = metadata_start.elapsed();
+    perf_log!("[EXPORT-PERF] Metadata creation: {:?}", metadata_time);
 
     // Save the image with metadata using png crate
+    let io_start = std::time::Instant::now();
     let file = File::create(&path)
         .map_err(|e| format!("Failed to create output file: {}", e))?;
     let writer = BufWriter::new(file);
@@ -227,6 +247,16 @@ pub fn export_png(
     // Write the image data
     writer.write_image_data(&final_buffer)
         .map_err(|e| format!("Failed to write image data: {}", e))?;
+    
+    let io_time = io_start.elapsed();
+    let total_time = export_timer.elapsed();
+    
+    perf_log!("[EXPORT-PERF] PNG encoding/write: {:?}", io_time);
+    perf_log!("[EXPORT-PERF] ========================================");
+    perf_log!("[EXPORT-PERF] TOTAL EXPORT TIME: {:?}", total_time);
+    perf_log!("[EXPORT-PERF] Breakdown: setup={:.1?}, render={:.1?}, filter={:.1?}, metadata={:.1?}, io={:.1?}",
+        setup_time, render_time, filter_start.elapsed(), metadata_time, io_time);
+    perf_log!("[EXPORT-PERF] ========================================");
 
     Ok(path.display().to_string())
 }

@@ -3,11 +3,30 @@ use forma_fractalis::{
     colorschemes::ColorMap, colorschemes_gui::ColorEditor, colorschemes_io,
     filtering::FilterType, fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, FractalView}, gui,
     rendering_pipeline::{render_with_config, RenderConfig, RenderTarget},
+    perf_log, enable_profiling,
 };
 use std::collections::HashMap;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 fn main() -> Result<(), eframe::Error> {
+    // Parse command-line arguments
+    let args: Vec<String> = std::env::args().collect();
+    if args.contains(&"--profiling".to_string()) || args.contains(&"-p".to_string()) {
+        enable_profiling();
+        println!("[INFO] Performance profiling enabled");
+    }
+    if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {
+        println!("Forma Fractalis - Interactive Fractal Explorer");
+        println!();
+        println!("USAGE:");
+        println!("    forma-fractalis [OPTIONS]");
+        println!();
+        println!("OPTIONS:");
+        println!("    -p, --profiling    Enable performance profiling output");
+        println!("    -h, --help         Show this help message");
+        std::process::exit(0);
+    }
+    
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1580.0, 750.0]) // 300px sidebar + 1280x720 (16:9) display area
@@ -25,6 +44,10 @@ fn main() -> Result<(), eframe::Error> {
         }),
     )
 }
+
+/// Debounce delay for text input to prevent lag during typing
+/// Redraws are delayed until user stops typing for this duration
+const INPUT_DEBOUNCE_DELAY: Duration = Duration::from_millis(500);
 
 /// Available fractal types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,19 +99,27 @@ impl gui::FractalTypeOps for FractalType {
         matches!(self, FractalType::Julia)
     }
 
+    fn is_mandelbrot(&self) -> bool {
+        matches!(self, FractalType::Mandelbrot)
+    }
+
     fn reset_view_and_params(
         &self,
         view: &mut FractalView,
         params: &mut HashMap<String, f64>,
         julia_c_real_input: &str,
         julia_c_imag_input: &str,
+        mandelbrot_power_input: &str,
     ) {
         match self {
             FractalType::Mandelbrot => {
                 view.center_x = -0.5;
                 view.center_y = 0.0;
                 view.zoom = 1.0;
+                // Keep existing power parameter when switching back
+                let power = mandelbrot_power_input.parse().unwrap_or(2.0);
                 params.clear();
+                params.insert("power".to_string(), power);
             }
             FractalType::Julia => {
                 view.center_x = 0.0;
@@ -120,6 +151,31 @@ impl gui::FractalTypeOps for FractalType {
     }
 }
 
+/// Main application state for the fractal explorer
+/// 
+/// # Redraw Behavior
+/// The app uses a flag-based redraw system to avoid unnecessary computation:
+/// - `needs_redraw`: Set to true when fractal needs regeneration
+/// - `input_debounce_timer`: Tracks time since last text input change
+/// - `pending_redraw`: Set when text input changes, triggers redraw after debounce delay
+/// 
+/// ## Redraw Triggers:
+/// 1. **Immediate redraws** (buttons, sliders, dropdowns):
+///    - Fractal type change
+///    - Colormap selection
+///    - Period/log scale/interior color toggles
+///    - View reset button
+///    - Zoom interaction (drag release)
+///    - Color editor changes
+/// 2. **Debounced redraws** (text inputs - 500ms delay after typing stops):
+///    - Width/height inputs
+///    - Iteration count input
+///    - Julia parameter inputs (c_real, c_imag)
+///    - View coordinate inputs (center_x, center_y, zoom)
+///    - Period value input
+///    - Interior color RGB inputs
+/// 
+/// This debouncing prevents lag during typing while maintaining responsive UI for direct interactions.
 struct FractalApp {
     // View state
     view: FractalView,
@@ -129,11 +185,16 @@ struct FractalApp {
     height_input: String,
     iterations_input: String,
 
+    // Input debouncing for text fields (prevents lag during typing)
+    input_debounce_timer: Option<Instant>,
+    pending_redraw: bool,
+
     // Fractal type and parameters
     fractal_type: FractalType,
     fractal_parameters: HashMap<String, f64>,
     julia_c_real_input: String,
     julia_c_imag_input: String,
+    mandelbrot_power_input: String,
 
     // Colormap
     available_colormaps: Vec<String>,
@@ -153,7 +214,7 @@ struct FractalApp {
 
     // Fractal texture
     fractal_texture: Option<egui::TextureHandle>,
-    needs_redraw: bool,
+    needs_redraw: bool, // Set to true when fractal should be rerendered
 
     // Mouse interaction
     is_dragging: bool,
@@ -195,6 +256,7 @@ impl Default for FractalApp {
             fractal_parameters: HashMap::new(),
             julia_c_real_input: format!("{:.6}", julia_c_real),
             julia_c_imag_input: format!("{:.6}", julia_c_imag),
+            mandelbrot_power_input: String::from("2.0"),
             available_colormaps,
             selected_colormap_name,
             colormap,
@@ -209,6 +271,8 @@ impl Default for FractalApp {
             use_log_scale: false,
             fractal_texture: None,
             needs_redraw: true,
+            input_debounce_timer: None,
+            pending_redraw: false,
             is_dragging: false,
             zoom_square_center: None,
             zoom_square_size: 200.0,
@@ -274,7 +338,7 @@ impl FractalApp {
         let texture_time = texture_timer.elapsed();
         
         let total_time = total_timer.elapsed();
-        println!("[PERF] GUI overhead: image_convert={:.2?}, texture_upload={:.2?}, total_gui={:.2?}",
+        perf_log!("[PERF] GUI overhead: image_convert={:.2?}, texture_upload={:.2?}, total_gui={:.2?}",
             image_time, texture_time, total_time);
 
         self.needs_redraw = false;
@@ -285,6 +349,18 @@ impl eframe::App for FractalApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Note: Window title is set once at startup in main()
         // eframe 0.25 doesn't support dynamic title changes
+        
+        // Check if debounced input should trigger redraw
+        if let Some(timer) = self.input_debounce_timer {
+            if timer.elapsed() >= INPUT_DEBOUNCE_DELAY && self.pending_redraw {
+                self.needs_redraw = true;
+                self.pending_redraw = false;
+                self.input_debounce_timer = None;
+            } else if self.pending_redraw {
+                // Keep requesting repaints until debounce delay is met
+                ctx.request_repaint_after(INPUT_DEBOUNCE_DELAY - timer.elapsed());
+            }
+        }
         
         // Render fractal if needed
         if self.needs_redraw {
@@ -311,6 +387,8 @@ impl eframe::App for FractalApp {
                                 &mut self.height_input,
                                 &mut self.view,
                                 &mut self.needs_redraw,
+                                &mut self.input_debounce_timer,
+                                &mut self.pending_redraw,
                             );
 
                             ui.add_space(15.0);
@@ -326,7 +404,10 @@ impl eframe::App for FractalApp {
                                 &mut self.fractal_parameters,
                                 &mut self.julia_c_real_input,
                                 &mut self.julia_c_imag_input,
+                                &mut self.mandelbrot_power_input,
                                 &mut self.view,
+                                &mut self.input_debounce_timer,
+                                &mut self.pending_redraw,
                             );
 
                             ui.add_space(15.0);
@@ -339,6 +420,8 @@ impl eframe::App for FractalApp {
                                 &mut self.view,
                                 &mut self.needs_redraw,
                                 &mut self.status_message,
+                                &mut self.input_debounce_timer,
+                                &mut self.pending_redraw,
                             );
 
                             ui.add_space(15.0);
@@ -361,6 +444,8 @@ impl eframe::App for FractalApp {
                                 &mut self.interior_color_g_text,
                                 &mut self.interior_color_b_text,
                                 &mut self.use_log_scale,
+                                &mut self.input_debounce_timer,
+                                &mut self.pending_redraw,
                             );
 
                             ui.add_space(10.0);

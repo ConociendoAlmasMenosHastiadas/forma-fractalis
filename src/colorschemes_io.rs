@@ -30,18 +30,48 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
-/// Built-in default colormap JSON files (embedded at compile time)
-const DEFAULT_COLORMAP_JSON: &str = include_str!("colormaps/default.json");
-const FIRE_COLORMAP_JSON: &str = include_str!("colormaps/fire.json");
-const OCEAN_COLORMAP_JSON: &str = include_str!("colormaps/ocean.json");
-const GRAYSCALE_COLORMAP_JSON: &str = include_str!("colormaps/grayscale.json");
-const RAINBOW_COLORMAP_JSON: &str = include_str!("colormaps/rainbow.json");
-const ACADEMIC_COLORMAP_JSON: &str = include_str!("colormaps/academic.json");
-const TWILIGHT_GARDEN_COLORMAP_JSON: &str = include_str!("colormaps/twilight_garden.json");
-const CORAL_SUNSET_COLORMAP_JSON: &str = include_str!("colormaps/coral_sunset.json");
-const OLIVE_SYMMETRY_COLORMAP_JSON: &str = include_str!("colormaps/olive_symmetry.json");
-const ORCHID_GARDEN_COLORMAP_JSON: &str = include_str!("colormaps/orchid_garden.json");
-const FROZEN_AMARANTH_COLORMAP_JSON: &str = include_str!("colormaps/frozen_amaranth.json");
+/// Macro to define builtin colormaps with automatic list generation
+macro_rules! define_builtin_colormaps {
+    ($($name:literal => $const_name:ident => $file:literal),* $(,)?) => {
+        $(
+            const $const_name: &str = include_str!($file);
+        )*
+        
+        /// Get list of all builtin colormap names
+        fn get_builtin_colormap_names() -> &'static [&'static str] {
+            &[$($name),*]
+        }
+        
+        /// Load a builtin colormap by name
+        fn load_builtin_impl(name: &str) -> Option<&'static str> {
+            match name {
+                $($name => Some($const_name),)*
+                _ => None,
+            }
+        }
+        
+        /// Check if a colormap name is builtin
+        fn is_builtin_impl(name: &str) -> bool {
+            matches!(name, $($name)|*)
+        }
+    };
+}
+
+// Define all builtin colormaps in one place
+define_builtin_colormaps! {
+    "Default" => DEFAULT_COLORMAP_JSON => "colormaps/default.json",
+    "Fire" => FIRE_COLORMAP_JSON => "colormaps/fire.json",
+    "Ocean" => OCEAN_COLORMAP_JSON => "colormaps/ocean.json",
+    "Grayscale" => GRAYSCALE_COLORMAP_JSON => "colormaps/grayscale.json",
+    "Rainbow" => RAINBOW_COLORMAP_JSON => "colormaps/rainbow.json",
+    "Academic" => ACADEMIC_COLORMAP_JSON => "colormaps/academic.json",
+    "Twilight Garden" => TWILIGHT_GARDEN_COLORMAP_JSON => "colormaps/twilight_garden.json",
+    "Coral Sunset" => CORAL_SUNSET_COLORMAP_JSON => "colormaps/coral_sunset.json",
+    "Olive Symmetry" => OLIVE_SYMMETRY_COLORMAP_JSON => "colormaps/olive_symmetry.json",
+    "Orchid Garden" => ORCHID_GARDEN_COLORMAP_JSON => "colormaps/orchid_garden.json",
+    "Frozen Amaranth" => FROZEN_AMARANTH_COLORMAP_JSON => "colormaps/frozen_amaranth.json",
+    "Electric Neon" => ELECTRIC_NEON_COLORMAP_JSON => "colormaps/electric_neon.json",
+}
 
 /// Error types for colormap I/O operations
 #[derive(Debug)]
@@ -99,23 +129,10 @@ pub fn get_colormaps_directory() -> Result<PathBuf> {
 }
 
 /// Load a built-in colormap by name
-/// Available built-in colormaps: "Default", "Fire", "Ocean", "Grayscale", "Rainbow",
-/// "Academic", "Twilight Garden", "Coral Sunset", "Olive Symmetry", "Orchid Garden", "Frozen Amaranth"
+/// Available built-in colormaps are automatically managed by the macro above
 pub fn load_builtin_colormap(name: &str) -> Result<ColorMap> {
-    let json_str = match name {
-        "Default" => DEFAULT_COLORMAP_JSON,
-        "Fire" => FIRE_COLORMAP_JSON,
-        "Ocean" => OCEAN_COLORMAP_JSON,
-        "Grayscale" => GRAYSCALE_COLORMAP_JSON,
-        "Rainbow" => RAINBOW_COLORMAP_JSON,
-        "Academic" => ACADEMIC_COLORMAP_JSON,
-        "Twilight Garden" => TWILIGHT_GARDEN_COLORMAP_JSON,
-        "Coral Sunset" => CORAL_SUNSET_COLORMAP_JSON,
-        "Olive Symmetry" => OLIVE_SYMMETRY_COLORMAP_JSON,
-        "Orchid Garden" => ORCHID_GARDEN_COLORMAP_JSON,
-        "Frozen Amaranth" => FROZEN_AMARANTH_COLORMAP_JSON,
-        _ => return Err(ColorMapError::NotFound(name.to_string())),
-    };
+    let json_str = load_builtin_impl(name)
+        .ok_or_else(|| ColorMapError::NotFound(name.to_string()))?;
 
     let colormap: ColorMap = serde_json::from_str(json_str)?;
     Ok(colormap)
@@ -123,20 +140,7 @@ pub fn load_builtin_colormap(name: &str) -> Result<ColorMap> {
 
 /// Check if a colormap is a built-in default
 pub fn is_builtin_colormap(name: &str) -> bool {
-    matches!(
-        name,
-        "Default"
-            | "Fire"
-            | "Ocean"
-            | "Grayscale"
-            | "Rainbow"
-            | "Academic"
-            | "Twilight Garden"
-            | "Coral Sunset"
-            | "Olive Symmetry"
-            | "Orchid Garden"
-            | "Frozen Amaranth"
-    )
+    is_builtin_impl(name)
 }
 
 /// Save a colormap to the custom colormaps directory
@@ -213,20 +217,8 @@ pub struct ColorMapInfo {
 pub fn list_available_colormaps() -> Result<Vec<ColorMapInfo>> {
     let mut colormaps = Vec::new();
 
-    // Add built-in colormaps
-    for name in &[
-        "Default",
-        "Fire",
-        "Ocean",
-        "Grayscale",
-        "Rainbow",
-        "Academic",
-        "Twilight Garden",
-        "Coral Sunset",
-        "Olive Symmetry",
-        "Orchid Garden",
-        "Frozen Amaranth",
-    ] {
+    // Add built-in colormaps (automatically generated from macro)
+    for name in get_builtin_colormap_names() {
         colormaps.push(ColorMapInfo {
             name: name.to_string(),
             is_builtin: true,

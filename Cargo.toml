@@ -1,6 +1,6 @@
 [package]
 name = "forma-fractalis"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 
 [dependencies]
@@ -18,3 +18,7 @@ num-complex = "0.4"  # Complex number arithmetic for fractals
 # Windows-specific dependencies
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winuser", "windef"] }
+
+[[bench]]
+name = "fractal_bench"
+harness = false

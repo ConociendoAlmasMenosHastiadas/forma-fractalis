@@ -1,0 +1,214 @@
+# Changelog
+
+All notable changes to Forma Fractalis will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.4] - 2026-01-19
+
+### Added
+- **Powerbrot Feature**: Generalized Mandelbrot with configurable power parameter
+  - Power range: -10.0 to 10.0 (slider) with full f64 precision (text input)
+  - Formula: z^power + c (power=2 is classic Mandelbrot)
+  - Different powers create unique symmetries (3=tricorn, 4=quatric, etc.)
+  - Negative powers produce convergent patterns
+  - Fixed singularity issue with z₁ = c starting point
+- **Profiling Command-Line Flag**: `--profiling` or `-p` to enable performance logs
+  - Help flag: `--help` or `-h` shows usage information
+  - `perf_log!` macro for conditional logging throughout codebase
+  - Normal operation is silent; profiling only when explicitly enabled
+- **Colormap Parser Utility**: `build_scripts/coolors_parser.py` for palette conversion
+  - Converts coolors.co XML palettes to forma-fractalis JSON format
+  - Generates proper "stops" format with nested "color" objects
+  - Command-line tool for easy colormap creation
+- **Electric Neon Colormap**: 5-color neon palette (cyan, hot pink, yellow, electric purple, cyan)
+- **Automated Colormap Registration**: `define_builtin_colormaps!` macro system
+  - Single line to register new colormaps
+  - Automatically generates: constants, load function, builtin check, dropdown list
+  - Eliminates manual updates to multiple functions
+- **Export Performance Monitoring**: Detailed timing breakdown in export pipeline
+  - Logs: setup, render, filter, metadata, I/O times separately
+  - Displays percentage breakdown for bottleneck identification
+- **Open Directory Button**: Quick file explorer access from export section
+  - Cross-platform: Windows (explorer), macOS (open), Linux (xdg-open)
+  - Opens selected export directory in native file manager
+- **Benchmark Suite**: Comprehensive performance testing framework
+  - `benches/fractal_bench.rs` tests all fractals at multiple resolutions
+  - Tests 3 resolutions (SD/HD/FHD) × 5 iteration counts
+  - 10 runs per test with avg/min/max timing
+  - Established v0.1.3 performance baseline
+- **CHANGELOG.md**: Professional version history following Keep a Changelog format
+  - Migrated all release notes from README.md
+  - Semantic versioning with GitHub comparison links
+
+### Changed
+- **Input Debouncing**: Text inputs now delayed 500ms to prevent typing lag
+  - Buttons/sliders trigger immediate redraws
+  - Text fields wait for typing to finish before redrawing
+  - Eliminates UI lag during parameter entry
+- **README.md**: Simplified releases section, links to CHANGELOG.md
+- All performance/debug logs now respect `--profiling` flag
+- Updated AGENTS.md with colormap creation workflow and macro usage
+
+### Fixed
+- Negative power parameters no longer diverge immediately (z₁ = c fix)
+- Colormap parser generates correct JSON format
+- Electric Neon colormap properly registered and appears in dropdown
+- **Performance**: Power=2.0 (classic Mandelbrot) now uses optimized multiplication instead of powf()
+  - Was 13-30x slower in initial Powerbrot implementation
+  - Fixed with conditional: `if power == 2.0 { z * z } else { z.powf(power) }`
+  - Custom powers still work correctly
+
+### Documentation
+- Created BENCHMARKS.md with v0.1.3 baseline results
+- Added comprehensive GPU acceleration plan (plan_v0.2.0.md)
+- Updated AGENTS.md with simplified colormap registration steps
+- Detailed redraw system documentation in main.rs
+- GUI architecture refactoring notes added to plan_v0.1.5.md
+
+### Performance
+- Benchmarks confirm NO regression from v0.1.3
+- HD (1280×720) @ 1024 iterations: 8-42ms across all fractals
+- All performance targets met or exceeded
+- Typing lag eliminated (was main "slowness" perception)
+
+## [0.1.3] - 2026-01-18
+
+### Added
+- **New Fractal**: Tippets Mandelbrot variation with unique order-of-operations distortion
+- **New Colormap**: Twilight Garden (peachy, mint, teal, mauve palette)
+- **Interactive Example**: mandelpath.rs for visualizing Mandelbrot iteration paths
+  - Right-click to generate iteration sequences
+  - Visual arrows show trajectory through complex plane
+- Performance profiling instrumentation throughout rendering pipeline
+  - Measures render time, buffer allocation, conversion, texture upload
+  - Console output with timing breakdown (moving to `--profiling` flag in v0.1.4)
+
+### Changed
+- Standardized mouse controls: left-click only for zoom rectangle
+- Right-click reserved for specialized examples
+- Julia Set default view adjusted for better initial display
+- Improved pointer state checking for better interaction
+
+### Fixed
+- Export filenames now correctly include both width and height
+- Zero compilation warnings throughout codebase
+
+### Removed
+- **Mint Lavender** colormap (replaced by Twilight Garden)
+- **Complete migration to FractalView**: Removed all backward compatibility layers
+  - Deleted deprecated `fractal.rs` module
+  - Removed `render_mandelbrot()` legacy function
+
+### Performance
+- Verified performance: 1280×720 @ 256 iterations renders in ~9-13ms (60-80 FPS)
+- Confirmed rayon parallelization working correctly
+
+## [0.1.2] - 2026-01-14
+
+### Added
+- **Multi-Fractal Support**: Three fractal types now available
+  - Mandelbrot Set (classic)
+  - Julia Set (interactive c_real/c_imag parameters)
+  - Burning Ship
+- **PNG Metadata Export**: All render settings embedded in PNG tEXt chunks
+  - Fractal type, view coordinates, zoom level
+  - Fractal parameters (Julia c values, etc.)
+  - Complete colormap data
+  - Color modulation settings
+  - Export settings (filter, supersample, scale)
+  - Enables exact reproduction of any exported image
+- **New Colormap**: Frozen Amaranth (purple/pink gradient)
+- Julia Set classic coordinate presets for quick discovery
+- Trait-based fractal system for extensibility
+- [PNG Metadata Reader Tool](https://github.com/ConociendoAlmasMenosHastiadas/png_meta_reader)
+
+### Changed
+- Fractal type shown in window title
+- Export filenames now include fractal type
+- Recommended supersampling increased to 8× for sharper exports
+- Random classic Julia coordinates on fractal switch
+- `FractalView` replaces `MandelbrotView` (backward compatible)
+
+### Technical
+- New `src/fractals/` module structure
+- Fractal trait with Mandelbrot, Julia, and BurningShip implementations
+- Parameter system for fractal-specific controls
+- PNG crate integration for direct tEXt chunk control
+- num-complex integration for cleaner complex number operations
+
+### Removed
+- Examples folder (demo code consolidated)
+
+## [0.1.1] - 2026-01-12
+
+### Added
+- **Unified Rendering Pipeline**: Single codebase for preview and export
+- **Professional Image Filtering**:
+  - Lanczos3 filter (high-quality sharp resampling)
+  - Gaussian filter (smooth anti-aliasing)
+- **Supersampling Support**: Render at 2×-4× resolution, then downsample
+- **Linear/Logarithmic Color Scaling**: Toggle for smoother gradients
+- New `rendering_pipeline.rs` module
+- New `filtering.rs` module with extensible filter architecture
+
+### Changed
+- Default supersample set to 2× for better quality exports
+- Export now uses unified rendering pipeline
+- Filtering applied to export only (preview stays fast)
+- Clear UI controls for filter selection
+
+### Quality of Life
+- Export status indicator ("⏳ Exporting...")
+- Smooth 60 FPS preview maintained
+
+## [0.1.0] - 2026-01-11
+
+### Added
+- Interactive Mandelbrot set explorer with real-time rendering
+- **10 Built-in Color Schemes**:
+  - Default, Fire, Ocean, Grayscale, Rainbow
+  - Academic, Coral Sunset, Olive Symmetry, Orchid Garden
+- Interactive color editor with drag-and-drop color stops
+- Save/load custom colormaps as JSON
+- Click-and-drag zoom navigation with scroll wheel resize
+- PNG export at scalable resolutions
+- Parallel rendering with Rayon (multi-threaded)
+- Period modulation for repeating color patterns
+- Custom interior color for points inside the set
+- Iteration control (10-10,000 iterations)
+- Custom dimensions for preview resolution
+
+### Technical
+- Rust 2021 edition
+- egui/eframe immediate mode GUI
+- Rayon data parallelism
+- image crate for processing
+- png crate for encoding
+- num-complex for fractal math
+- serde/serde_json for serialization
+
+### Default Settings
+- Preview resolution: 1280×720 (16:9)
+- Default iterations: 256
+- Default export scale: 3.0 (produces 3840×2160)
+
+---
+
+## Version History Quick Reference
+
+- **v0.1.4** (2026-01-19): Powerbrot, profiling flag, benchmark suite, CHANGELOG.md, colormap utilities
+- **v0.1.3** (2026-01-18): Tippets Mandelbrot, mandelpath example, performance profiling
+- **v0.1.2** (2026-01-14): Multi-fractal support, PNG metadata, Julia sets
+- **v0.1.1** (2026-01-12): Unified pipeline, filtering, supersampling
+- **v0.1.0** (2026-01-11): Initial release with Mandelbrot explorer
+
+[Unreleased]: https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/compare/v0.1.3...v0.1.4
+[0.1.3]: https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/releases/tag/v0.1.0

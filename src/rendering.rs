@@ -8,10 +8,12 @@
 //! - ColorMap-based gradient coloring
 //! - RGBA buffer output for GPU texture upload
 
+use crate::perf_log;
 use crate::colorschemes::{color_from_iterations, ColorMap};
 use crate::fractals::{Fractal, FractalView};
 use rayon::prelude::*;
 use std::collections::HashMap;
+use std::time::Instant;
 
 /// Maximum iterations for Mandelbrot calculation
 pub const MAX_ITERATIONS: u32 = 256;
@@ -43,9 +45,11 @@ pub fn render_fractal(
     fractal: &dyn Fractal,
     fractal_parameters: &HashMap<String, f64>,
 ) {
+    let total_timer = Instant::now();
     let rows: Vec<_> = (0..view.height).collect();
 
     // Parallel processing: each row is computed independently
+    let fractal_timer = Instant::now();
     let pixels: Vec<Vec<[u8; 4]>> = rows
         .par_iter()
         .map(|&y| {
@@ -68,14 +72,21 @@ pub fn render_fractal(
                 .collect()
         })
         .collect();
+    let fractal_time = fractal_timer.elapsed();
 
     // Copy computed pixels to frame buffer
+    let copy_timer = Instant::now();
     for (y, row) in pixels.iter().enumerate() {
         for (x, color) in row.iter().enumerate() {
             let idx = (y * view.width as usize + x) * 4;
             frame[idx..idx + 4].copy_from_slice(color);
         }
     }
+    let copy_time = copy_timer.elapsed();
+    
+    let total_time = total_timer.elapsed();
+    perf_log!("[PERF-DETAIL] render_fractal: fractal+color={:.2?}, copy={:.2?}, total={:.2?}",
+        fractal_time, copy_time, total_time);
 }
 
 /// Draws a rectangle overlay on the frame (used for zoom preview)
