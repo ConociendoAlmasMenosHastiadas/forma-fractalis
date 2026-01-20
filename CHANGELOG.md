@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-01-19
+
+### Added
+- **Multifractal-Julia Fractal**: New fractal type with unique cycle detection
+  - Formula: z_{n+1} = c^k · z_n^{-2} + c
+  - Power parameter k: range -5.0 to 5.0 (default 1.0)
+  - Special case optimizations for k = -1, 0, 1, 2
+  - General complex power support for non-integer k
+  - HashMap-based cycle detection tracks periodic orbits
+  - Returns period length when cycles detected
+  - Adaptive bailout radius based on power magnitude
+- **Cosmic Dawn Colormap**: 5-color gradient palette
+  - Deep space blues (Prussian Blue, Space Indigo)
+  - Through cosmic purples (Amethyst, Lilac)
+  - To dawn pinks (Cotton Rose)
+  - Perfect complement to Multifractal-Julia's period-based coloring
+- **number_utils Module**: Centralized numerical constants
+  - ABSOLUTE_EPSILON = 1e-12 for consistent precision checks
+  - Replaced hardcoded epsilon values across fractals
+
+### Changed
+- **Rendering Parallelization**: Massive performance improvement
+  - Changed from row-level (600 tasks) to pixel-level (480,000 tasks) parallelization
+  - Rayon work-stealing now distributes load across all CPU cores efficiently
+  - Expect 75-100% CPU utilization on all cores during rendering
+  - 2-4x faster rendering on multi-core systems
+- **Mandelbrot fractal**: Now uses centralized ABSOLUTE_EPSILON constant
+
+### Fixed
+- Low CPU utilization during rendering (was 25%, now 75-100%)
+- Inconsistent epsilon values across different fractals
+
+### Documentation
+- Updated AGENTS.md with fractal/colormap requirements for each release
+- Added "Fractal & Colormap: TBD" notes to all future plans (v0.1.6-v0.2.2)
+- Comprehensive test suite for Multifractal-Julia (9 test functions)
+
+### Performance
+- Row-based → Pixel-based parallelization: 2-4x speedup on multi-core CPUs
+- Full utilization of all CPU cores during fractal rendering
+- Work-stealing scheduler ensures balanced load distribution
+
 ## [0.1.4] - 2026-01-19
 
 ### Added

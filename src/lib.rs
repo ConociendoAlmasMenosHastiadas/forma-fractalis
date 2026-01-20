@@ -13,7 +13,8 @@
 //! - [`rendering`]: Parallel fractal rendering with Rayon
 /// - [`rendering_pipeline`]: Unified rendering system for preview and export
 /// - [`filtering`]: Image filtering and supersampling for high-quality exports
-
+/// - [`number_utils`]: Numerical constants and utilities
+pub mod app_state;
 pub mod colorschemes;
 pub mod colorschemes_gui;
 pub mod colorschemes_io;
@@ -21,6 +22,7 @@ pub mod export;
 pub mod filtering;
 pub mod fractals;
 pub mod gui;
+pub mod number_utils;
 pub mod rendering;
 pub mod rendering_pipeline;
 

@@ -2,6 +2,16 @@
 
 This will be a major release including GPU processing capabilities. As other sections are changed, notes on how to address the GPU integration should be expanded on here.
 
+**Fractal & Colormap**: TBD - to be determined before release finalization
+
+## Dependencies
+- **v0.1.5 GUI Architecture** - Grouped state pattern makes GPU state management cleaner
+- **v0.1.6 PNG Loading** - Can load high-resolution fractals for GPU processing
+- **v0.1.7 CLI Rendering** - GPU backend can be used for headless CLI rendering
+
+## Overview
+GPU acceleration will dramatically improve performance for high-resolution exports and deep iterations. The grouped state pattern from v0.1.5 makes GPU integration cleaner, and CLI support from v0.1.7 enables GPU-powered batch rendering.
+
 ## Performance Investigation Context
 
 **Current Performance Issue** (v0.1.4 development):

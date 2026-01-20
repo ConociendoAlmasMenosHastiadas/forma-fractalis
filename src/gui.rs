@@ -64,6 +64,7 @@ pub trait FractalTypeOps {
         julia_c_real_input: &str,
         julia_c_imag_input: &str,
         mandelbrot_power_input: &str,
+        multifractal_julia_power_input: &str,
     );
 }
 
@@ -214,6 +215,7 @@ pub fn render_fractal_settings<FT>(
     julia_c_real_input: &mut String,
     julia_c_imag_input: &mut String,
     mandelbrot_power_input: &mut String,
+    multifractal_julia_power_input: &mut String,
     view: &mut FractalView,
     input_debounce_timer: &mut Option<Instant>,
     pending_redraw: &mut bool,
@@ -241,7 +243,8 @@ where
                             fractal_parameters,
                             julia_c_real_input,
                             julia_c_imag_input,
-                            mandelbrot_power_input
+                            mandelbrot_power_input,
+                            multifractal_julia_power_input
                         );
                         *needs_redraw = true;
                     }
@@ -373,6 +376,60 @@ where
                     }
                 }
             });
+            ui.label(egui::RichText::new(
+                format!("Range: slider [{:.1}, {:.1}], text input: full f64", power_min, power_max)
+            ).small().weak());
+        });
+        
+        ui.add_space(10.0);
+    }
+
+    // Multifractal-Julia Power parameter
+    if fractal_type.get_name() == "Multifractal-Julia" {
+        ui.label(
+            egui::RichText::new("Multifractal-Julia Parameters")
+                .strong()
+        );
+        ui.add_space(5.0);
+        
+        let power_min = -5.0;
+        let power_max = 5.0;
+        
+        // Power slider (k in z_{n+1} = c^k * z_n^{-2} + c)
+        let mut power = fractal_parameters.get("power").copied().unwrap_or(1.0);
+        ui.horizontal(|ui| {
+            ui.label("Power (k):");
+            ui.add_space(5.0);
+            if ui.add(egui::Slider::new(&mut power, power_min..=power_max)
+                .text("")
+                .step_by(0.1)
+                .fixed_decimals(1))
+                .changed()
+            {
+                fractal_parameters.insert("power".to_string(), power);
+                *multifractal_julia_power_input = format!("{:.1}", power);
+                *needs_redraw = true;
+            }
+        });
+        
+        // Show current value as editable text input
+        ui.add_space(5.0);
+        ui.collapsing("Advanced: Precise Value", |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Power (k):");
+                if ui
+                    .add(egui::TextEdit::singleline(multifractal_julia_power_input).desired_width(100.0))
+                    .changed()
+                {
+                    if let Ok(val) = multifractal_julia_power_input.parse::<f64>() {
+                        fractal_parameters.insert("power".to_string(), val);
+                        trigger_debounced_redraw(input_debounce_timer, pending_redraw);
+                    }
+                }
+            });
+            ui.label(egui::RichText::new(
+                format!("Formula: z_{{n+1}} = c^k · z_n^{{-2}} + c")
+            ).small().weak());
             ui.label(egui::RichText::new(
                 format!("Range: slider [{:.1}, {:.1}], text input: full f64", power_min, power_max)
             ).small().weak());

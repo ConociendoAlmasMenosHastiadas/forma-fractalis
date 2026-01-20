@@ -1,11 +1,10 @@
 use eframe::egui;
 use forma_fractalis::{
-    colorschemes::ColorMap, colorschemes_gui::ColorEditor, colorschemes_io,
-    filtering::FilterType, fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, FractalView}, gui,
+    app_state::{ViewState, InputState, FractalState, ColorState, MouseState, ExportState, FractalType},
+    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia}, gui,
     rendering_pipeline::{render_with_config, RenderConfig, RenderTarget},
     perf_log, enable_profiling,
 };
-use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 fn main() -> Result<(), eframe::Error> {
@@ -49,108 +48,6 @@ fn main() -> Result<(), eframe::Error> {
 /// Redraws are delayed until user stops typing for this duration
 const INPUT_DEBOUNCE_DELAY: Duration = Duration::from_millis(500);
 
-/// Available fractal types
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FractalType {
-    Mandelbrot,
-    Julia,
-    BurningShip,
-    TippetsMandelbrot,
-}
-
-impl FractalType {
-    pub fn name(&self) -> &str {
-        match self {
-            FractalType::Mandelbrot => "Mandelbrot",
-            FractalType::Julia => "Julia Set",
-            FractalType::BurningShip => "Burning Ship",
-            FractalType::TippetsMandelbrot => "Tippets Mandelbrot",
-        }
-    }
-
-    fn all() -> &'static [FractalType] {
-        &[FractalType::Mandelbrot, FractalType::Julia, FractalType::BurningShip, FractalType::TippetsMandelbrot]
-    }
-
-    /// Creates a fractal instance from the enum type
-    /// 
-    /// This helper eliminates code duplication when creating fractals
-    /// for rendering or export operations.
-    pub fn create_instance(&self) -> Box<dyn forma_fractalis::fractals::Fractal> {
-        match self {
-            FractalType::Mandelbrot => Box::new(Mandelbrot::new()),
-            FractalType::Julia => Box::new(Julia::new()),
-            FractalType::BurningShip => Box::new(BurningShip::new()),
-            FractalType::TippetsMandelbrot => Box::new(TippetsMandelbrot::new()),
-        }
-    }
-}
-
-impl gui::FractalTypeOps for FractalType {
-    fn get_name(&self) -> &str {
-        self.name()
-    }
-
-    fn all_types() -> Vec<Self> {
-        Self::all().to_vec()
-    }
-
-    fn is_julia(&self) -> bool {
-        matches!(self, FractalType::Julia)
-    }
-
-    fn is_mandelbrot(&self) -> bool {
-        matches!(self, FractalType::Mandelbrot)
-    }
-
-    fn reset_view_and_params(
-        &self,
-        view: &mut FractalView,
-        params: &mut HashMap<String, f64>,
-        julia_c_real_input: &str,
-        julia_c_imag_input: &str,
-        mandelbrot_power_input: &str,
-    ) {
-        match self {
-            FractalType::Mandelbrot => {
-                view.center_x = -0.5;
-                view.center_y = 0.0;
-                view.zoom = 1.0;
-                // Keep existing power parameter when switching back
-                let power = mandelbrot_power_input.parse().unwrap_or(2.0);
-                params.clear();
-                params.insert("power".to_string(), power);
-            }
-            FractalType::Julia => {
-                view.center_x = 0.0;
-                view.center_y = 0.0;
-                view.zoom = 1.0;
-                // Keep existing Julia parameters when switching back
-                params.insert(
-                    "c_real".to_string(),
-                    julia_c_real_input.parse().unwrap_or(-0.7)
-                );
-                params.insert(
-                    "c_imag".to_string(),
-                    julia_c_imag_input.parse().unwrap_or(0.27015)
-                );
-            }
-            FractalType::BurningShip => {
-                view.center_x = -0.5;
-                view.center_y = -0.6;
-                view.zoom = 0.8;
-                params.clear();
-            }
-            FractalType::TippetsMandelbrot => {
-                view.center_x = -0.5;
-                view.center_y = 0.0;
-                view.zoom = 0.8;
-                params.clear();
-            }
-        }
-    }
-}
-
 /// Main application state for the fractal explorer
 /// 
 /// # Redraw Behavior
@@ -177,109 +74,34 @@ impl gui::FractalTypeOps for FractalType {
 /// 
 /// This debouncing prevents lag during typing while maintaining responsive UI for direct interactions.
 struct FractalApp {
-    // View state
-    view: FractalView,
+    // Grouped state
+    pub view_state: ViewState,
+    pub input: InputState,
+    pub fractal: FractalState,
+    pub color: ColorState,
+    pub mouse: MouseState,
+    pub export: ExportState,
 
-    // UI inputs
-    width_input: String,
-    height_input: String,
-    iterations_input: String,
-
-    // Input debouncing for text fields (prevents lag during typing)
-    input_debounce_timer: Option<Instant>,
-    pending_redraw: bool,
-
-    // Fractal type and parameters
-    fractal_type: FractalType,
-    fractal_parameters: HashMap<String, f64>,
-    julia_c_real_input: String,
-    julia_c_imag_input: String,
-    mandelbrot_power_input: String,
-
-    // Colormap
-    available_colormaps: Vec<String>,
-    selected_colormap_name: String,
-    colormap: ColorMap,
-    color_editor: ColorEditor,
-
-    // Color modulation
-    use_period: bool,
-    period_input: String,
-    use_interior_color: bool,
-    interior_color: [u8; 3],
-    interior_color_r_text: String,
-    interior_color_g_text: String,
-    interior_color_b_text: String,
-    use_log_scale: bool,
-
-    // Fractal texture
-    fractal_texture: Option<egui::TextureHandle>,
-    needs_redraw: bool, // Set to true when fractal should be rerendered
-
-    // Mouse interaction
-    is_dragging: bool,
-    zoom_square_center: Option<egui::Pos2>,
-    zoom_square_size: f32,
-
-    // Export
-    export_scale_input: String,
-    export_directory: Option<std::path::PathBuf>,
-    export_filter: FilterType,
-    export_supersample_input: String,
-
-    // Status
-    status_message: String,
+    // Status message
+    pub status_message: String,
 }
 
 impl Default for FractalApp {
     fn default() -> Self {
-        // Load all available colormaps
-        let available_colormaps = colorschemes_io::list_available_colormaps()
-            .unwrap_or_else(|_| Vec::new())
-            .into_iter()
-            .map(|info| info.name)
-            .collect::<Vec<_>>();
-
-        let selected_colormap_name = String::from("Default");
-        let colormap = colorschemes_io::load_colormap(&selected_colormap_name)
-            .unwrap_or_else(|_| ColorMap::default_scheme());
-
         // Initialize Julia with random classic coordinates for discovery
         let (julia_c_real, julia_c_imag) = Julia::random_classic_coordinates();
 
+        let mut input = InputState::default();
+        input.julia_c_real = format!("{:.6}", julia_c_real);
+        input.julia_c_imag = format!("{:.6}", julia_c_imag);
+
         Self {
-            view: FractalView::new(1280, 720),
-            width_input: String::from("1280"),
-            height_input: String::from("720"),
-            iterations_input: String::from("256"),
-            fractal_type: FractalType::Mandelbrot,
-            fractal_parameters: HashMap::new(),
-            julia_c_real_input: format!("{:.6}", julia_c_real),
-            julia_c_imag_input: format!("{:.6}", julia_c_imag),
-            mandelbrot_power_input: String::from("2.0"),
-            available_colormaps,
-            selected_colormap_name,
-            colormap,
-            color_editor: ColorEditor::new(),
-            use_period: false,
-            period_input: String::from("128"),
-            use_interior_color: false,
-            interior_color: [0, 0, 0],
-            interior_color_r_text: String::from("0"),
-            interior_color_g_text: String::from("0"),
-            interior_color_b_text: String::from("0"),
-            use_log_scale: false,
-            fractal_texture: None,
-            needs_redraw: true,
-            input_debounce_timer: None,
-            pending_redraw: false,
-            is_dragging: false,
-            zoom_square_center: None,
-            zoom_square_size: 200.0,
-            export_scale_input: String::from("3.0"),
-            export_directory: None,
-            export_filter: FilterType::None,
-            export_supersample_input: String::from("4"),
+            view_state: ViewState::new(1280, 720),
+            input,
+            fractal: FractalState::default(),
+            color: ColorState::default(),
+            mouse: MouseState::new(),
+            export: ExportState::new(),
             status_message: String::from("Ready - Click+drag to position zoom, scroll to resize"),
         }
     }
@@ -290,49 +112,47 @@ impl FractalApp {
         let total_timer = Instant::now();
         
         // Parse period and iterations values (default to 256 if invalid)
-        let period = self.period_input.parse::<u32>().unwrap_or(256);
-        let max_iterations = self
-            .iterations_input
-            .parse::<u32>()
-            .unwrap_or(256)
-            .max(1);
+        let period = self.input.parse_period();
+        let max_iterations = self.input.parse_iterations();
 
         // Create fractal instance based on selected type
         let mandelbrot = Mandelbrot::new();
         let julia = Julia::new();
         let burning_ship = BurningShip::new();
         let tippets_mandelbrot = TippetsMandelbrot::new();
+        let multifractal_julia = MultifractalJulia::new();
         
-        let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal_type {
+        let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
             FractalType::Mandelbrot => &mandelbrot,
             FractalType::Julia => &julia,
             FractalType::BurningShip => &burning_ship,
             FractalType::TippetsMandelbrot => &tippets_mandelbrot,
+            FractalType::MultifractalJulia => &multifractal_julia,
         };
 
         // Build render configuration
-        let config = RenderConfig::new(self.view.clone(), &self.colormap, max_iterations, fractal)
-            .with_period(self.use_period, period)
-            .with_interior_color(self.use_interior_color, self.interior_color)
-            .with_log_scale(self.use_log_scale)
-            .with_fractal_parameters(self.fractal_parameters.clone());
+        let config = RenderConfig::new(self.view_state.view.clone(), &self.color.colormap, max_iterations, fractal)
+            .with_period(self.color.use_period, period)
+            .with_interior_color(self.color.use_interior_color, self.color.interior_color)
+            .with_log_scale(self.color.use_log_scale)
+            .with_fractal_parameters(self.fractal.parameters.clone());
 
         // Render for preview (no filtering)
         let buffer = render_with_config(&config, RenderTarget::Preview);
 
         // Convert to egui ColorImage
         let image_timer = Instant::now();
-        let width = self.view.width as usize;
-        let height = self.view.height as usize;
+        let width = self.view_state.view.width as usize;
+        let height = self.view_state.view.height as usize;
         let color_image = egui::ColorImage::from_rgba_unmultiplied([width, height], &buffer);
         let image_time = image_timer.elapsed();
 
         // Update or create texture
         let texture_timer = Instant::now();
-        if let Some(texture) = &mut self.fractal_texture {
+        if let Some(texture) = &mut self.view_state.fractal_texture {
             texture.set(color_image, egui::TextureOptions::NEAREST);
         } else {
-            self.fractal_texture =
+            self.view_state.fractal_texture =
                 Some(ctx.load_texture("mandelbrot", color_image, egui::TextureOptions::NEAREST));
         }
         let texture_time = texture_timer.elapsed();
@@ -341,7 +161,7 @@ impl FractalApp {
         perf_log!("[PERF] GUI overhead: image_convert={:.2?}, texture_upload={:.2?}, total_gui={:.2?}",
             image_time, texture_time, total_time);
 
-        self.needs_redraw = false;
+        self.view_state.clear_redraw();
     }
 }
 
@@ -351,19 +171,19 @@ impl eframe::App for FractalApp {
         // eframe 0.25 doesn't support dynamic title changes
         
         // Check if debounced input should trigger redraw
-        if let Some(timer) = self.input_debounce_timer {
-            if timer.elapsed() >= INPUT_DEBOUNCE_DELAY && self.pending_redraw {
-                self.needs_redraw = true;
-                self.pending_redraw = false;
-                self.input_debounce_timer = None;
-            } else if self.pending_redraw {
+        if let Some(timer) = self.input.debounce_timer {
+            if timer.elapsed() >= INPUT_DEBOUNCE_DELAY && self.input.pending_redraw {
+                self.view_state.needs_redraw = true;
+                self.input.pending_redraw = false;
+                self.input.debounce_timer = None;
+            } else if self.input.pending_redraw {
                 // Keep requesting repaints until debounce delay is met
                 ctx.request_repaint_after(INPUT_DEBOUNCE_DELAY - timer.elapsed());
             }
         }
         
         // Render fractal if needed
-        if self.needs_redraw {
+        if self.view_state.needs_redraw {
             self.render_fractal(ctx);
         }
 
@@ -383,12 +203,12 @@ impl eframe::App for FractalApp {
                             // Preview Window Dimensions
                             gui::render_dimensions_section(
                                 ui,
-                                &mut self.width_input,
-                                &mut self.height_input,
-                                &mut self.view,
-                                &mut self.needs_redraw,
-                                &mut self.input_debounce_timer,
-                                &mut self.pending_redraw,
+                                &mut self.input.width,
+                                &mut self.input.height,
+                                &mut self.view_state.view,
+                                &mut self.view_state.needs_redraw,
+                                &mut self.input.debounce_timer,
+                                &mut self.input.pending_redraw,
                             );
 
                             ui.add_space(15.0);
@@ -398,16 +218,17 @@ impl eframe::App for FractalApp {
                             // Fractal Settings
                             gui::render_fractal_settings(
                                 ui,
-                                &mut self.iterations_input,
-                                &mut self.needs_redraw,
-                                &mut self.fractal_type,
-                                &mut self.fractal_parameters,
-                                &mut self.julia_c_real_input,
-                                &mut self.julia_c_imag_input,
-                                &mut self.mandelbrot_power_input,
-                                &mut self.view,
-                                &mut self.input_debounce_timer,
-                                &mut self.pending_redraw,
+                                &mut self.input.iterations,
+                                &mut self.view_state.needs_redraw,
+                                &mut self.fractal.fractal_type,
+                                &mut self.fractal.parameters,
+                                &mut self.input.julia_c_real,
+                                &mut self.input.julia_c_imag,
+                                &mut self.input.mandelbrot_power,
+                                &mut self.input.multifractal_julia_power,
+                                &mut self.view_state.view,
+                                &mut self.input.debounce_timer,
+                                &mut self.input.pending_redraw,
                             );
 
                             ui.add_space(15.0);
@@ -417,11 +238,11 @@ impl eframe::App for FractalApp {
                             // Current View
                             gui::render_current_view_info(
                                 ui,
-                                &mut self.view,
-                                &mut self.needs_redraw,
+                                &mut self.view_state.view,
+                                &mut self.view_state.needs_redraw,
                                 &mut self.status_message,
-                                &mut self.input_debounce_timer,
-                                &mut self.pending_redraw,
+                                &mut self.input.debounce_timer,
+                                &mut self.input.pending_redraw,
                             );
 
                             ui.add_space(15.0);
@@ -429,34 +250,37 @@ impl eframe::App for FractalApp {
                             ui.add_space(10.0);
 
                             // Color Scheme & Stops
-                            gui::render_colormap_section(
-                                ui,
-                                &mut self.available_colormaps,
-                                &mut self.selected_colormap_name,
-                                &mut self.colormap,
-                                &mut self.needs_redraw,
-                                &mut self.status_message,
-                                &mut self.use_period,
-                                &mut self.period_input,
-                                &mut self.use_interior_color,
-                                &mut self.interior_color,
-                                &mut self.interior_color_r_text,
-                                &mut self.interior_color_g_text,
-                                &mut self.interior_color_b_text,
-                                &mut self.use_log_scale,
-                                &mut self.input_debounce_timer,
-                                &mut self.pending_redraw,
-                            );
+                            {
+                                let [r, g, b] = &mut self.color.interior_color_rgb_text;
+                                gui::render_colormap_section(
+                                    ui,
+                                    &mut self.color.available_colormaps,
+                                    &mut self.color.selected_colormap_name,
+                                    &mut self.color.colormap,
+                                    &mut self.view_state.needs_redraw,
+                                    &mut self.status_message,
+                                    &mut self.color.use_period,
+                                    &mut self.input.period,
+                                    &mut self.color.use_interior_color,
+                                    &mut self.color.interior_color,
+                                    r,
+                                    g,
+                                    b,
+                                    &mut self.color.use_log_scale,
+                                    &mut self.input.debounce_timer,
+                                    &mut self.input.pending_redraw,
+                                );
+                            }
 
                             ui.add_space(10.0);
 
                             // Advanced Color Editor (always visible)
                         if forma_fractalis::colorschemes_gui::render_color_editor_section(
                                 ui,
-                                &mut self.colormap,
-                                &mut self.color_editor,
+                                &mut self.color.colormap,
+                                &mut self.color.color_editor,
                             ) {
-                                self.needs_redraw = true;
+                                self.view_state.needs_redraw = true;
                             }
 
                             ui.add_space(15.0);
@@ -464,42 +288,40 @@ impl eframe::App for FractalApp {
                             ui.add_space(10.0);
 
                             // Actions
-                            let max_iterations = self
-                                .iterations_input
-                                .parse::<u32>()
-                                .unwrap_or(256)
-                                .max(1);
-                            let period = self.period_input.parse::<u32>().unwrap_or(256);
+                            let max_iterations = self.input.parse_iterations();
+                            let period = self.input.parse_period();
                             
                             // Create fractal instance for export
                             let mandelbrot = Mandelbrot::new();
                             let julia = Julia::new();
                             let burning_ship = BurningShip::new();
                             let tippets_mandelbrot = TippetsMandelbrot::new();
+                            let multifractal_julia = MultifractalJulia::new();
                             
-                            let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal_type {
+                            let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
                                 FractalType::Mandelbrot => &mandelbrot,
                                 FractalType::Julia => &julia,
                                 FractalType::BurningShip => &burning_ship,
                                 FractalType::TippetsMandelbrot => &tippets_mandelbrot,
+                                FractalType::MultifractalJulia => &multifractal_julia,
                             };
                             
                             gui::render_actions_section(
                                 ui,
-                                &self.view,
-                                &self.colormap,
+                                &self.view_state.view,
+                                &self.color.colormap,
                                 max_iterations,
                                 fractal,
-                                &self.fractal_parameters,
-                                self.use_period,
+                                &self.fractal.parameters,
+                                self.color.use_period,
                                 period,
-                                self.use_interior_color,
-                                self.interior_color,
-                                self.use_log_scale,
-                                &mut self.export_scale_input,
-                                &mut self.export_directory,
-                                &mut self.export_filter,
-                                &mut self.export_supersample_input,
+                                self.color.use_interior_color,
+                                self.color.interior_color,
+                                self.color.use_log_scale,
+                                &mut self.input.export_scale,
+                                &mut self.export.directory,
+                                &mut self.export.filter,
+                                &mut self.input.export_supersample,
                                 &mut self.status_message,
                             );
 
@@ -515,7 +337,7 @@ impl eframe::App for FractalApp {
 
         // Main fractal display
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some(texture) = &self.fractal_texture {
+            if let Some(texture) = &self.view_state.fractal_texture {
                 let available_size = ui.available_size();
                 let texture_size = texture.size_vec2();
                 let scale =
@@ -532,32 +354,32 @@ impl eframe::App for FractalApp {
 
                 // Handle scroll wheel for zoom square resize (only when dragging with primary)
                 let scroll_delta = ui.input(|i| i.scroll_delta.y);
-                if scroll_delta != 0.0 && self.is_dragging {
-                    self.zoom_square_size = (self.zoom_square_size + scroll_delta * 2.0)
+                if scroll_delta != 0.0 && self.mouse.is_dragging {
+                    self.mouse.zoom_square_size = (self.mouse.zoom_square_size + scroll_delta * 2.0)
                         .max(20.0);
-                    self.status_message = format!("Zoom size: {:.0}px", self.zoom_square_size);
+                    self.status_message = format!("Zoom size: {:.0}px", self.mouse.zoom_square_size);
                 }
 
                 // Handle left-click drag for zoom rectangle
                 // Only start dragging if primary button is pressed (not secondary)
                 if response.drag_started() && primary_down && !secondary_down {
-                    self.is_dragging = true;
-                    self.zoom_square_center = response.interact_pointer_pos();
+                    self.mouse.is_dragging = true;
+                    self.mouse.zoom_square_center = response.interact_pointer_pos();
                 }
 
                 // Update square position while dragging (only for primary button)
-                if self.is_dragging && primary_down {
+                if self.mouse.is_dragging && primary_down {
                     if let Some(pos) = response.interact_pointer_pos() {
-                        self.zoom_square_center = Some(pos);
+                        self.mouse.zoom_square_center = Some(pos);
                     }
                 }
 
-                if response.drag_released() && self.is_dragging {
-                    self.is_dragging = false;
-                    if let Some(center) = self.zoom_square_center {
+                if response.drag_released() && self.mouse.is_dragging {
+                    self.mouse.is_dragging = false;
+                    if let Some(center) = self.mouse.zoom_square_center {
                         // Calculate zoom region
                         let center_rel = (center - rect.min) / scale;
-                        let square_size_rel = self.zoom_square_size / scale;
+                        let square_size_rel = self.mouse.zoom_square_size / scale;
 
                         let center_x = center_rel.x as u32;
                         let center_y = center_rel.y as u32;
@@ -565,11 +387,11 @@ impl eframe::App for FractalApp {
                         // Calculate zoom factor based on square size relative to image size
                         let zoom_factor = texture_size.x / square_size_rel;
 
-                        self.view.zoom_at(center_x, center_y, zoom_factor as f64);
-                        self.needs_redraw = true;
-                        self.status_message = format!("Zoomed to {:.2}x", self.view.zoom);
+                        self.view_state.view.zoom_at(center_x, center_y, zoom_factor as f64);
+                        self.view_state.needs_redraw = true;
+                        self.status_message = format!("Zoomed to {:.2}x", self.view_state.view.zoom);
                     }
-                    self.zoom_square_center = None;
+                    self.mouse.zoom_square_center = None;
                 }
 
                 // Right-click is reserved for future functionality
@@ -584,10 +406,10 @@ impl eframe::App for FractalApp {
                 );
 
                 // Draw zoom rectangle if dragging (matching aspect ratio)
-                if self.is_dragging {
-                    if let Some(center) = self.zoom_square_center {
-                        let aspect_ratio = self.view.width as f32 / self.view.height as f32;
-                        gui::render_zoom_square(ui, center, self.zoom_square_size, aspect_ratio);
+                if self.mouse.is_dragging {
+                    if let Some(center) = self.mouse.zoom_square_center {
+                        let aspect_ratio = self.view_state.view.width as f32 / self.view_state.view.height as f32;
+                        gui::render_zoom_square(ui, center, self.mouse.zoom_square_size, aspect_ratio);
                     }
                 }
             } else {
@@ -598,7 +420,7 @@ impl eframe::App for FractalApp {
         });
 
         // Request repaint for smooth interaction
-        if self.is_dragging {
+        if self.mouse.is_dragging {
             ctx.request_repaint();
         }
     }

@@ -12,6 +12,7 @@
 use super::{Fractal, FractalView, Parameter};
 use num_complex::Complex64;
 use std::collections::HashMap;
+use crate::number_utils::ABSOLUTE_EPSILON;
 
 /// Mandelbrot set fractal with configurable power
 pub struct Mandelbrot;
@@ -43,7 +44,7 @@ impl Fractal for Mandelbrot {
         
         let is_negative_power = power < 0.0;
         let escape_radius_sqr = 4.0;
-        let convergence_threshold_sqr = 1e-10; // For detecting convergence to 0
+        let convergence_threshold_sqr = ABSOLUTE_EPSILON; // For detecting convergence to 0
 
         while iter < max_iter {
             let magnitude_sqr = z.norm_sqr();
@@ -133,7 +134,7 @@ impl Mandelbrot {
         
         let is_negative_power = power < 0.0;
         let escape_radius_sqr = 4.0;
-        let convergence_threshold_sqr = 1e-10;
+        let convergence_threshold_sqr = ABSOLUTE_EPSILON;
         
         for _ in 0..max_iter {
             let magnitude_sqr = z.norm_sqr();

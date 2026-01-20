@@ -8,23 +8,25 @@ This makes for cool wallpapers, banners, profile pics, etc.  I hope its fun and 
 
 > **NON-PROGRAMMERS**: Pre-built Windows executables are available in the [`builds/`](builds/) folder - just download the .zip file and run!
 
-![Version](https://img.shields.io/badge/version-0.1.4-blue)
+![Version](https://img.shields.io/badge/version-0.1.5-blue)
 ![Rust](https://img.shields.io/badge/rust-2021-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue)
 
 ## Features
 
 ### Multi-Fractal Support
-- **Four Fractal Types**: Mandelbrot Set, Julia Set, Burning Ship, and Tippets Mandelbrot
+- **Five Fractal Types**: Mandelbrot Set, Julia Set, Burning Ship, Tippets Mandelbrot, and Multifractal-Julia
 - **Interactive Fractal Selector**: Switch between fractals instantly
 - **Fractal-Specific Parameters**: 
   - Julia Set: Adjustable c_real and c_imag parameters with real-time sliders
+  - Multifractal-Julia: Power parameter k (-5.0 to 5.0) with cycle detection
   - Classic Julia coordinates presets for quick discovery
 - **Optimized Default Views**: Each fractal loads with ideal starting position and zoom
 - **Trait-Based Architecture**: Extensible framework for adding more fractals
+- **Unique Features**: Multifractal-Julia includes period detection for cyclic orbits
 
 ### Advanced Color Mapping
-- **11 Built-in Color Schemes**: Default, Fire, Ocean, Grayscale, Rainbow, Academic, Coral Sunset, Olive Symmetry, Orchid Garden, Frozen Amaranth, Twilight Garden
+- **13 Built-in Color Schemes**: Default, Fire, Ocean, Grayscale, Rainbow, Academic, Coral Sunset, Olive Symmetry, Orchid Garden, Frozen Amaranth, Twilight Garden, Electric Neon, Cosmic Dawn
 - **Interactive Color Editor**: Create custom gradients with drag-and-drop color stops
 - **Save/Load Custom Colormaps**: Persist your color schemes as JSON files
 - **Live Preview**: Real-time gradient visualization
@@ -273,7 +275,14 @@ See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for a comprehensive list 
 
 For detailed release notes and version history, see [CHANGELOG.md](CHANGELOG.md).
 
-### Latest: v0.1.4 (January 19, 2026)
+### Latest: v0.1.5 (January 19, 2026)
+- **Multifractal-Julia Fractal**: New fractal with cycle detection (z_{n+1} = c^k · z_n^{-2} + c)
+- **Cosmic Dawn Colormap**: Deep space to dawn gradient (Prussian Blue → Cotton Rose)
+- **Pixel-Level Parallelization**: 2-4x rendering speedup, 75-100% CPU utilization
+- **Centralized Constants**: number_utils module for consistent precision
+- **Performance**: Full multi-core utilization with improved work distribution
+
+### Previous: v0.1.4 (January 19, 2026)
 - Powerbrot: Mandelbrot with configurable power (-10.0 to 10.0)
 - Profiling command-line flag (--profiling) for performance logs
 - Benchmark suite with v0.1.3 baseline

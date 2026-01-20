@@ -71,6 +71,7 @@ define_builtin_colormaps! {
     "Orchid Garden" => ORCHID_GARDEN_COLORMAP_JSON => "colormaps/orchid_garden.json",
     "Frozen Amaranth" => FROZEN_AMARANTH_COLORMAP_JSON => "colormaps/frozen_amaranth.json",
     "Electric Neon" => ELECTRIC_NEON_COLORMAP_JSON => "colormaps/electric_neon.json",
+    "Cosmic Dawn" => COSMIC_DAWN_COLORMAP_JSON => "colormaps/cosmic_dawn.json",
 }
 
 /// Error types for colormap I/O operations

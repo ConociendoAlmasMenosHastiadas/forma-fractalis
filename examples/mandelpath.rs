@@ -1,7 +1,7 @@
 use eframe::egui;
 use forma_fractalis::{
-    colorschemes::ColorMap, colorschemes_gui::ColorEditor, colorschemes_io,
-    filtering::FilterType, fractals::{Mandelbrot, FractalView}, gui,
+    app_state::{ViewState, InputState, ColorState, MouseState, ExportState},
+    fractals::Mandelbrot, gui,
     rendering_pipeline::{render_with_config, RenderConfig, RenderTarget},
 };
 use num_complex::Complex64;
@@ -45,51 +45,15 @@ struct IterationPath {
 }
 
 struct MandelPathApp {
-    // View state
-    view: FractalView,
+    // Grouped state (reusing from main app)
+    view_state: ViewState,
+    input: InputState,
+    color: ColorState,
+    mouse: MouseState,
+    export: ExportState,
 
-    // UI inputs
-    width_input: String,
-    height_input: String,
-    iterations_input: String,
-
-    // Colormap
-    available_colormaps: Vec<String>,
-    selected_colormap_name: String,
-    colormap: ColorMap,
-    color_editor: ColorEditor,
-
-    // Color modulation
-    use_period: bool,
-    period_input: String,
-    use_interior_color: bool,
-    interior_color: [u8; 3],
-    interior_color_r_text: String,
-    interior_color_g_text: String,
-    interior_color_b_text: String,
-    use_log_scale: bool,
-
-    // Fractal texture
-    fractal_texture: Option<egui::TextureHandle>,
-    needs_redraw: bool,
-
-    // Input debouncing for text fields
-    input_debounce_timer: Option<Instant>,
-    pending_redraw: bool,
-
-    // Mouse interaction for zoom
-    is_dragging: bool,
-    zoom_square_center: Option<egui::Pos2>,
-    zoom_square_size: f32,
-
-    // Path tracking
+    // Path tracking (specific to this example)
     iteration_paths: Vec<IterationPath>,
-
-    // Export
-    export_scale_input: String,
-    export_directory: Option<std::path::PathBuf>,
-    export_filter: FilterType,
-    export_supersample_input: String,
 
     // Status
     status_message: String,
@@ -97,45 +61,13 @@ struct MandelPathApp {
 
 impl Default for MandelPathApp {
     fn default() -> Self {
-        let available_colormaps = colorschemes_io::list_available_colormaps()
-            .unwrap_or_else(|_| Vec::new())
-            .into_iter()
-            .map(|info| info.name)
-            .collect::<Vec<_>>();
-
-        let selected_colormap_name = String::from("Default");
-        let colormap = colorschemes_io::load_colormap(&selected_colormap_name)
-            .unwrap_or_else(|_| ColorMap::default_scheme());
-
         Self {
-            view: FractalView::new(1280, 720),
-            width_input: String::from("1280"),
-            height_input: String::from("720"),
-            iterations_input: String::from("256"),
-            available_colormaps,
-            selected_colormap_name,
-            colormap,
-            color_editor: ColorEditor::new(),
-            use_period: false,
-            period_input: String::from("128"),
-            use_interior_color: false,
-            interior_color: [0, 0, 0],
-            interior_color_r_text: String::from("0"),
-            interior_color_g_text: String::from("0"),
-            interior_color_b_text: String::from("0"),
-            use_log_scale: false,
-            fractal_texture: None,
-            needs_redraw: true,
-            input_debounce_timer: None,
-            pending_redraw: false,
-            is_dragging: false,
-            zoom_square_center: None,
-            zoom_square_size: 100.0,
+            view_state: ViewState::new(1280, 720),
+            input: InputState::default(),
+            color: ColorState::default(),
+            mouse: MouseState::new(),
+            export: ExportState::new(),
             iteration_paths: Vec::new(),
-            export_scale_input: String::from("1"),
-            export_directory: None,
-            export_filter: FilterType::None,
-            export_supersample_input: String::from("1"),
             status_message: String::from("Left-click & drag to zoom. Right-click to see iteration paths. Press 'C' to clear paths."),
         }
     }
@@ -143,22 +75,22 @@ impl Default for MandelPathApp {
 
 impl MandelPathApp {
     /// Convert a complex number to screen coordinates
-    fn complex_to_screen(&self, c: Complex64, texture_size: egui::Vec2, rect: egui::Rect, scale: f32) -> Option<egui::Pos2> {
+    fn complex_to_screen(&self, c: Complex64, _texture_size: egui::Vec2, rect: egui::Rect, scale: f32) -> Option<egui::Pos2> {
         // Use the same coordinate system as FractalView::screen_to_complex
-        let aspect_ratio = self.view.width as f64 / self.view.height as f64;
-        let view_scale = 3.5 / self.view.zoom;
+        let aspect_ratio = self.view_state.view.width as f64 / self.view_state.view.height as f64;
+        let view_scale = 3.5 / self.view_state.view.zoom;
 
         // Inverse of screen_to_complex formula:
         // real = center_x + (x - width/2) * view_scale / width * aspect_ratio
         // Solving for x: x = width/2 + (real - center_x) * width / (view_scale * aspect_ratio)
-        let x_pixel = self.view.width as f64 / 2.0 
-            + (c.re - self.view.center_x) * self.view.width as f64 / (view_scale * aspect_ratio);
-        let y_pixel = self.view.height as f64 / 2.0 
-            + (c.im - self.view.center_y) * self.view.height as f64 / view_scale;
+        let x_pixel = self.view_state.view.width as f64 / 2.0 
+            + (c.re - self.view_state.view.center_x) * self.view_state.view.width as f64 / (view_scale * aspect_ratio);
+        let y_pixel = self.view_state.view.height as f64 / 2.0 
+            + (c.im - self.view_state.view.center_y) * self.view_state.view.height as f64 / view_scale;
 
         // Check if point is within texture bounds
-        if x_pixel < 0.0 || x_pixel >= self.view.width as f64 || 
-           y_pixel < 0.0 || y_pixel >= self.view.height as f64 {
+        if x_pixel < 0.0 || x_pixel >= self.view_state.view.width as f64 || 
+           y_pixel < 0.0 || y_pixel >= self.view_state.view.height as f64 {
             return None;
         }
 
@@ -176,13 +108,13 @@ impl MandelPathApp {
         let y_pixel = ((pos.y - rect.min.y) / scale) as f64;
 
         // Use the same coordinate system as FractalView::screen_to_complex
-        let aspect_ratio = self.view.width as f64 / self.view.height as f64;
-        let view_scale = 3.5 / self.view.zoom;
+        let aspect_ratio = self.view_state.view.width as f64 / self.view_state.view.height as f64;
+        let view_scale = 3.5 / self.view_state.view.zoom;
 
-        let real = self.view.center_x
-            + (x_pixel - self.view.width as f64 / 2.0) * view_scale / self.view.width as f64 * aspect_ratio;
-        let imag = self.view.center_y
-            + (y_pixel - self.view.height as f64 / 2.0) * view_scale / self.view.height as f64;
+        let real = self.view_state.view.center_x
+            + (x_pixel - self.view_state.view.width as f64 / 2.0) * view_scale / self.view_state.view.width as f64 * aspect_ratio;
+        let imag = self.view_state.view.center_y
+            + (y_pixel - self.view_state.view.height as f64 / 2.0) * view_scale / self.view_state.view.height as f64;
 
         Complex64::new(real, imag)
     }
@@ -246,29 +178,29 @@ impl MandelPathApp {
     }
 
     fn render_fractal(&mut self, ctx: &egui::Context) {
-        let max_iterations = self.iterations_input.parse::<u32>().unwrap_or(256).max(1);
-        let period = self.period_input.parse::<u32>().unwrap_or(256);
+        let max_iterations = self.input.parse_iterations();
+        let period = self.input.parse_period();
 
         let mandelbrot = Mandelbrot::new();
 
         let config = RenderConfig {
-            view: self.view.clone(),
+            view: self.view_state.view.clone(),
             fractal: &mandelbrot,
             fractal_parameters: HashMap::new(),
-            colormap: &self.colormap,
+            colormap: &self.color.colormap,
             max_iterations,
-            use_period: self.use_period,
+            use_period: self.color.use_period,
             period,
-            use_interior_color: self.use_interior_color,
-            interior_color: self.interior_color,
-            use_log_scale: self.use_log_scale,
+            use_interior_color: self.color.use_interior_color,
+            interior_color: self.color.interior_color,
+            use_log_scale: self.color.use_log_scale,
         };
 
         let buffer = render_with_config(&config, RenderTarget::Preview);
         
         // Convert RGBA buffer to ColorImage
-        let width = self.view.width as usize;
-        let height = self.view.height as usize;
+        let width = self.view_state.view.width as usize;
+        let height = self.view_state.view.height as usize;
         let mut pixels = Vec::with_capacity(width * height);
         
         for chunk in buffer.chunks(4) {
@@ -282,31 +214,31 @@ impl MandelPathApp {
             pixels,
         };
 
-        self.fractal_texture = Some(ctx.load_texture(
+        self.view_state.fractal_texture = Some(ctx.load_texture(
             "fractal",
             color_image,
             egui::TextureOptions::NEAREST,
         ));
 
-        self.needs_redraw = false;
+        self.view_state.needs_redraw = false;
     }
 }
 
 impl eframe::App for MandelPathApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Check if debounced input should trigger redraw
-        if let Some(timer) = self.input_debounce_timer {
-            if timer.elapsed() >= INPUT_DEBOUNCE_DELAY && self.pending_redraw {
-                self.needs_redraw = true;
-                self.pending_redraw = false;
-                self.input_debounce_timer = None;
-            } else if self.pending_redraw {
+        if let Some(timer) = self.input.debounce_timer {
+            if timer.elapsed() >= INPUT_DEBOUNCE_DELAY && self.input.pending_redraw {
+                self.view_state.needs_redraw = true;
+                self.input.pending_redraw = false;
+                self.input.debounce_timer = None;
+            } else if self.input.pending_redraw {
                 ctx.request_repaint_after(INPUT_DEBOUNCE_DELAY - timer.elapsed());
             }
         }
         
         // Render fractal if needed
-        if self.needs_redraw {
+        if self.view_state.needs_redraw {
             self.render_fractal(ctx);
         }
 
@@ -329,12 +261,12 @@ impl eframe::App for MandelPathApp {
                         // Dimensions
                         gui::render_dimensions_section(
                             ui,
-                            &mut self.width_input,
-                            &mut self.height_input,
-                            &mut self.view,
-                            &mut self.needs_redraw,
-                            &mut self.input_debounce_timer,
-                            &mut self.pending_redraw,
+                            &mut self.input.width,
+                            &mut self.input.height,
+                            &mut self.view_state.view,
+                            &mut self.view_state.needs_redraw,
+                            &mut self.input.debounce_timer,
+                            &mut self.input.pending_redraw,
                         );
 
                         ui.add_space(15.0);
@@ -347,22 +279,22 @@ impl eframe::App for MandelPathApp {
                             ui.label("Max Iterations:");
                             ui.add_space(8.0);
                             if ui
-                                .add(egui::TextEdit::singleline(&mut self.iterations_input).desired_width(80.0))
+                                .add(egui::TextEdit::singleline(&mut self.input.iterations).desired_width(80.0))
                                 .changed()
                             {
-                                self.input_debounce_timer = Some(Instant::now());
-                                self.pending_redraw = true;
+                                self.input.debounce_timer = Some(Instant::now());
+                                self.input.pending_redraw = true;
                             }
                             if ui.small_button("×2").clicked() {
-                                if let Ok(val) = self.iterations_input.parse::<u32>() {
-                                    self.iterations_input = (val * 2).to_string();
-                                    self.needs_redraw = true;
+                                if let Ok(val) = self.input.iterations.parse::<u32>() {
+                                    self.input.iterations = (val * 2).to_string();
+                                    self.view_state.needs_redraw = true;
                                 }
                             }
                             if ui.small_button("÷2").clicked() {
-                                if let Ok(val) = self.iterations_input.parse::<u32>() {
-                                    self.iterations_input = (val / 2).max(1).to_string();
-                                    self.needs_redraw = true;
+                                if let Ok(val) = self.input.iterations.parse::<u32>() {
+                                    self.input.iterations = (val / 2).max(1).to_string();
+                                    self.view_state.needs_redraw = true;
                                 }
                             }
                         });
@@ -373,33 +305,34 @@ impl eframe::App for MandelPathApp {
 
                         // View info
                         section_header(ui, "Current View");
-                        ui.label(format!("X: {:.6}", self.view.center_x));
-                        ui.label(format!("Y: {:.6}", self.view.center_y));
-                        ui.label(format!("Zoom: {:.2}x", self.view.zoom));
-                        ui.label(format!("Size: {}×{}", self.view.width, self.view.height));
+                        ui.label(format!("X: {:.6}", self.view_state.view.center_x));
+                        ui.label(format!("Y: {:.6}", self.view_state.view.center_y));
+                        ui.label(format!("Zoom: {:.2}x", self.view_state.view.zoom));
+                        ui.label(format!("Size: {}×{}", self.view_state.view.width, self.view_state.view.height));
 
                         ui.add_space(15.0);
                         ui.separator();
                         ui.add_space(10.0);
 
                         // Colormap
+                        let [r, g, b] = &mut self.color.interior_color_rgb_text;
                         gui::render_colormap_section(
                             ui,
-                            &mut self.available_colormaps,
-                            &mut self.selected_colormap_name,
-                            &mut self.colormap,
-                            &mut self.needs_redraw,
+                            &mut self.color.available_colormaps,
+                            &mut self.color.selected_colormap_name,
+                            &mut self.color.colormap,
+                            &mut self.view_state.needs_redraw,
                             &mut self.status_message,
-                            &mut self.use_period,
-                            &mut self.period_input,
-                            &mut self.use_interior_color,
-                            &mut self.interior_color,
-                            &mut self.interior_color_r_text,
-                            &mut self.interior_color_g_text,
-                            &mut self.interior_color_b_text,
-                            &mut self.use_log_scale,
-                            &mut self.input_debounce_timer,
-                            &mut self.pending_redraw,
+                            &mut self.color.use_period,
+                            &mut self.input.period,
+                            &mut self.color.use_interior_color,
+                            &mut self.color.interior_color,
+                            r,
+                            g,
+                            b,
+                            &mut self.color.use_log_scale,
+                            &mut self.input.debounce_timer,
+                            &mut self.input.pending_redraw,
                         );
 
                         ui.add_space(15.0);
@@ -426,7 +359,7 @@ impl eframe::App for MandelPathApp {
 
         // Main fractal display
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some(texture) = &self.fractal_texture {
+            if let Some(texture) = &self.view_state.fractal_texture {
                 let available_size = ui.available_size();
                 let texture_size = texture.size_vec2();
                 let scale = (available_size.x / texture_size.x).min(available_size.y / texture_size.y);
@@ -449,9 +382,9 @@ impl eframe::App for MandelPathApp {
                 
                 // Handle scroll wheel for zoom square resize (only when dragging with primary)
                 let scroll_delta = ui.input(|i| i.scroll_delta.y);
-                if scroll_delta != 0.0 && self.is_dragging {
-                    self.zoom_square_size = (self.zoom_square_size + scroll_delta * 2.0).max(20.0);
-                    self.status_message = format!("Zoom size: {:.0}px", self.zoom_square_size);
+                if scroll_delta != 0.0 && self.mouse.is_dragging {
+                    self.mouse.zoom_square_size = (self.mouse.zoom_square_size + scroll_delta * 2.0).max(20.0);
+                    self.status_message = format!("Zoom size: {:.0}px", self.mouse.zoom_square_size);
                 }
 
                 // Handle right-click for path generation
@@ -463,10 +396,10 @@ impl eframe::App for MandelPathApp {
                         let pixel_y = rel_pos.y as u32;
                         
                         // Convert to complex coordinates using FractalView method
-                        let (c_real, c_imag) = self.view.screen_to_complex(pixel_x, pixel_y);
+                        let (c_real, c_imag) = self.view_state.view.screen_to_complex(pixel_x, pixel_y);
                         
                         // Get max iterations
-                        let max_iterations = self.iterations_input.parse::<u32>().unwrap_or(256).max(1);
+                        let max_iterations = self.input.parse_iterations();
                         
                         // Generate the iteration series (using power = 2.0 for classic Mandelbrot)
                         let series = Mandelbrot::mandelseries(c_real, c_imag, 2.0, max_iterations);
@@ -483,24 +416,24 @@ impl eframe::App for MandelPathApp {
                 // Handle left-click drag for zoom
                 // Only start dragging if primary button is pressed (not secondary)
                 if response.drag_started() && primary_down && !secondary_down {
-                    self.is_dragging = true;
-                    self.zoom_square_center = response.interact_pointer_pos();
+                    self.mouse.is_dragging = true;
+                    self.mouse.zoom_square_center = response.interact_pointer_pos();
                 }
 
                 // Update square position while dragging (only for primary button)
-                if self.is_dragging && primary_down {
+                if self.mouse.is_dragging && primary_down {
                     if let Some(pos) = response.interact_pointer_pos() {
-                        self.zoom_square_center = Some(pos);
+                        self.mouse.zoom_square_center = Some(pos);
                     }
                 }
 
                 // Complete zoom on drag release (only for primary button)
-                if response.drag_released() && self.is_dragging {
-                    self.is_dragging = false;
-                    if let Some(center) = self.zoom_square_center {
+                if response.drag_released() && self.mouse.is_dragging {
+                    self.mouse.is_dragging = false;
+                    if let Some(center) = self.mouse.zoom_square_center {
                         // Calculate zoom region
                         let center_rel = (center - rect.min) / scale;
-                        let square_size_rel = self.zoom_square_size / scale;
+                        let square_size_rel = self.mouse.zoom_square_size / scale;
 
                         let center_x = center_rel.x as u32;
                         let center_y = center_rel.y as u32;
@@ -508,18 +441,18 @@ impl eframe::App for MandelPathApp {
                         // Calculate zoom factor based on square size relative to image size
                         let zoom_factor = texture_size.x / square_size_rel;
 
-                        self.view.zoom_at(center_x, center_y, zoom_factor as f64);
-                        self.needs_redraw = true;
-                        self.status_message = format!("Zoomed to {:.2}x", self.view.zoom);
+                        self.view_state.view.zoom_at(center_x, center_y, zoom_factor as f64);
+                        self.view_state.needs_redraw = true;
+                        self.status_message = format!("Zoomed to {:.2}x", self.view_state.view.zoom);
                     }
-                    self.zoom_square_center = None;
+                    self.mouse.zoom_square_center = None;
                 }
 
                 // Draw zoom square if dragging
-                if self.is_dragging {
-                    if let Some(center) = self.zoom_square_center {
-                        let aspect_ratio = self.view.width as f32 / self.view.height as f32;
-                        gui::render_zoom_square(ui, center, self.zoom_square_size, aspect_ratio);
+                if self.mouse.is_dragging {
+                    if let Some(center) = self.mouse.zoom_square_center {
+                        let aspect_ratio = self.view_state.view.width as f32 / self.view_state.view.height as f32;
+                        gui::render_zoom_square(ui, center, self.mouse.zoom_square_size, aspect_ratio);
                     }
                 }
 

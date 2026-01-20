@@ -46,41 +46,39 @@ pub fn render_fractal(
     fractal_parameters: &HashMap<String, f64>,
 ) {
     let total_timer = Instant::now();
-    let rows: Vec<_> = (0..view.height).collect();
-
-    // Parallel processing: each row is computed independently
+    
+    // Create a flat list of all pixel coordinates for better parallelization
+    let total_pixels = (view.width * view.height) as usize;
+    
+    // Parallel processing: compute all pixels independently
     let fractal_timer = Instant::now();
-    let pixels: Vec<Vec<[u8; 4]>> = rows
-        .par_iter()
-        .map(|&y| {
-            (0..view.width)
-                .map(|x| {
-                    let (real, imag) = view.screen_to_complex(x, y);
-                    let iter = fractal.iterate(real, imag, fractal_parameters, max_iterations);
-                    let color = color_from_iterations(
-                        iter,
-                        max_iterations,
-                        colormap,
-                        use_period,
-                        period,
-                        use_interior_color,
-                        interior_color,
-                        use_log_scale,
-                    );
-                    [color.r, color.g, color.b, 255]
-                })
-                .collect()
+    let pixels: Vec<[u8; 4]> = (0..total_pixels)
+        .into_par_iter()
+        .map(|i| {
+            let x = (i % view.width as usize) as u32;
+            let y = (i / view.width as usize) as u32;
+            let (real, imag) = view.screen_to_complex(x, y);
+            let iter = fractal.iterate(real, imag, fractal_parameters, max_iterations);
+            let color = color_from_iterations(
+                iter,
+                max_iterations,
+                colormap,
+                use_period,
+                period,
+                use_interior_color,
+                interior_color,
+                use_log_scale,
+            );
+            [color.r, color.g, color.b, 255]
         })
         .collect();
     let fractal_time = fractal_timer.elapsed();
 
     // Copy computed pixels to frame buffer
     let copy_timer = Instant::now();
-    for (y, row) in pixels.iter().enumerate() {
-        for (x, color) in row.iter().enumerate() {
-            let idx = (y * view.width as usize + x) * 4;
-            frame[idx..idx + 4].copy_from_slice(color);
-        }
+    for (i, pixel) in pixels.iter().enumerate() {
+        let idx = i * 4;
+        frame[idx..idx + 4].copy_from_slice(pixel);
     }
     let copy_time = copy_timer.elapsed();
     
