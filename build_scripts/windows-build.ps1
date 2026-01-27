@@ -76,7 +76,7 @@ Write-Host "Distribution created successfully!" -ForegroundColor Green
 Write-Host "Location: $zipPath" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Contents:" -ForegroundColor Cyan
-Write-Host "  - mandelrust.exe"
+Write-Host "  - forma-fractalis.exe"
 Write-Host "  - LICENSE-APACHE.txt"
 Write-Host "  - LICENSE-MIT.txt"
 Write-Host "  - THIRD_PARTY_LICENSES.md"

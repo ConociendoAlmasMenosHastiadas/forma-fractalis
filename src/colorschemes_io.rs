@@ -72,6 +72,7 @@ define_builtin_colormaps! {
     "Frozen Amaranth" => FROZEN_AMARANTH_COLORMAP_JSON => "colormaps/frozen_amaranth.json",
     "Electric Neon" => ELECTRIC_NEON_COLORMAP_JSON => "colormaps/electric_neon.json",
     "Cosmic Dawn" => COSMIC_DAWN_COLORMAP_JSON => "colormaps/cosmic_dawn.json",
+    "Vintage Lavender" => VINTAGE_LAVENDER_COLORMAP_JSON => "colormaps/vintage_lavender.json",
 }
 
 /// Error types for colormap I/O operations

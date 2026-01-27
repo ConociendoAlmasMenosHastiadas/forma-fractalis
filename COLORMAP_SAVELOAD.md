@@ -89,7 +89,7 @@ Built-in colormaps are available via the **Color Scheme** dropdown in the main G
 For scripting or automation, use the `colorschemes_io` module:
 
 ```rust
-use mandelrust::colorschemes_io::load_builtin_colormap;
+use forma_fractalis::colorschemes_io::load_builtin_colormap;
 
 let fire = load_builtin_colormap("Fire")?;
 ```
@@ -99,7 +99,7 @@ Available built-in colormaps: `Default`, `Fire`, `Ocean`, `Grayscale`, `Rainbow`
 ### Loading Any ColorMap
 
 ```rust
-use mandelrust::colorschemes_io::load_colormap;
+use forma_fractalis::colorschemes_io::load_colormap;
 
 // Will check built-ins first, then custom colormaps
 let colormap = load_colormap("MyCustom")?;
@@ -108,8 +108,8 @@ let colormap = load_colormap("MyCustom")?;
 ### Saving Custom ColorMaps
 
 ```rust
-use mandelrust::colorschemes::{ColorMap, ColorStop, Color};
-use mandelrust::colorschemes_io::save_colormap;
+use forma_fractalis::colorschemes::{ColorMap, ColorStop, Color};
+use forma_fractalis::colorschemes_io::save_colormap;
 
 let custom = ColorMap::new(
     "MyCustom".to_string(),
@@ -126,7 +126,7 @@ println!("Saved to: {}", path.display());
 ### Listing Available ColorMaps
 
 ```rust
-use mandelrust::colorschemes_io::list_available_colormaps;
+use forma_fractalis::colorschemes_io::list_available_colormaps;
 
 let colormaps = list_available_colormaps()?;
 for info in colormaps {
@@ -140,7 +140,7 @@ for info in colormaps {
 ### Deleting Custom ColorMaps
 
 ```rust
-use mandelrust::colorschemes_io::delete_custom_colormap;
+use forma_fractalis::colorschemes_io::delete_custom_colormap;
 
 delete_custom_colormap("MyCustom")?;
 ```
@@ -152,7 +152,7 @@ Note: Built-in colormaps cannot be deleted.
 To create a customized version of a built-in colormap:
 
 ```rust
-use mandelrust::colorschemes_io::export_builtin_colormap;
+use forma_fractalis::colorschemes_io::export_builtin_colormap;
 
 // This copies the built-in to the custom directory where you can edit it
 let path = export_builtin_colormap("Ocean")?;

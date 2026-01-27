@@ -8,25 +8,26 @@ This makes for cool wallpapers, banners, profile pics, etc.  I hope its fun and 
 
 > **NON-PROGRAMMERS**: Pre-built Windows executables are available in the [`builds/`](builds/) folder - just download the .zip file and run!
 
-![Version](https://img.shields.io/badge/version-0.1.5-blue)
+![Version](https://img.shields.io/badge/version-0.1.6-blue)
 ![Rust](https://img.shields.io/badge/rust-2021-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue)
 
 ## Features
 
 ### Multi-Fractal Support
-- **Five Fractal Types**: Mandelbrot Set, Julia Set, Burning Ship, Tippets Mandelbrot, and Multifractal-Julia
+- **Six Fractal Types**: Mandelbrot Set, Julia Set, Burning Ship, Tippets Mandelbrot, Multifractal-Julia, and Cactus
 - **Interactive Fractal Selector**: Switch between fractals instantly
 - **Fractal-Specific Parameters**: 
   - Julia Set: Adjustable c_real and c_imag parameters with real-time sliders
   - Multifractal-Julia: Power parameter k (-5.0 to 5.0) with cycle detection
+  - Cactus: Unique cubic iteration with adaptive escape radius
   - Classic Julia coordinates presets for quick discovery
 - **Optimized Default Views**: Each fractal loads with ideal starting position and zoom
 - **Trait-Based Architecture**: Extensible framework for adding more fractals
 - **Unique Features**: Multifractal-Julia includes period detection for cyclic orbits
 
 ### Advanced Color Mapping
-- **13 Built-in Color Schemes**: Default, Fire, Ocean, Grayscale, Rainbow, Academic, Coral Sunset, Olive Symmetry, Orchid Garden, Frozen Amaranth, Twilight Garden, Electric Neon, Cosmic Dawn
+- **14 Built-in Color Schemes**: Default, Fire, Ocean, Grayscale, Rainbow, Academic, Coral Sunset, Olive Symmetry, Orchid Garden, Frozen Amaranth, Twilight Garden, Electric Neon, Cosmic Dawn, Vintage Lavender
 - **Interactive Color Editor**: Create custom gradients with drag-and-drop color stops
 - **Save/Load Custom Colormaps**: Persist your color schemes as JSON files
 - **Live Preview**: Real-time gradient visualization
@@ -42,18 +43,21 @@ This makes for cool wallpapers, banners, profile pics, etc.  I hope its fun and 
 
 ### High-Quality Export
 - **PNG Export**: Lossless image output
+- **Load from PNG**: Import fractal settings from previously exported images
+- **Complete Round-Trip**: Export → Load → Exact reproduction of any fractal
 - **Scalable Resolution**: 3x default (3840×2160 from 1280×720 preview)
 - **Image Filtering**: Lanczos3 & Gaussian filters for professional quality
 - **Supersampling**: Render at 8x resolution (recommended), then downsample for ultra-sharp results
 - **PNG Metadata Embedding**: All render settings saved in PNG tEXt chunks
-  - Fractal type (Mandelbrot, Julia Set, Burning Ship)
+  - Fractal type (Mandelbrot, Julia Set, Burning Ship, Tippets Mandelbrot, Multifractal-Julia)
   - View coordinates (center_x, center_y, zoom level)
-  - Fractal parameters (e.g., Julia c values)
+  - Fractal parameters (e.g., Julia c values, powers)
   - Complete colormap data (name and full color stops)
   - Color modulation settings (period, interior color, log scale)
   - Export settings (filter type, supersample, scale)
+  - Creation timestamp for organization
   - **Reproducible renders**: Load any exported PNG and recreate the exact same image
-  - **Metadata reader available**: [PNG Meta Reader](https://github.com/ConociendoAlmasMenosHastiadas/png_meta_reader)
+  - **Documentation**: See [METADATA_FORMAT.md](METADATA_FORMAT.md) for complete format reference
 - **Custom Output Directory**: Choose where to save your renders
 - **Timestamped Filenames**: Automatic file naming with fractal type
 
@@ -275,14 +279,23 @@ See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for a comprehensive list 
 
 For detailed release notes and version history, see [CHANGELOG.md](CHANGELOG.md).
 
-### Latest: v0.1.5 (January 19, 2026)
+### Latest: v0.1.6 (January 26, 2026)
+- **Load from PNG**: Import fractal settings from exported images - complete round-trip functionality
+- **Cactus Fractal**: New cubic iteration fractal (z_{n+1} = z_n^3 + (z_0 - 1)z_n - z_0)
+- **Vintage Lavender Colormap**: Muted earth tones palette (lavender, teal, slate, tan, pumpkin)
+- **Enhanced Metadata**: Added timestamp field for organization and tracking
+- **PNG Metadata Documentation**: New [METADATA_FORMAT.md](METADATA_FORMAT.md) with complete format reference
+- **Better Error Handling**: Graceful errors for invalid/missing metadata
+- **Foundation for CLI**: Metadata structure ready for command-line rendering (v0.1.7)
+
+### Previous: v0.1.5 (January 19, 2026)
 - **Multifractal-Julia Fractal**: New fractal with cycle detection (z_{n+1} = c^k · z_n^{-2} + c)
 - **Cosmic Dawn Colormap**: Deep space to dawn gradient (Prussian Blue → Cotton Rose)
 - **Pixel-Level Parallelization**: 2-4x rendering speedup, 75-100% CPU utilization
 - **Centralized Constants**: number_utils module for consistent precision
 - **Performance**: Full multi-core utilization with improved work distribution
 
-### Previous: v0.1.4 (January 19, 2026)
+### v0.1.4 (January 19, 2026)
 - Powerbrot: Mandelbrot with configurable power (-10.0 to 10.0)
 - Profiling command-line flag (--profiling) for performance logs
 - Benchmark suite with v0.1.3 baseline

@@ -1,7 +1,7 @@
 use eframe::egui;
 use forma_fractalis::{
     app_state::{ViewState, InputState, FractalState, ColorState, MouseState, ExportState, FractalType},
-    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia}, gui,
+    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus}, gui,
     rendering_pipeline::{render_with_config, RenderConfig, RenderTarget},
     perf_log, enable_profiling,
 };
@@ -121,6 +121,7 @@ impl FractalApp {
         let burning_ship = BurningShip::new();
         let tippets_mandelbrot = TippetsMandelbrot::new();
         let multifractal_julia = MultifractalJulia::new();
+        let cactus = Cactus::new();
         
         let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
             FractalType::Mandelbrot => &mandelbrot,
@@ -128,6 +129,7 @@ impl FractalApp {
             FractalType::BurningShip => &burning_ship,
             FractalType::TippetsMandelbrot => &tippets_mandelbrot,
             FractalType::MultifractalJulia => &multifractal_julia,
+            FractalType::Cactus => &cactus,
         };
 
         // Build render configuration
@@ -163,12 +165,92 @@ impl FractalApp {
 
         self.view_state.clear_redraw();
     }
+    
+    /// Load application state from PNG metadata
+    fn load_from_metadata(&mut self, metadata: forma_fractalis::export::FractalMetadata) -> Result<(), String> {
+        // 1. Parse and set fractal type
+        let fractal_type = metadata.parse_fractal_type()?;
+        self.fractal.fractal_type = fractal_type;
+        
+        // 2. Set fractal parameters
+        self.fractal.parameters = metadata.fractal_parameters.clone();
+        
+        // 3. Update input fields for parameters
+        if let Some(&c_real) = metadata.fractal_parameters.get("c_real") {
+            self.input.julia_c_real = c_real.to_string();
+        }
+        if let Some(&c_imag) = metadata.fractal_parameters.get("c_imag") {
+            self.input.julia_c_imag = c_imag.to_string();
+        }
+        if let Some(&power) = metadata.fractal_parameters.get("power") {
+            if fractal_type == FractalType::Mandelbrot {
+                self.input.mandelbrot_power = power.to_string();
+            } else if fractal_type == FractalType::MultifractalJulia {
+                self.input.multifractal_julia_power = power.to_string();
+            }
+        }
+        
+        // 4. Set view (position, zoom, dimensions)
+        self.view_state.view = metadata.to_fractal_view();
+        
+        // 5. Update dimension inputs
+        self.input.width = metadata.width.to_string();
+        self.input.height = metadata.height.to_string();
+        
+        // 6. Set iterations
+        self.input.iterations = metadata.max_iterations.to_string();
+        
+        // 7. Load colormap
+        self.color.colormap = metadata.colormap_data.clone();
+        self.color.selected_colormap_name = metadata.colormap_name.clone();
+        
+        // 8. Set color modulation settings
+        self.color.use_period = metadata.use_period;
+        self.input.period = metadata.period.to_string();
+        self.color.use_interior_color = metadata.use_interior_color;
+        self.color.interior_color = metadata.interior_color;
+        self.color.interior_color_rgb_text = [
+            metadata.interior_color[0].to_string(),
+            metadata.interior_color[1].to_string(),
+            metadata.interior_color[2].to_string(),
+        ];
+        self.color.use_log_scale = metadata.use_log_scale;
+        
+        // 9. Set export settings
+        self.export.filter = metadata.parse_filter_type();
+        self.input.export_supersample = metadata.export_supersample.to_string();
+        self.input.export_scale = metadata.export_scale.to_string();
+        
+        Ok(())
+    }
 }
 
 impl eframe::App for FractalApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Note: Window title is set once at startup in main()
         // eframe 0.25 doesn't support dynamic title changes
+        
+        // Check if we need to load a PNG file (set by GUI button)
+        if self.status_message.starts_with("LOAD_PNG:") {
+            let path = self.status_message.strip_prefix("LOAD_PNG:").unwrap().to_string();
+            match forma_fractalis::export::load_png_metadata(&path) {
+                Ok(metadata) => {
+                    // Apply metadata to app state
+                    match self.load_from_metadata(metadata) {
+                        Ok(()) => {
+                            self.status_message = format!("✓ Loaded from: {}", path);
+                            self.view_state.needs_redraw = true;
+                        }
+                        Err(e) => {
+                            self.status_message = format!("❌ Load failed: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    self.status_message = format!("❌ Failed to read PNG metadata: {}", e);
+                }
+            }
+        }
         
         // Check if debounced input should trigger redraw
         if let Some(timer) = self.input.debounce_timer {
@@ -297,6 +379,7 @@ impl eframe::App for FractalApp {
                             let burning_ship = BurningShip::new();
                             let tippets_mandelbrot = TippetsMandelbrot::new();
                             let multifractal_julia = MultifractalJulia::new();
+                            let cactus = Cactus::new();
                             
                             let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
                                 FractalType::Mandelbrot => &mandelbrot,
@@ -304,6 +387,7 @@ impl eframe::App for FractalApp {
                                 FractalType::BurningShip => &burning_ship,
                                 FractalType::TippetsMandelbrot => &tippets_mandelbrot,
                                 FractalType::MultifractalJulia => &multifractal_julia,
+                                FractalType::Cactus => &cactus,
                             };
                             
                             gui::render_actions_section(

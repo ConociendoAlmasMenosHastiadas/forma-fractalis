@@ -681,6 +681,32 @@ pub fn render_actions_section(
     export_supersample_input: &mut String,
     status_message: &mut String,
 ) {
+    // Import section
+    section_header(ui, "Import from PNG");
+    
+    if ui
+        .add_sized(
+            [ui.available_width(), 30.0],
+            egui::Button::new("📂 Load from PNG"),
+        )
+        .clicked()
+    {
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("PNG Image", &["png"])
+            .pick_file()
+        {
+            *status_message = format!("Loading from: {}", path.display());
+            // Placeholder for actual loading logic (will be implemented in main.rs)
+            // We'll return the path through status_message with a special prefix
+            *status_message = format!("LOAD_PNG:{}", path.display());
+        }
+    }
+    
+    ui.add_space(10.0);
+    ui.separator();
+    ui.add_space(10.0);
+    
+    // Export section
     section_header(ui, "Export Image");
 
     // Scale input

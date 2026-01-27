@@ -246,7 +246,7 @@ When adding a new fractal type to the project, follow this checklist to ensure c
 - Not calling trigger_debounced_redraw for text inputs (parameter changes won't trigger render)
 
 ## Final to-do before each release
-- only executed after the plan for the release is complete and you should ask if we're at the end stage
+- only executed after the plan for the release is complete and you should ask if we're at the end stage.  complete means the points are settled or moved into the next plan.
 - summarize plan and add to release section in readme.md
 - move old plan to old_plans
 - use scripts in build_scripts to construct a release

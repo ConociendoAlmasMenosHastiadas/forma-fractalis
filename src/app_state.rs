@@ -128,6 +128,7 @@ pub enum FractalType {
     BurningShip,
     TippetsMandelbrot,
     MultifractalJulia,
+    Cactus,
 }
 
 impl FractalType {
@@ -138,6 +139,7 @@ impl FractalType {
             FractalType::BurningShip => "Burning Ship",
             FractalType::TippetsMandelbrot => "Tippets Mandelbrot",
             FractalType::MultifractalJulia => "Multifractal-Julia",
+            FractalType::Cactus => "Cactus",
         }
     }
 
@@ -152,12 +154,13 @@ impl FractalType {
             FractalType::BurningShip,
             FractalType::TippetsMandelbrot,
             FractalType::MultifractalJulia,
+            FractalType::Cactus,
         ]
     }
 
     /// Creates a fractal instance from the enum type
     pub fn create_instance(&self) -> Box<dyn crate::fractals::Fractal> {
-        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia};
+        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus};
         
         match self {
             FractalType::Mandelbrot => Box::new(Mandelbrot::new()),
@@ -165,6 +168,7 @@ impl FractalType {
             FractalType::BurningShip => Box::new(BurningShip::new()),
             FractalType::TippetsMandelbrot => Box::new(TippetsMandelbrot::new()),
             FractalType::MultifractalJulia => Box::new(MultifractalJulia::new()),
+            FractalType::Cactus => Box::new(Cactus::new()),
         }
     }
 
@@ -219,6 +223,12 @@ impl FractalType {
                 view.zoom = 1.0;
                 params.clear();
                 params.insert("power".to_string(), 1.0); // Default to k=1: z_{n+1} = c * z_{n-2} + c
+            }
+            FractalType::Cactus => {
+                view.center_x = 0.0;
+                view.center_y = 0.0;
+                view.zoom = 0.6;
+                params.clear();
             }
         }
     }

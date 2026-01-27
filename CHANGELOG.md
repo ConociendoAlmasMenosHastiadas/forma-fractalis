@@ -7,6 +7,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-01-26
+
+### Added
+- **Load from PNG Feature**: Complete round-trip import/export functionality
+  - "Load from PNG" button in GUI with file picker dialog
+  - Reads all fractal settings from PNG tEXt chunks
+  - Restores fractal type, parameters, view, colormap, and all settings
+  - Enables sharing discoveries with embedded settings
+  - Foundation for command-line rendering (v0.1.7)
+- **Cactus Fractal**: New cubic iteration fractal type
+  - Formula: z_{n+1} = z_n^3 + (z_0 - 1)z_n - z_0
+  - Adaptive escape radius: R > max(1, sqrt(|z_0-1|+1), |z_0|^(1/3))
+  - Default view centered at origin with 0.6 zoom
+  - 7 comprehensive unit tests covering edge cases
+  - Reference: https://paulbourke.net/fractals/cactus/
+- **Vintage Lavender Colormap**: 5-color muted earth tones palette
+  - Vintage Lavender (#885a89) → Muted Teal (#8aa8a1) → Pale Slate (#cbcbd4)
+  - → Tan (#d1b490) → Pumpkin Spice (#ee7b30)
+  - Complements Cactus fractal's organic structure
+  - Created using coolors.co palette parser
+- **Enhanced Metadata Format**:
+  - Added `Created-Timestamp` field for organization
+  - All metadata fields now properly documented
+  - Version fields for future compatibility tracking
+- **METADATA_FORMAT.md**: Comprehensive documentation of PNG metadata structure
+  - Complete field reference with examples
+  - Fractal-specific parameter documentation
+  - Future command-line usage examples
+  - Technical notes on PNG chunk implementation
+- **PNG Metadata Parsing**: `load_png_metadata()` function in export module
+  - Validates Forma Fractalis metadata presence
+  - Graceful error handling for missing/invalid fields
+  - Parses all metadata into `FractalMetadata` struct
+  - Helper methods for type conversion (fractal type, filter type, view)
+- **State Loading System**: `load_from_metadata()` method in FractalApp
+  - Applies all settings from metadata to application state
+  - Updates fractal type, parameters, view, colormap, and export settings
+  - Synchronizes text input fields with loaded values
+  - Triggers automatic redraw after loading
+- **Test Coverage**: Comprehensive unit and integration tests
+  - 35 tests total (28 existing + 7 new)
+  - Integration test: Export → Load → Verify round-trip (test_export_and_load_roundtrip)
+  - Integration test: Load into fresh application state (test_load_into_fresh_state)
+  - Integration test: State replacement between different fractals (test_state_replacement_different_fractal)
+  - Integration test: All 6 fractal types export/load correctly (test_export_and_load_all_fractal_types)
+  - Edge case tests: Invalid PNGs, missing metadata, nonexistent files
+  - Unit tests: Metadata parsing, type conversions, struct construction
+- **PNG Metadata Improvements**: Added View-Width and View-Height fields
+  - Stores original view dimensions separately from scaled export dimensions
+  - Backward compatible: Falls back to PNG dimensions for old metadata
+  - Fixes bug where loaded dimensions were incorrect after scaling
+
+### Fixed
+- **Bug Fix**: Width/height now correctly restore from metadata
+  - Previously: Loaded PNG image dimensions (scaled) instead of original view size
+  - Now: Stores View-Width and View-Height in metadata explicitly
+  - Impact: Load from PNG now correctly reproduces original view dimensions
+  - Backward compatible with existing PNGs
+- **Bug Fix**: Removed outdated "mandelrust" references
+  - Updated all documentation to use correct library name "forma_fractalis"
+  - Fixed build script output messages
+  - Updated COLORMAP_SAVELOAD.md examples
+  - Deleted obsolete mandelrust_v*.zip files from builds directory
+
+### Changed
+- **Export Module**: Now handles both export and import operations
+  - Renamed module documentation to "Image Export and Import System"
+  - Added Serde derive traits for serialization
+  - Import capabilities complement existing export features
+
+### Documentation
+- New METADATA_FORMAT.md with complete format specification
+- Updated README.md with Load from PNG feature and Cactus fractal
+- Updated version badge to 0.1.6
+- Plan v0.1.6 tracking updated with progress notes
+
+### Technical Notes
+- Metadata version: 1.0 (first versioned format)
+- All state managed through v0.1.5's grouped state pattern
+- Error messages use ✓ and ❌ emojis for visual feedback
+- Status message prefixing ("LOAD_PNG:") for GUI-to-logic communication
+- Cactus fractal uses adaptive escape radius for accuracy
+
+### Testing
+- ✅ All 28 unit tests passing (7 new for Cactus fractal)
+- ✅ Code compiles without errors or warnings
+- ✅ Release build successful
+- ✅ Manual testing confirmed: export → load → exact reproduction
+- ✅ Cactus fractal renders correctly with Vintage Lavender colormap
+
 ## [0.1.5] - 2026-01-19
 
 ### Added
