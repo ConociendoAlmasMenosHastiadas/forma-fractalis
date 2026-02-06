@@ -14,7 +14,7 @@
 //! let buffer = render_with_config(&config, RenderTarget::Preview);
 //! ```
 
-use crate::colorschemes::ColorMap;
+use scala_chromatica::ColorMap;
 use crate::fractals::{Fractal, FractalView};
 use crate::perf_log;
 use crate::rendering::render_fractal;
@@ -153,7 +153,7 @@ pub fn render_with_config(config: &RenderConfig, target: RenderTarget) -> Vec<u8
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::colorschemes::ColorMap;
+    use scala_chromatica::ColorMap;
     use crate::fractals::Mandelbrot;
 
     #[test]

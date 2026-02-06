@@ -9,7 +9,7 @@
 //! - RGBA buffer output for GPU texture upload
 
 use crate::perf_log;
-use crate::colorschemes::{color_from_iterations, ColorMap};
+use scala_chromatica::{color_from_iterations, ColorMap};
 use crate::fractals::{Fractal, FractalView};
 use rayon::prelude::*;
 use std::collections::HashMap;

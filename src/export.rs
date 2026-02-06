@@ -5,7 +5,7 @@
 //! Uses the unified rendering pipeline with optional filtering and supersampling
 //! for professional-quality output.
 
-use crate::colorschemes::ColorMap;
+use scala_chromatica::ColorMap;
 use crate::filtering::{apply_supersample_filter, calculate_supersample_dimensions, FilterType};
 use crate::fractals::{Fractal, FractalView};
 use crate::perf_log;
@@ -303,7 +303,7 @@ mod tests {
     #[test]
     fn test_metadata_struct() {
         use std::collections::HashMap;
-        use crate::colorschemes::ColorMap;
+        use scala_chromatica::ColorMap;
         
         let mut params = HashMap::new();
         params.insert("c_real".to_string(), -0.7);

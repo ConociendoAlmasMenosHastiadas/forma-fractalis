@@ -14,8 +14,8 @@
 //! All functions take `&mut egui::Ui` for rendering within egui layouts.
 
 use crate::perf_log;
-use crate::colorschemes::ColorMap;
-use crate::colorschemes_io;
+use scala_chromatica::ColorMap;
+use scala_chromatica::io as colorschemes_io;
 use crate::fractals::FractalView;
 use eframe::egui;
 use std::collections::HashMap;

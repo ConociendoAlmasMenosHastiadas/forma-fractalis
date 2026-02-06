@@ -1210,6 +1210,7 @@ dependencies = [
  "png",
  "rayon",
  "rfd",
+ "scala-chromatica",
  "serde",
  "serde_json",
  "tempfile",
@@ -2585,6 +2586,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "scala-chromatica"
+version = "0.1.0"
+source = "git+https://github.com/ConociendoAlmasMenosHastiadas/scala-chromatica.git#117d1d5c40d2d21d9f37a330f4e31e7b0ffcc978"
+dependencies = [
+ "directories",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

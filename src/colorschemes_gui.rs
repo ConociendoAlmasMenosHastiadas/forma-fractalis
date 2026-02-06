@@ -21,7 +21,7 @@
 //! }
 //! ```
 
-use crate::colorschemes::{Color, ColorMap, ColorStop};
+use scala_chromatica::{Color, ColorMap, ColorStop};
 use eframe::egui;
 
 /// State for the color editor

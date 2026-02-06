@@ -5,7 +5,7 @@
 //! related state into logical groups, making the codebase more maintainable
 //! and reducing function parameter counts from 10-15 to 3-5.
 
-use crate::colorschemes::ColorMap;
+use scala_chromatica::ColorMap;
 use crate::colorschemes_gui::ColorEditor;
 use crate::filtering::FilterType;
 use crate::fractals::FractalView;
@@ -323,7 +323,7 @@ pub struct ColorState {
 
 impl Default for ColorState {
     fn default() -> Self {
-        use crate::colorschemes_io;
+        use scala_chromatica::io as colorschemes_io;
 
         let available_colormaps = colorschemes_io::list_available_colormaps()
             .unwrap_or_else(|_| Vec::new())

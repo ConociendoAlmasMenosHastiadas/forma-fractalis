@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.61] - 2026-02-05
+
+### Changed
+- **Colormap Library Extraction**: Colormaps moved to standalone `scala-chromatica` crate
+  - Core colormap functionality now in separate, reusable crate
+  - 14 built-in colormaps (Fire, Ocean, Rainbow, Academic, etc.)
+  - Smooth RGB interpolation and HSV color space support
+  - Platform-specific config directory management
+  - JSON serialization for custom colormaps
+  - Available at: https://github.com/ConociendoAlmasMenosHastiadas/scala-chromatica
+
+### Deprecated
+- `src/colorschemes.rs` - Use `scala_chromatica` crate directly (removed in v0.1.7)
+- `src/colorschemes_io.rs` - Use `scala_chromatica::io` module (removed in v0.1.7)
+- `src/colormaps/*.json` - 14 JSON files now in scala-chromatica (removed in v0.1.7)
+
+### Added
+- Dependency on `scala-chromatica` crate via git
+- Bridge modules with deprecation warnings for smooth transition
+- `ColorScheme` enum remains for GUI-specific logic
+
+### Technical
+- All imports updated to use `scala_chromatica` directly
+- GUI functionality (`colorschemes_gui.rs`) remains in forma-fractalis
+- Zero functional changes - pure refactoring for code reuse
+- All tests passing (35 tests)
+- Deprecation warnings guide users to new API
+
+### Migration Guide
+```rust
+// Before (deprecated)
+use forma_fractalis::colorschemes::{Color, ColorMap};
+use forma_fractalis::colorschemes_io;
+
+// After
+use scala_chromatica::{Color, ColorMap};
+use scala_chromatica::io;
+```
+
 ## [0.1.6] - 2026-01-26
 
 ### Added
@@ -196,10 +235,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 - Created BENCHMARKS.md with v0.1.3 baseline results
-- Added comprehensive GPU acceleration plan (plan_v0.2.0.md)
+- Added comprehensive GPU acceleration plan (v0.2.0.md)
 - Updated AGENTS.md with simplified colormap registration steps
 - Detailed redraw system documentation in main.rs
-- GUI architecture refactoring notes added to plan_v0.1.5.md
+- GUI architecture refactoring notes added to v0.1.5.md
 
 ### Performance
 - Benchmarks confirm NO regression from v0.1.3

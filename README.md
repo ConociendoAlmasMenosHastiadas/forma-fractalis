@@ -8,7 +8,7 @@ This makes for cool wallpapers, banners, profile pics, etc.  I hope its fun and 
 
 > **NON-PROGRAMMERS**: Pre-built Windows executables are available in the [`builds/`](builds/) folder - just download the .zip file and run!
 
-![Version](https://img.shields.io/badge/version-0.1.6-blue)
+![Version](https://img.shields.io/badge/version-0.1.61-blue)
 ![Rust](https://img.shields.io/badge/rust-2021-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue)
 
@@ -27,6 +27,7 @@ This makes for cool wallpapers, banners, profile pics, etc.  I hope its fun and 
 - **Unique Features**: Multifractal-Julia includes period detection for cyclic orbits
 
 ### Advanced Color Mapping
+- **Powered by [scala-chromatica](https://github.com/ConociendoAlmasMenosHastiadas/scala-chromatica)**: Framework-agnostic color gradient library
 - **14 Built-in Color Schemes**: Default, Fire, Ocean, Grayscale, Rainbow, Academic, Coral Sunset, Olive Symmetry, Orchid Garden, Frozen Amaranth, Twilight Garden, Electric Neon, Cosmic Dawn, Vintage Lavender
 - **Interactive Color Editor**: Create custom gradients with drag-and-drop color stops
 - **Save/Load Custom Colormaps**: Persist your color schemes as JSON files
@@ -279,7 +280,14 @@ See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for a comprehensive list 
 
 For detailed release notes and version history, see [CHANGELOG.md](CHANGELOG.md).
 
-### Latest: v0.1.6 (January 26, 2026)
+### Latest: v0.1.61 (February 5, 2026)
+- **Colormap Library Extraction**: Colormaps moved to standalone [scala-chromatica](https://github.com/ConociendoAlmasMenosHastiadas/scala-chromatica) crate
+- **Framework-Agnostic**: Reusable color gradient library for any Rust project
+- **Zero Functional Changes**: Pure refactoring for code reuse
+- **Deprecation Path**: Bridge modules for smooth transition (removed in v0.1.7)
+- **All Tests Passing**: 35 tests confirm backwards compatibility
+
+### Previous: v0.1.6 (January 26, 2026)
 - **Load from PNG**: Import fractal settings from exported images - complete round-trip functionality
 - **Cactus Fractal**: New cubic iteration fractal (z_{n+1} = z_n^3 + (z_0 - 1)z_n - z_0)
 - **Vintage Lavender Colormap**: Muted earth tones palette (lavender, teal, slate, tan, pumpkin)
