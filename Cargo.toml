@@ -1,6 +1,6 @@
 [package]
 name = "forma-fractalis"
-version = "0.1.6"
+version = "0.1.61"
 edition = "2021"
 
 [dependencies]
