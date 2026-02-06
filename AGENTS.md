@@ -6,155 +6,18 @@ steps to be caried out are found in the plan*.md files.  If you have not context
 - if plan results in a feature being deprecated it should start a deprecation plan that will span at least one more feature (so if its marked for deprecation in plan v0.1.3 then plan v0.1.4 should be updated to reflect that removing the feature will be completed)
 - **Each release requires a new fractal and colormap**: This is a project requirement for every version. If the plan doesn't specify them at creation, they should be marked as "TBD" and added before finalizing the release. The fractal should showcase the version's features, and the colormap should complement it visually.
 
-## Plan Integration and Dependencies
+## Architecture Notes
 
-The plans build on each other in a carefully orchestrated sequence. Always review dependencies before starting a new plan:
+**Grouped State Pattern** (implemented in v0.1.5):
+The application uses grouped state structs defined in `src/app_state.rs`:
+- **ViewState** - Fractal view and rendering
+- **InputState** - Text inputs and debouncing (has `parse_*()` helper methods)
+- **FractalState** - Fractal type and parameters
+- **ColorState** - Colormaps and color modulation
+- **MouseState** - Mouse interaction for zooming
+- **ExportState** - Export settings
 
-**v0.1.5 - GUI Architecture Refactoring** (Foundation)
-- Creates grouped state pattern (ViewState, FractalState, ColorState, etc.)
-- Reduces function parameters from 10-15 to 3-5
-- Prepares architecture for all future features
-- **No dependencies** - Can start immediately
-
-**v0.1.6 - PNG Loading** (Builds on v0.1.5)
-- Depends on: v0.1.5 state structs
-- Loads fractal settings from PNG metadata
-- Uses grouped state for cleaner loading logic
-- Completes round-trip: Export → Load → Reproduce
-
-**v0.1.7 - Command-Line Rendering** (Builds on v0.1.5 + v0.1.6)
-- Depends on: v0.1.5 state structs, v0.1.6 metadata parsing
-- Headless rendering from PNG or JSON files
-- Reuses state construction patterns
-- Enables automation and batch processing
-
-**v0.2.0 - GPU Acceleration** (Major release, builds on all prior)
-- Depends on: v0.1.5 state management, v0.1.7 CLI for batch rendering
-- GPU compute shaders for parallel iteration
-- Auto-switch between CPU/GPU based on workload
-- Massive performance improvement for high-res exports
-
-**v0.2.1 - Animated GIF Generation** (Builds on v0.1.7 + v0.2.0)
-- Depends on: v0.1.7 batch rendering, v0.2.0 GPU for speed
-- Frame generation for zoom/parameter animations
-- Leverages GPU for faster frame rendering
-
-**v0.2.2 - Arbitrary Precision** (Research-heavy, builds on v0.2.0)
-- Depends on: v0.2.0 GPU architecture understanding
-- Arbitrary precision for deep zooms beyond f64 limits
-- CPU/GPU switching strategy for extreme zoom
-
-**Key Integration Points:**
-1. **State Structs (v0.1.5)** → Used by v0.1.6 loading, v0.1.7 CLI, v0.2.0 GPU
-2. **Metadata System (v0.1.6)** → Used by v0.1.7 CLI, enables v0.2.1 keyframes
-3. **Batch Rendering (v0.1.7)** → Foundation for v0.2.1 animations
-4. **GPU Backend (v0.2.0)** → Accelerates v0.2.1 animations, informs v0.2.2 precision strategy
-
-**When starting a new plan:**
-- Read the Dependencies section first
-- Verify all prerequisite plans are complete
-- Review how the plan integrates with earlier work
-- Update cross-references if you discover new integration points
-
-## Grouped State Architecture (v0.1.5+)
-
-Starting with v0.1.5, the application uses a **grouped state pattern** to organize the ~30 individual fields previously scattered across the main FractalApp struct.
-
-### State Structs (defined in src/app_state.rs)
-
-**ViewState** - Fractal view and rendering state
-- `view: FractalView` - View coordinates, zoom, dimensions
-- `fractal_texture: Option<TextureHandle>` - Rendered fractal texture
-- `needs_redraw: bool` - Flag to trigger re-rendering
-
-**InputState** - All text input fields and debouncing
-- `width`, `height`, `iterations`, `period`, `bailout`, etc. (String fields)
-- `debounce_timer: Option<Instant>` - Input debouncing timer
-- `pending_redraw: bool` - Flag for debounced redraw
-- Helper methods: `parse_iterations()`, `parse_period()`, `parse_bailout()`, etc.
-
-**FractalState** - Fractal type and parameters
-- `fractal_type: FractalType` - Current fractal (Mandelbrot, Julia, etc.)
-- `parameters: HashMap<String, f64>` - Fractal-specific parameters
-- Methods: `set_parameter()`, `get_parameter()`, fractal lifecycle callbacks
-
-**ColorState** - Color scheme and modulation
-- `colormap: ColorMap` - Current color scheme
-- `use_period`, `use_interior_color`, `use_log_scale` - Modulation flags
-- `interior_color: [u8; 3]` - RGB for interior color
-- `interior_color_rgb_text: [String; 3]` - Text inputs for RGB values
-- `available_colormaps`, `selected_colormap_name` - Colormap selection
-
-**MouseState** - Mouse interaction for zooming
-- `is_dragging: bool` - Currently dragging for zoom
-- `zoom_square_center: Option<Pos2>` - Center of zoom square
-- `zoom_square_size: f32` - Size of zoom square in pixels
-
-**ExportState** - Export directory and filtering
-- `export_directory: String` - Path for saving exports
-- `filter_type: FilterType` - PNG filter type selection
-
-### Usage Guidelines
-
-**When adding new state:**
-1. Determine which logical group it belongs to
-2. Add the field to the appropriate state struct
-3. Update Default impl if needed
-4. Add helper methods if the field requires parsing or validation
-
-**When refactoring existing code:**
-1. Replace individual field references: `self.view` → `self.view_state.view`
-2. Use helper methods for parsed inputs: `self.input.parse_iterations()` instead of inline parsing
-3. Array splitting for multiple mutable borrows: `let [r, g, b] = &mut self.color.interior_color_rgb_text;`
-
-**Bridge Pattern:**
-- main.rs currently uses a bridge pattern: extracts individual fields from grouped state to call old gui.rs function signatures
-- This allows gradual refactoring without breaking existing code
-- Future work: refactor gui.rs functions to accept grouped state directly
-
-**Benefits:**
-- Reduced parameter counts: 10-15 parameters → 3-5
-- Clearer code organization and intent
-- Easier to pass state to helper functions
-- Better IDE autocomplete and navigation
-- Foundation for serialization (PNG loading, CLI rendering)
-
-### Example Migration
-
-**Before:**
-```rust
-struct FractalApp {
-    view: FractalView,
-    needs_redraw: bool,
-    iterations_input: String,
-    width_input: String,
-    // ... 25+ more fields
-}
-
-gui::render_settings(
-    ui,
-    &mut self.iterations_input,
-    &mut self.period_input,
-    &mut self.bailout_input,
-    // ... 12+ more parameters
-);
-```
-
-**After:**
-```rust
-struct FractalApp {
-    view_state: ViewState,
-    input: InputState,
-    fractal: FractalState,
-    color: ColorState,
-    mouse: MouseState,
-    export: ExportState,
-    status_message: String,
-}
-
-// Eventually (after gui.rs refactoring):
-gui::render_settings(ui, &mut self.input, &mut self.fractal);
-```
+When adding new state, determine which group it belongs to and add helper methods if needed.
 
 ## Adding New Fractals
 
@@ -263,70 +126,10 @@ And copy the relevant results into BENCHMARKS.md for comparison
 
 **Since v0.1.61, colormaps are maintained in the [scala-chromatica](https://github.com/ConociendoAlmasMenosHastiadas/scala-chromatica) crate.**
 
-To add new colormaps:
+See the scala-chromatica AGENTS.md for complete colormap creation guidelines:
+- Coolors.co parser utility
+- Manual colormap creation
+- HSV gradient techniques
+- Best practices and testing
 
-1. **Clone the scala-chromatica repository:**
-   ```powershell
-   git clone https://github.com/ConociendoAlmasMenosHastiadas/scala-chromatica.git
-   cd scala-chromatica
-   ```
-
-2. **Using the Coolors Parser Utility:**
-   - Get palette from https://coolors.co/ (Export → XML)
-   - Save XML to `build_scripts/my_palette.xml`
-   - Generate colormap JSON:
-     ```powershell
-     python build_scripts/coolors_parser.py --pretty \
-         -i build_scripts/my_palette.xml \
-         -o src/colormaps/my_colormap.json
-     ```
-   - Edit `src/colormaps/my_colormap.json` to customize the `"name"` field
-
-3. **Register the colormap:**
-   - Open `src/io.rs`
-   - Find the `define_builtin_colormaps!` macro invocation
-   - Add your colormap to the list:
-     ```rust
-     "My Colormap Name" => MY_COLORMAP_JSON => "colormaps/my_colormap.json",
-     ```
-   - The macro automatically handles all registration
-
-4. **Test in scala-chromatica:**
-   ```powershell
-   cargo test
-   cargo run --example basic_usage
-   ```
-
-5. **Update forma-fractalis (if needed):**
-   - forma-fractalis will automatically pick up new colormaps on next `cargo update`
-   - No changes needed in forma-fractalis code
-   - New colormaps appear in the GUI dropdown automatically
-
-### Manual Colormap Creation
-
-Create JSON file in `scala-chromatica/src/colormaps/`:
-
-```json
-{
-  "name": "Display Name",
-  "gradient": [
-    {"position": 0.0, "r": 255, "g": 0, "b": 0},
-    {"position": 0.5, "r": 0, "g": 255, "b": 0},
-    {"position": 1.0, "r": 0, "g": 0, "b": 255}
-  ]
-}
-```
-
-**Guidelines:**
-- `position`: 0.0 to 1.0, sorted ascending
-- At least 2 gradient stops
-- RGB values: 0-255
-- Register in `src/io.rs` (same as step 3 above)
-
-### Colormap Best Practices
-
-- **Name conventions:** Descriptive (e.g., "Ocean Depths", "Fire Storm")
-- **Positions:** Even distribution for smooth gradients, clustered for sharp transitions
-- **Colors:** High contrast for visibility
-- **Testing:** Test with different fractals (Mandelbrot, Julia) and iteration counts
-- **Inspiration:** Paul Bourke's fractal gallery, nature photography, artwork
+New colormaps added to scala-chromatica automatically appear in forma-fractalis after running `cargo update`.
