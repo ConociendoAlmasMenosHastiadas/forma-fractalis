@@ -7,44 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.61] - 2026-02-05
-
-### Changed
-- **Colormap Library Extraction**: Colormaps moved to standalone `scala-chromatica` crate
-  - Core colormap functionality now in separate, reusable crate
-  - 14 built-in colormaps (Fire, Ocean, Rainbow, Academic, etc.)
-  - Smooth RGB interpolation and HSV color space support
-  - Platform-specific config directory management
-  - JSON serialization for custom colormaps
-  - Available at: https://github.com/ConociendoAlmasMenosHastiadas/scala-chromatica
-
-### Deprecated
-- `src/colorschemes.rs` - Use `scala_chromatica` crate directly (removed in v0.1.7)
-- `src/colorschemes_io.rs` - Use `scala_chromatica::io` module (removed in v0.1.7)
-- `src/colormaps/*.json` - 14 JSON files now in scala-chromatica (removed in v0.1.7)
+## [0.1.7] - 2026-02-14
 
 ### Added
-- Dependency on `scala-chromatica` crate via git
-- Bridge modules with deprecation warnings for smooth transition
-- `ColorScheme` enum remains for GUI-specific logic
+- **Command-Line Rendering**: Headless fractal rendering without GUI
+  - `forma-fractalis render --input <file> --output <file>` command
+  - Supports loading from PNG metadata or JSON settings files
+  - Parameter overrides via CLI (--width, --height, --iterations, --scale, --supersample)
+  - Progress indicators with elapsed time display
+  - Proper exit codes (0=success, 1=error)
+  - Built with `clap` 4.4 for robust argument parsing
+- **Export Settings as JSON**: Standalone settings export without rendering
+  - "Export Settings (JSON)" button in GUI
+  - Creates shareable, human-readable settings files
+  - Smaller files for version control and collaboration
+  - Can be used with CLI for batch rendering
+- **State Conversion System**: Clean bidirectional metadata↔state conversion
+  - `From<&FractalMetadata>` implementations for all state structs
+  - `FractalMetadata::from_app_state()` for reverse conversion
+  - Eliminates 50+ lines of manual field mapping
+  - Single source of truth for conversion logic
+- **Enhanced Export API**: State-based export function
+  - `export_png_from_state()` simplifies export calls
+  - Reduced from 13 parameters to 5 state struct references
+  - Automatically handles metadata creation
+  - Cleaner, more maintainable code architecture
 
-### Technical
-- All imports updated to use `scala_chromatica` directly
-- GUI functionality (`colorschemes_gui.rs`) remains in forma-fractalis
-- Zero functional changes - pure refactoring for code reuse
-- All tests passing (35 tests)
-- Deprecation warnings guide users to new API
+### Changed
+- **Refactored State Management**: Improved maintainability
+  - `load_from_metadata()` simplified from 50+ lines to 10 lines
+  - Uses trait-based conversions instead of manual field mapping
+  - Easier to add new fields (one place instead of three)
+  - Better type safety and compiler-enforced completeness
+- **Main Function**: CLI integration
+  - Checks for CLI arguments before launching GUI
+  - Maintains backward compatibility with GUI mode
+  - Seamless CLI/GUI mode switching
 
-### Migration Guide
-```rust
-// Before (deprecated)
-use forma_fractalis::colorschemes::{Color, ColorMap};
-use forma_fractalis::colorschemes_io;
+### Removed
+- **Completed scala-chromatica Migration**: Removed deprecated bridge modules
+  - Deleted `src/colorschemes.rs` bridge module
+  - Deleted `src/colorschemes_io.rs` bridge module
+  - Deleted `src/colormaps/` directory (14 JSON files)
+  - All imports now use `scala_chromatica` directly
+  - Deprecation cycle from v0.1.61 complete
 
-// After
-use scala_chromatica::{Color, ColorMap};
-use scala_chromatica::io;
-```
+### Dependencies
+- Added `clap` 4.4 with derive feature for CLI argument parsing
+- Added `indicatif` 0.17 for CLI progress indicators
+
+### Testing
+- Added 5 new unit tests for state conversions
+- Test round-trip metadata → state → metadata
+- Verify all fractal types convert correctly
+- All 37 tests passing
 
 ## [0.1.6] - 2026-01-26
 

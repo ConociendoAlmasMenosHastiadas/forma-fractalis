@@ -272,6 +272,109 @@ pub fn export_png(
     Ok(path.display().to_string())
 }
 
+/// Export PNG from application state structs
+///
+/// This is the recommended way to export fractal images as it uses the clean
+/// state struct architecture from v0.1.5 and automatically handles metadata
+/// creation through bidirectional conversions.
+///
+/// # Arguments
+/// * `fractal_state` - Fractal type and parameters
+/// * `view_state` - View position and zoom
+/// * `color_state` - Colormap and color settings
+/// * `input_state` - Iterations and other numeric inputs
+/// * `export_state` - Export settings (filter, directory)
+/// * `fractal` - The fractal implementation to render
+/// * `scale` - Scaling factor (e.g., 3.0 for 3x the preview dimensions)
+/// * `supersample` - Supersampling multiplier (1 = no supersample, 2 = 2x, etc.)
+///
+/// # Returns
+/// Result with the path to the saved file, or an error message
+pub fn export_png_from_state(
+    fractal_state: &crate::app_state::FractalState,
+    view_state: &crate::app_state::ViewState,
+    color_state: &crate::app_state::ColorState,
+    input_state: &crate::app_state::InputState,
+    export_state: &crate::app_state::ExportState,
+    fractal: &dyn Fractal,
+    scale: f32,
+    supersample: u32,
+) -> Result<String, String> {
+    // Extract values from state structs
+    let view = &view_state.view;
+    let colormap = &color_state.colormap;
+    let max_iterations = input_state.parse_iterations();
+    let fractal_parameters = &fractal_state.parameters;
+    let use_period = color_state.use_period;
+    let period = input_state.parse_period();
+    let use_interior_color = color_state.use_interior_color;
+    let interior_color = color_state.interior_color;
+    let use_log_scale = color_state.use_log_scale;
+    let filter_type = export_state.filter;
+    let output_dir = export_state.directory.as_ref();
+
+    // Delegate to the original export_png function
+    export_png(
+        view,
+        colormap,
+        max_iterations,
+        fractal,
+        fractal_parameters,
+        use_period,
+        period,
+        use_interior_color,
+        interior_color,
+        use_log_scale,
+        filter_type,
+        supersample,
+        scale,
+        output_dir,
+    )
+}
+
+/// Export settings as standalone JSON file
+///
+/// Creates a JSON file containing all fractal settings without rendering an image.
+/// This is useful for sharing settings, version control, or CLI rendering.
+///
+/// # Arguments
+/// * `fractal_state` - Fractal type and parameters
+/// * `view_state` - View position and zoom
+/// * `color_state` - Colormap and color settings
+/// * `input_state` - Iterations and other numeric inputs
+/// * `export_state` - Export settings (filter, directory)
+/// * `output_path` - Path where JSON file will be saved
+///
+/// # Returns
+/// Result with the path to the saved file, or an error message
+pub fn export_settings_json(
+    fractal_state: &crate::app_state::FractalState,
+    view_state: &crate::app_state::ViewState,
+    color_state: &crate::app_state::ColorState,
+    input_state: &crate::app_state::InputState,
+    export_state: &crate::app_state::ExportState,
+    output_path: &Path,
+) -> Result<String, String> {
+    // Create metadata from state
+    let metadata = FractalMetadata::from_app_state(
+        fractal_state,
+        view_state,
+        color_state,
+        input_state,
+        export_state,
+    );
+    
+    // Serialize to pretty JSON
+    let json = serde_json::to_string_pretty(&metadata)
+        .map_err(|e| format!("Failed to serialize metadata: {}", e))?;
+    
+    // Write to file
+    std::fs::write(output_path, json)
+        .map_err(|e| format!("Failed to write JSON file: {}", e))?;
+    
+    Ok(output_path.display().to_string())
+}
+
 /// Calculate the output dimensions for a given scale
 pub fn calculate_output_dimensions(view: &FractalView, scale: f32) -> (u32, u32) {
     let output_width = (view.width as f32 * scale) as u32;
@@ -443,7 +546,7 @@ mod tests {
     fn test_export_and_load_roundtrip() {
         use std::collections::HashMap;
         use tempfile::TempDir;
-        use crate::fractals::{Fractal, Julia};
+        use crate::fractals::Julia;
         
         // Create temporary directory for test files
         let temp_dir = TempDir::new().unwrap();
@@ -532,7 +635,7 @@ mod tests {
         use std::collections::HashMap;
         use tempfile::TempDir;
         use crate::app_state::FractalType;
-        use crate::fractals::{Fractal, Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus};
+        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus};
         
         let temp_dir = TempDir::new().unwrap();
         let colormap = ColorMap::default_scheme();
@@ -1042,6 +1145,7 @@ impl FractalMetadata {
             "Tippets Mandelbrot" => Ok(FractalType::TippetsMandelbrot),
             "Multifractal-Julia" => Ok(FractalType::MultifractalJulia),
             "Cactus" => Ok(FractalType::Cactus),
+            "Marek Dragon" => Ok(FractalType::MarekDragon),
             other => Err(format!("Unknown fractal type: {}", other)),
         }
     }
@@ -1063,5 +1167,46 @@ impl FractalMetadata {
         view.center_y = self.center_y;
         view.zoom = self.zoom;
         view
+    }
+
+    /// Create FractalMetadata from application state
+    /// 
+    /// This enables clean conversion from state structs back to metadata for export.
+    /// Consolidates all metadata creation logic in one place.
+    pub fn from_app_state(
+        fractal_state: &crate::app_state::FractalState,
+        view_state: &crate::app_state::ViewState,
+        color_state: &crate::app_state::ColorState,
+        input_state: &crate::app_state::InputState,
+        export_state: &crate::app_state::ExportState,
+    ) -> Self {
+        FractalMetadata {
+            fractal_type: fractal_state.fractal_type.as_str().to_string(),
+            fractal_parameters: fractal_state.parameters.clone(),
+            center_x: view_state.view.center_x,
+            center_y: view_state.view.center_y,
+            zoom: view_state.view.zoom,
+            width: view_state.view.width,
+            height: view_state.view.height,
+            max_iterations: input_state.parse_iterations(),
+            colormap_name: color_state.selected_colormap_name.clone(),
+            colormap_data: color_state.colormap.clone(),
+            use_period: color_state.use_period,
+            period: input_state.parse_period(),
+            use_interior_color: color_state.use_interior_color,
+            interior_color: color_state.interior_color,
+            use_log_scale: color_state.use_log_scale,
+            export_filter: export_state.filter.as_str().to_string(),
+            export_supersample: input_state.parse_export_supersample(),
+            export_scale: input_state.parse_export_scale() as f32,
+            version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            metadata_version: Some("1.0".to_string()),
+            created_timestamp: Some(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0)
+            ),
+        }
     }
 }

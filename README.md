@@ -8,11 +8,20 @@ This makes for cool wallpapers, banners, profile pics, etc.  I hope its fun and 
 
 > **NON-PROGRAMMERS**: Pre-built Windows executables are available in the [`builds/`](builds/) folder - just download the .zip file and run!
 
-![Version](https://img.shields.io/badge/version-0.1.61-blue)
+![Version](https://img.shields.io/badge/version-0.1.7-blue)
 ![Rust](https://img.shields.io/badge/rust-2021-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue)
 
 ## Features
+
+### Command-Line Rendering (New in v0.1.7!)
+- **Headless Rendering**: Generate fractals without GUI
+- **Load from PNG or JSON**: Use exported settings from GUI or standalone JSON files
+- **Parameter Overrides**: Change width, height, iterations, scale, and supersample via CLI
+- **Progress Indicators**: Real-time rendering progress with elapsed time
+- **Batch Processing**: Render multiple resolutions from same settings
+- **Automation Ready**: Perfect for CI/CD, server rendering, or scripting
+- **Export Settings**: Save fractal configuration as JSON for CLI use
 
 ### Multi-Fractal Support
 - **Six Fractal Types**: Mandelbrot Set, Julia Set, Burning Ship, Tippets Mandelbrot, Multifractal-Julia, and Cactus
@@ -99,8 +108,11 @@ cd forma-fractalis
 # Build release version
 cargo build --release
 
-# Run the application
+# Run the application (GUI mode)
 cargo run --release
+
+# Or use CLI mode for headless rendering
+cargo run --release -- render --input settings.json --output fractal.png
 ```
 
 ### Create Distribution Package (Windows)
@@ -114,6 +126,7 @@ cargo run --release
 
 ## Quick Start
 
+### GUI Mode
 1. **Launch the application**: 
    - **Pre-built**: Extract and run `forma-fractalis.exe`
    - **From source**: Run `cargo run --release`
@@ -121,9 +134,28 @@ cargo run --release
 3. **Change Colors**: Select a color scheme from the dropdown
 4. **Export**: Set scale (default 3.0), choose directory, click "Export PNG"
 
+### CLI Mode (New in v0.1.7)
+```bash
+# Render from PNG with embedded metadata
+forma-fractalis render --input input.png --output output.png
+
+# Render from JSON settings file
+forma-fractalis render --input settings.json --output output.png
+
+# Override parameters
+forma-fractalis render --input input.png --output output.png --width 3840 --height 2160 --iterations 1024
+
+# Scale and supersample
+forma-fractalis render --input input.png --output output.png --scale 3.0 --supersample 8
+
+# Get help
+forma-fractalis --help
+forma-fractalis render --help
+```
+
 ## Usage Guide
 
-### Navigation
+### GUI Navigation
 - **Position Zoom Box**: Click and drag on the fractal
 - **Resize Zoom Box**: Scroll mouse wheel while dragging
 - **Apply Zoom**: Click again to zoom in
@@ -133,7 +165,7 @@ cargo run --release
 
 #### Using Built-in Schemes
 1. Open the "Color Scheme" dropdown
-2. Select from 11 pre-built colormaps
+2. Select from 14 pre-built colormaps
 
 #### Creating Custom Colormaps
 1. Open the "Save/Load ColorMap" collapsible section
@@ -149,10 +181,23 @@ cargo run --release
 
 ### Exporting Images
 
+#### From GUI
 1. **Set Scale**: Enter scale factor (3.0 = 3840×2160 output)
 2. **Choose Directory** (optional): Click "Choose Directory"
-3. **Export**: Click "Export PNG"
-4. Files are saved with format: `mandelbrot_WIDTHxHEIGHT_TIMESTAMP.png`
+3. **Export PNG**: Renders image with all current settings
+4. **Export Settings (JSON)**: Saves settings without rendering (for CLI use)
+
+#### From CLI
+```bash
+# Basic render from PNG
+forma-fractalis render -i input.png -o output.png
+
+# Render from JSON with overrides
+forma-fractalis render -i settings.json -o output.png --width 7680 --height 4320
+
+# High-quality 8K render
+forma-fractalis render -i input.png -o wallpaper.png --scale 6.0 --supersample 8
+```
 
 ### Advanced Settings
 
@@ -165,6 +210,50 @@ cargo run --release
 - Enable "Interior Color" checkbox
 - Click color box to open picker
 - Set custom color for points inside the set (usually black)
+
+## Command-Line Interface
+
+### Render Command
+
+**Usage**: `forma-fractalis render [OPTIONS] --input <FILE> --output <FILE>`
+
+**Options**:
+- `-i, --input <FILE>` - Input file (PNG with metadata or JSON settings)
+- `-o, --output <FILE>` - Output PNG file path
+- `--width <WIDTH>` - Override width (in pixels)
+- `--height <HEIGHT>` - Override height (in pixels)
+- `--iterations <ITERATIONS>` - Override max iterations
+- `--scale <SCALE>` - Override scaling factor (e.g., 3.0 for 3x size)
+- `--supersample <SUPERSAMPLE>` - Override supersample multiplier (1-16)
+
+**Examples**:
+```bash
+# Reproduce an exact render
+forma-fractalis render -i mandelbrot_3840x2160.png -o reproduction.png
+
+# Change resolution
+forma-fractalis render -i input.png -o output.png --width 1920 --height 1080
+
+# High-detail render
+forma-fractalis render -i input.json -o detailed.png --iterations 2048 --supersample 8
+
+# Quick test render
+forma-fractalis render -i input.png -o test.png --scale 1.0 --supersample 1
+```
+
+### Workflow: GUI → CLI Pipeline
+
+1. **Design in GUI**: Explore, adjust colors, find interesting regions
+2. **Export Settings**: Click "Export Settings (JSON)" button
+3. **Batch Render**: Use CLI to render at different resolutions/settings
+4. **Share**: JSON files are small and version-control friendly
+
+```bash
+# Create settings in GUI, then:
+forma-fractalis render -i my_fractal.json -o desktop_1920x1080.png --width 1920 --height 1080
+forma-fractalis render -i my_fractal.json -o desktop_3840x2160.png --width 3840 --height 2160
+forma-fractalis render -i my_fractal.json -o poster_7680x4320.png --width 7680 --height 4320
+```
 
 ## Architecture
 
@@ -280,7 +369,20 @@ See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for a comprehensive list 
 
 For detailed release notes and version history, see [CHANGELOG.md](CHANGELOG.md).
 
-### Latest: v0.1.61 (February 5, 2026)
+### Latest: v0.1.7 (February 14, 2026)
+- **Command-Line Rendering**: Headless fractal generation from PNG or JSON files
+- **Parameter Overrides**: CLI flags for width, height, iterations, scale, supersample
+- **Progress Indicators**: Real-time rendering progress with indicatif library
+- **Export Settings as JSON**: Save fractal configuration for CLI use (standalone JSON)
+- **Marek Dragon Fractal**: New rotation-based fractal (z_{n+1} = exp(jφ)z_n + z_n²)
+- **State Conversion System**: Bidirectional From trait implementations (70% line reduction)
+- **Refactored Export**: New export_png_from_state() simplifies call sites
+- **Simplified Load**: load_from_metadata() reduced from 50+ lines to 15
+- **scala-chromatica Migration Complete**: Removed deprecated bridge modules
+- **44 Tests Passing**: 7 new MarekDragon unit tests added
+- **Foundation for Automation**: Clean state management enables future scripting features
+
+### Previous: v0.1.61 (February 5, 2026)
 - **Colormap Library Extraction**: Colormaps moved to standalone [scala-chromatica](https://github.com/ConociendoAlmasMenosHastiadas/scala-chromatica) crate
 - **Framework-Agnostic**: Reusable color gradient library for any Rust project
 - **Zero Functional Changes**: Pure refactoring for code reuse

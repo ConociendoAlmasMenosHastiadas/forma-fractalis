@@ -1,29 +1,34 @@
 use eframe::egui;
 use forma_fractalis::{
     app_state::{ViewState, InputState, FractalState, ColorState, MouseState, ExportState, FractalType},
-    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus}, gui,
+    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon}, 
+    gui, cli,
     rendering_pipeline::{render_with_config, RenderConfig, RenderTarget},
     perf_log, enable_profiling,
 };
 use std::time::{Duration, Instant};
 
 fn main() -> Result<(), eframe::Error> {
-    // Parse command-line arguments
+    // Try CLI mode first
+    match cli::try_cli() {
+        Ok(Some(())) => {
+            // CLI mode executed successfully
+            std::process::exit(0);
+        }
+        Ok(None) => {
+            // No CLI arguments, continue to GUI
+        }
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    }
+
+    // Parse GUI-specific command-line arguments
     let args: Vec<String> = std::env::args().collect();
     if args.contains(&"--profiling".to_string()) || args.contains(&"-p".to_string()) {
         enable_profiling();
         println!("[INFO] Performance profiling enabled");
-    }
-    if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {
-        println!("Forma Fractalis - Interactive Fractal Explorer");
-        println!();
-        println!("USAGE:");
-        println!("    forma-fractalis [OPTIONS]");
-        println!();
-        println!("OPTIONS:");
-        println!("    -p, --profiling    Enable performance profiling output");
-        println!("    -h, --help         Show this help message");
-        std::process::exit(0);
     }
     
     let options = eframe::NativeOptions {
@@ -122,6 +127,7 @@ impl FractalApp {
         let tippets_mandelbrot = TippetsMandelbrot::new();
         let multifractal_julia = MultifractalJulia::new();
         let cactus = Cactus::new();
+        let marek_dragon = MarekDragon::new();
         
         let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
             FractalType::Mandelbrot => &mandelbrot,
@@ -130,6 +136,7 @@ impl FractalApp {
             FractalType::TippetsMandelbrot => &tippets_mandelbrot,
             FractalType::MultifractalJulia => &multifractal_julia,
             FractalType::Cactus => &cactus,
+            FractalType::MarekDragon => &marek_dragon,
         };
 
         // Build render configuration
@@ -168,58 +175,18 @@ impl FractalApp {
     
     /// Load application state from PNG metadata
     fn load_from_metadata(&mut self, metadata: forma_fractalis::export::FractalMetadata) -> Result<(), String> {
-        // 1. Parse and set fractal type
-        let fractal_type = metadata.parse_fractal_type()?;
-        self.fractal.fractal_type = fractal_type;
+        // Validate before applying
+        let _ = metadata.parse_fractal_type()?;
         
-        // 2. Set fractal parameters
-        self.fractal.parameters = metadata.fractal_parameters.clone();
+        // Convert to state structs using From trait implementations
+        self.fractal = FractalState::from(&metadata);
+        self.view_state = ViewState::from(&metadata);
+        self.color = ColorState::from(&metadata);
+        self.input = InputState::from(&metadata);
+        self.export = ExportState::from(&metadata);
         
-        // 3. Update input fields for parameters
-        if let Some(&c_real) = metadata.fractal_parameters.get("c_real") {
-            self.input.julia_c_real = c_real.to_string();
-        }
-        if let Some(&c_imag) = metadata.fractal_parameters.get("c_imag") {
-            self.input.julia_c_imag = c_imag.to_string();
-        }
-        if let Some(&power) = metadata.fractal_parameters.get("power") {
-            if fractal_type == FractalType::Mandelbrot {
-                self.input.mandelbrot_power = power.to_string();
-            } else if fractal_type == FractalType::MultifractalJulia {
-                self.input.multifractal_julia_power = power.to_string();
-            }
-        }
-        
-        // 4. Set view (position, zoom, dimensions)
-        self.view_state.view = metadata.to_fractal_view();
-        
-        // 5. Update dimension inputs
-        self.input.width = metadata.width.to_string();
-        self.input.height = metadata.height.to_string();
-        
-        // 6. Set iterations
-        self.input.iterations = metadata.max_iterations.to_string();
-        
-        // 7. Load colormap
-        self.color.colormap = metadata.colormap_data.clone();
-        self.color.selected_colormap_name = metadata.colormap_name.clone();
-        
-        // 8. Set color modulation settings
-        self.color.use_period = metadata.use_period;
-        self.input.period = metadata.period.to_string();
-        self.color.use_interior_color = metadata.use_interior_color;
-        self.color.interior_color = metadata.interior_color;
-        self.color.interior_color_rgb_text = [
-            metadata.interior_color[0].to_string(),
-            metadata.interior_color[1].to_string(),
-            metadata.interior_color[2].to_string(),
-        ];
-        self.color.use_log_scale = metadata.use_log_scale;
-        
-        // 9. Set export settings
-        self.export.filter = metadata.parse_filter_type();
-        self.input.export_supersample = metadata.export_supersample.to_string();
-        self.input.export_scale = metadata.export_scale.to_string();
+        // Mark for redraw
+        self.view_state.needs_redraw = true;
         
         Ok(())
     }
@@ -308,6 +275,7 @@ impl eframe::App for FractalApp {
                                 &mut self.input.julia_c_imag,
                                 &mut self.input.mandelbrot_power,
                                 &mut self.input.multifractal_julia_power,
+                                &mut self.input.marek_dragon_phi,
                                 &mut self.view_state.view,
                                 &mut self.input.debounce_timer,
                                 &mut self.input.pending_redraw,
@@ -380,6 +348,7 @@ impl eframe::App for FractalApp {
                             let tippets_mandelbrot = TippetsMandelbrot::new();
                             let multifractal_julia = MultifractalJulia::new();
                             let cactus = Cactus::new();
+                            let marek_dragon = MarekDragon::new();
                             
                             let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
                                 FractalType::Mandelbrot => &mandelbrot,
@@ -388,6 +357,7 @@ impl eframe::App for FractalApp {
                                 FractalType::TippetsMandelbrot => &tippets_mandelbrot,
                                 FractalType::MultifractalJulia => &multifractal_julia,
                                 FractalType::Cactus => &cactus,
+                                FractalType::MarekDragon => &marek_dragon,
                             };
                             
                             gui::render_actions_section(
@@ -406,6 +376,17 @@ impl eframe::App for FractalApp {
                                 &mut self.export.directory,
                                 &mut self.export.filter,
                                 &mut self.input.export_supersample,
+                                &mut self.status_message,
+                            );
+
+                            // Export JSON button
+                            gui::render_export_json_button(
+                                ui,
+                                &self.fractal,
+                                &self.view_state,
+                                &self.color,
+                                &self.input,
+                                &self.export,
                                 &mut self.status_message,
                             );
 

@@ -4,7 +4,8 @@ steps to be caried out are found in the plan*.md files.  If you have not context
 ## working through a plan
 - when working through a plan you should update progress and implementation notes
 - if plan results in a feature being deprecated it should start a deprecation plan that will span at least one more feature (so if its marked for deprecation in plan v0.1.3 then plan v0.1.4 should be updated to reflect that removing the feature will be completed)
-- **Each release requires a new fractal and colormap**: This is a project requirement for every version. If the plan doesn't specify them at creation, they should be marked as "TBD" and added before finalizing the release. The fractal should showcase the version's features, and the colormap should complement it visually.
+- **Each release requires a new fractal** (since v0.1.7): This is a project requirement for every version. If the plan doesn't specify it at creation, it should be marked as "TBD" and added before finalizing the release. The fractal should showcase the version's features.
+- **Note on colormaps**: Since v0.1.7, colormaps are exclusively managed in the [scala-chromatica](https://github.com/ConociendoAlmasMenosHastiadas/scala-chromatica) repository. New colormaps should be added there, not in forma-fractalis.
 
 ## Architecture Notes
 

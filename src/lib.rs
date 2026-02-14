@@ -4,9 +4,7 @@
 //! with advanced color mapping and image export capabilities.
 //!
 //! ## Modules
-//! - [`colorschemes`]: Color gradient system with built-in and custom colormaps
-//! - [`colorschemes_gui`]: Interactive color editor widgets for egui
-//! - [`colorschemes_io`]: Save/load colormap JSON files
+//! - [`colorschemes_gui`]: Interactive color editor widgets for egui (built on scala-chromatica)
 //! - [`export`]: PNG image export with scaling and metadata
 //! - [`fractals`]: Trait-based fractal system supporting multiple fractal types
 //! - [`gui`]: Main application GUI layout
@@ -14,10 +12,10 @@
 /// - [`rendering_pipeline`]: Unified rendering system for preview and export
 /// - [`filtering`]: Image filtering and supersampling for high-quality exports
 /// - [`number_utils`]: Numerical constants and utilities
+/// - [`cli`]: Command-line interface for headless rendering
 pub mod app_state;
-pub mod colorschemes;
+pub mod cli;
 pub mod colorschemes_gui;
-pub mod colorschemes_io;
 pub mod export;
 pub mod filtering;
 pub mod fractals;

@@ -25,6 +25,7 @@ pub mod burning_ship;
 pub mod tippets_mandelbrot;
 pub mod multifractal_julia;
 pub mod cactus;
+pub mod marek_dragon;
 
 // Re-export for convenience
 pub use mandelbrot::Mandelbrot;
@@ -33,6 +34,7 @@ pub use burning_ship::BurningShip;
 pub use tippets_mandelbrot::TippetsMandelbrot;
 pub use multifractal_julia::MultifractalJulia;
 pub use cactus::Cactus;
+pub use marek_dragon::MarekDragon;
 
 /// Represents the view parameters for rendering any fractal
 /// This replaces the old MandelbrotView with a more generic structure

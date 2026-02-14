@@ -65,6 +65,7 @@ pub trait FractalTypeOps {
         julia_c_imag_input: &str,
         mandelbrot_power_input: &str,
         multifractal_julia_power_input: &str,
+        marek_dragon_phi_input: &str,
     );
 }
 
@@ -216,6 +217,7 @@ pub fn render_fractal_settings<FT>(
     julia_c_imag_input: &mut String,
     mandelbrot_power_input: &mut String,
     multifractal_julia_power_input: &mut String,
+    marek_dragon_phi_input: &mut String,
     view: &mut FractalView,
     input_debounce_timer: &mut Option<Instant>,
     pending_redraw: &mut bool,
@@ -244,7 +246,8 @@ where
                             julia_c_real_input,
                             julia_c_imag_input,
                             mandelbrot_power_input,
-                            multifractal_julia_power_input
+                            multifractal_julia_power_input,
+                            marek_dragon_phi_input
                         );
                         *needs_redraw = true;
                     }
@@ -432,6 +435,60 @@ where
             ).small().weak());
             ui.label(egui::RichText::new(
                 format!("Range: slider [{:.1}, {:.1}], text input: full f64", power_min, power_max)
+            ).small().weak());
+        });
+        
+        ui.add_space(10.0);
+    }
+
+    // Marek Dragon Phi parameter
+    if fractal_type.get_name() == "Marek Dragon" {
+        ui.label(
+            egui::RichText::new("Marek Dragon Parameters")
+                .strong()
+        );
+        ui.add_space(5.0);
+        
+        use crate::number_utils::TWO_PI;
+        
+        // Phi slider (rotation angle 0 to 2π)
+        let mut phi = fractal_parameters.get("phi").copied().unwrap_or(0.0);
+        ui.horizontal(|ui| {
+            ui.label("Phi (φ):");
+            ui.add_space(5.0);
+            if ui.add(egui::Slider::new(&mut phi, 0.0..=TWO_PI)
+                .text("")
+                .step_by(0.001)
+                .fixed_decimals(3))
+                .changed()
+            {
+                fractal_parameters.insert("phi".to_string(), phi);
+                *marek_dragon_phi_input = format!("{:.6}", phi);
+                *needs_redraw = true;
+            }
+        });
+        
+        // Show current value as editable text input
+        ui.add_space(5.0);
+        ui.collapsing("Advanced: Precise Value", |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Phi (φ):");
+                if ui
+                    .add(egui::TextEdit::singleline(marek_dragon_phi_input).desired_width(100.0))
+                    .changed()
+                {
+                    if let Ok(val) = marek_dragon_phi_input.parse::<f64>() {
+                        let clamped = val.clamp(0.0, TWO_PI);
+                        fractal_parameters.insert("phi".to_string(), clamped);
+                        trigger_debounced_redraw(input_debounce_timer, pending_redraw);
+                    }
+                }
+            });
+            ui.label(egui::RichText::new(
+                "Formula: z_{n+1} = exp(jφ) · z_n + z_n²"
+            ).small().weak());
+            ui.label(egui::RichText::new(
+                format!("Range: 0 to 2π ({:.6})", TWO_PI)
             ).small().weak());
         });
         
@@ -855,6 +912,49 @@ pub fn render_actions_section(
             }
             Err(e) => {
                 *status_message = format!("Export failed: {}", e);
+            }
+        }
+    }
+}
+
+/// Render export settings JSON button
+pub fn render_export_json_button(
+    ui: &mut egui::Ui,
+    fractal_state: &crate::app_state::FractalState,
+    view_state: &crate::app_state::ViewState,
+    color_state: &crate::app_state::ColorState,
+    input_state: &crate::app_state::InputState,
+    export_state: &crate::app_state::ExportState,
+    status_message: &mut String,
+) {
+    ui.add_space(10.0);
+    
+    if ui
+        .add_sized(
+            [ui.available_width(), 30.0],
+            egui::Button::new("📝 Export Settings (JSON)"),
+        )
+        .clicked()
+    {
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("JSON", &["json"])
+            .set_file_name("fractal_settings.json")
+            .save_file()
+        {
+            match crate::export::export_settings_json(
+                fractal_state,
+                view_state,
+                color_state,
+                input_state,
+                export_state,
+                &path,
+            ) {
+                Ok(saved_path) => {
+                    *status_message = format!("✓ Settings saved to: {}", saved_path);
+                }
+                Err(e) => {
+                    *status_message = format!("❌ Export failed: {}", e);
+                }
             }
         }
     }

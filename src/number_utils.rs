@@ -17,3 +17,16 @@
 /// }
 /// ```
 pub const ABSOLUTE_EPSILON: f64 = 1e-15;
+
+/// Two times Pi - a full circle in radians.
+/// Used for rotation angles and periodic parameters.
+///
+/// Value: 2π ≈ 6.283185307179586
+///
+/// # Usage
+/// ```ignore
+/// use forma_fractalis::number_utils::TWO_PI;
+///
+/// let angle = 0.5 * TWO_PI; // 180 degrees
+/// ```
+pub const TWO_PI: f64 = std::f64::consts::TAU;
