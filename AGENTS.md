@@ -1,6 +1,10 @@
 ## overview
 steps to be caried out are found in the plan*.md files.  If you have not context you should read through the existing context files to get an idea of where the project is going.  This project is heavily created through LLMs.  If during working on this project you spot a rule that might be helpful to include in the agents.md then please indicate this.
 
+## Documentation Standards
+
+**NEVER USE EMOJIS** - Emojis are strictly forbidden in all documentation files (README.md, CHANGELOG.md, plan files, etc.). Use plain text headers and descriptions. This is a hard requirement.
+
 ## working through a plan
 - when working through a plan you should update progress and implementation notes
 - if plan results in a feature being deprecated it should start a deprecation plan that will span at least one more feature (so if its marked for deprecation in plan v0.1.3 then plan v0.1.4 should be updated to reflect that removing the feature will be completed)

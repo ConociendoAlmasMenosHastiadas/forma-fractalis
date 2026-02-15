@@ -33,7 +33,7 @@ fn main() -> Result<(), eframe::Error> {
     
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1580.0, 750.0]) // 300px sidebar + 1280x720 (16:9) display area
+            .with_inner_size([1730.0, 820.0]) // 350px sidebar + 1380x820 display area
             .with_title("Fractal Explorer - Forma Fractalis"),
         ..Default::default()
     };
@@ -238,7 +238,7 @@ impl eframe::App for FractalApp {
 
         // Left sidebar with controls
         egui::SidePanel::left("controls")
-            .default_width(300.0)
+            .default_width(350.0)
             .resizable(false)
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical()
