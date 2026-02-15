@@ -11,6 +11,7 @@ release/
 # Exported images
 *.png
 !src/colormaps/*.png
+!img_resources/*.png
 
 # IDE / Editor files
 .vscode/
@@ -41,3 +42,5 @@ Desktop.ini
 /captures/
 
 plans/
+
+AGENTS.md
