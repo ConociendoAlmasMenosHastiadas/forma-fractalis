@@ -105,14 +105,28 @@ forma-fractalis --profiling
 <tr>
 <td width="50%">
 
-### Multifractal-Julia
-![Multifractal](img_resources/multifractal-julia_3840x2160_4xLanczos31769398723.png)
+### Tetration
+![Tetration](img_resources/tetration_3840x2160_4xLanczos31771201252.png)
 
 </td>
 <td width="50%">
 
-### Tetration
-![Tetration](img_resources/tetration_3840x2160_4xLanczos31771201252.png)
+### Burning Ship
+![Burning Ship](img_resources/burning_ship_4320x1080_4xLanczos31771182212.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### Cactus
+![Cactus](img_resources/cactus_4320x1080_4xLanczos31771181941.png)
+
+</td>
+<td width="50%">
+
+### Mandelbrot (Variant)
+![Mandelbrot 2](img_resources/mandelbrot_3840x2160_4xLanczos31768802455.png)
 
 </td>
 </tr>
@@ -121,8 +135,9 @@ forma-fractalis --profiling
 <details>
 <summary><b>View more renders...</b></summary>
 
-| Mandelbrot Variations |
+| Multifractal-Julia & Mandelbrot Variations |
 |:--:|
+| ![Multifractal](img_resources/multifractal-julia_3840x2160_4xLanczos31769398723.png) |
 | ![Mandelbrot 3](img_resources/mandelbrot_3840x2160_4xLanczos31768887944.png) |
 | ![Mandelbrot 4](img_resources/mandelbrot_3840x2160_4xLanczos31769238284.png) |
 
