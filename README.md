@@ -111,21 +111,7 @@ forma-fractalis --profiling
 </td>
 <td width="50%">
 
-### Burning Ship
-![Burning Ship](img_resources/burning_ship_4320x1080_4xLanczos31771182212.png)
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-### Cactus
-![Cactus](img_resources/cactus_4320x1080_4xLanczos31771181941.png)
-
-</td>
-<td width="50%">
-
-### Mandelbrot (Variant)
+### Mandelbrot (Deep Zoom)
 ![Mandelbrot 2](img_resources/mandelbrot_3840x2160_4xLanczos31768802455.png)
 
 </td>
