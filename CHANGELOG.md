@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-02-15
+
+### Added
+- **Tetration Fractal**: z_{n+1} = c^(z_n) with expandable escape criteria system
+  - Four escape criteria modes: magnitude, real, imaginary, either component
+  - Radio button UI for escape mode selection
+  - Logarithmic threshold slider (10¹ to 10¹⁰)
+  - Scientific notation support for threshold input
+  - Default view optimized for interesting structures (zoom=0.45)
+- **Fractal Equation Visualization**: Mathematical formulas displayed in GUI
+  - LaTeX-style ASCII notation for all 8 fractals
+  - Appears below fractal type selector
+  - 14pt italic styling for readability
+  - Unicode support for Greek letters (φ) where available
+- **Iteration Cache System**: Mandatory transparent performance optimization
+  - Automatic caching of iteration data after every render
+  - Instant color changes (10-20ms vs seconds)
+  - Cache invalidation on view/zoom/parameter changes
+  - ~4.5 MB memory overhead for preview (1380×820)
+  - Completely transparent to users
+- **Performance Profiling Flag**: `--profiling` / `-p` flag for debugging
+  - Displays `[CACHE]` and `[PERF]` log messages
+  - Integrated with clap CLI parser
+  - Works in both GUI and CLI render modes
+  - Usage: `forma-fractalis --profiling`
+- **FractalGUI Trait**: Architectural improvement for parameter rendering
+  - Encapsulated parameter UI logic per fractal
+  - Removed 240+ lines of hard-coded GUI logic
+  - Extensible for future fractal-specific parameters
+  - Clean separation of concerns
+- **README Enhancements**: High-quality showcase images
+  - Hero banner image (4320×1080 Julia Set)
+  - Wide fractal images as section headers
+  - Gallery with Mandelbrot, Julia, Multifractal-Julia, Tetration
+  - All images at 4K resolution with 4× Lanczos scaling
+
+### Changed
+- **GUI Resize**: Expanded window for better parameter visibility
+  - Window: 1580×750 → 1730×820 (+150px width, +70px height)
+  - Sidebar: 300px → 350px (+50px)
+  - Display area: ~1280×720 → ~1380×820
+  - Maintains ~16:9 aspect ratio for display
+- **Iteration Cache**: Made mandatory (was optional)
+  - Removed cache enable/disable toggle
+  - Removed Performance section GUI controls
+  - Simplified rendering logic (~47 lines removed)
+  - Single code path: check validity → use or compute+cache
+- **Equation Rendering**: Switched from Unicode to LaTeX-style notation
+  - Initial Unicode subscripts/superscripts caused rendering issues
+  - Now uses z_{n+1} style notation for reliability
+  - Cross-platform font compatibility
+
+### Removed
+- **Cache Toggle Controls**: Performance section removed from GUI
+  - No more "Enable Iteration Cache" checkbox
+  - No cache status display
+  - No "Clear Cache" button
+  - Cache is now transparent and automatic
+- **Legacy Rendering Path**: Non-cached rendering removed
+  - Unused RenderConfig/RenderTarget imports removed
+  - Simplified codebase with single rendering path
+
+### Technical
+- **Code Quality**: ~287 lines removed total
+  - FractalGUI refactoring: 240 lines
+  - Cache simplification: 47 lines
+- **Parameter System**: Extensible enum-based parameters
+  - Created `parameter_types.rs` for EscapeMode enum
+  - Radio button generation from parameter definitions
+  - Reusable for future fractals with custom escape criteria
+- **Testing**: All features tested and validated
+  - Tetration escape modes verified
+  - Cache invalidation confirmed
+  - Equation rendering across all fractals
+  - Performance profiling output validated
+
+### Performance
+- **Instant Recoloring**: Color/period/log scale changes are near-instant
+- **Parallel Rendering**: Both iteration and coloring parallelized via Rayon
+- **Memory Efficiency**: Cache size scales with preview dimensions only
+
 ## [0.1.7] - 2026-02-14
 
 ### Added

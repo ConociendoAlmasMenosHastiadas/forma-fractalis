@@ -26,6 +26,11 @@ pub mod tippets_mandelbrot;
 pub mod multifractal_julia;
 pub mod cactus;
 pub mod marek_dragon;
+pub mod tetration;
+
+// Parameter system extensions
+pub mod parameter_types;
+pub mod fractal_gui;
 
 // Re-export for convenience
 pub use mandelbrot::Mandelbrot;
@@ -35,6 +40,9 @@ pub use tippets_mandelbrot::TippetsMandelbrot;
 pub use multifractal_julia::MultifractalJulia;
 pub use cactus::Cactus;
 pub use marek_dragon::MarekDragon;
+pub use tetration::Tetration;
+pub use parameter_types::EscapeMode;
+pub use fractal_gui::FractalGUI;
 
 /// Represents the view parameters for rendering any fractal
 /// This replaces the old MandelbrotView with a more generic structure
@@ -180,6 +188,12 @@ pub trait Fractal: Sync {
 
     /// Get the name of this fractal type
     fn name(&self) -> &str;
+
+    /// Get the mathematical equation for this fractal
+    /// Returns a string suitable for display in the GUI (supports Unicode subscripts/superscripts)
+    fn equation(&self) -> &str {
+        "" // Default: no equation displayed
+    }
 
     /// Get the list of parameters this fractal uses
     /// Returns empty vec for fractals with no parameters (like Mandelbrot)

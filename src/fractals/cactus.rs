@@ -83,11 +83,18 @@ impl Fractal for Cactus {
         "Cactus"
     }
 
+    fn equation(&self) -> &str {
+        "z_{n+1} = z_n^3 + (z_0 - 1)*z_n - z_0"
+    }
+
     fn parameters(&self) -> Vec<Parameter> {
         // Cactus fractal has no adjustable parameters
         Vec::new()
     }
 }
+
+// FractalGUI implementation (no parameters for Cactus)
+impl super::FractalGUI for Cactus {}
 
 #[cfg(test)]
 mod tests {

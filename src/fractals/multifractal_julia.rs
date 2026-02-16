@@ -2,6 +2,7 @@ use super::{Fractal, FractalView, Parameter};
 use num_complex::Complex64;
 use crate::number_utils::ABSOLUTE_EPSILON;
 use std::collections::HashMap;
+use eframe::egui;
 
 /// Multifractal-Julia: A variant fractal with inverse squared iteration
 /// 
@@ -140,6 +141,10 @@ impl Fractal for MultifractalJulia {
         "Multifractal-Julia"
     }
 
+    fn equation(&self) -> &str {
+        "z_{n+1} = c^k * z_n^(-2) + c"
+    }
+
     fn parameters(&self) -> Vec<Parameter> {
         vec![
             Parameter::new(
@@ -151,6 +156,67 @@ impl Fractal for MultifractalJulia {
                 "Power k in z_{n+1} = c^k * z_n^{-2} + c"
             )
         ]
+    }
+}
+
+/// GUI implementation for Multifractal-Julia power parameter
+impl super::fractal_gui::FractalGUI for MultifractalJulia {
+    fn render_parameters_gui(
+        &self,
+        ui: &mut egui::Ui,
+        params: &mut HashMap<String, f64>,
+        input_state: &mut crate::app_state::InputState,
+        needs_redraw: &mut bool,
+    ) {
+        use super::fractal_gui::trigger_debounced_redraw;
+        
+        ui.label(egui::RichText::new("Multifractal-Julia Parameters").strong());
+        ui.add_space(5.0);
+        
+        let power_min = -5.0;
+        let power_max = 5.0;
+        
+        // Power slider (k in z_{n+1} = c^k * z_n^{-2} + c)
+        let mut power = params.get("power").copied().unwrap_or(1.0);
+        ui.horizontal(|ui| {
+            ui.label("Power (k):");
+            ui.add_space(5.0);
+            if ui.add(egui::Slider::new(&mut power, power_min..=power_max)
+                .text("")
+                .step_by(0.1)
+                .fixed_decimals(1))
+                .changed()
+            {
+                params.insert("power".to_string(), power);
+                input_state.multifractal_julia_power = format!("{:.1}", power);
+                *needs_redraw = true;
+            }
+        });
+        
+        // Show current value as editable text input
+        ui.add_space(5.0);
+        ui.collapsing("Advanced: Precise Value", |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Power (k):");
+                if ui
+                    .add(egui::TextEdit::singleline(&mut input_state.multifractal_julia_power).desired_width(100.0))
+                    .changed()
+                {
+                    if let Ok(val) = input_state.multifractal_julia_power.parse::<f64>() {
+                        params.insert("power".to_string(), val);
+                        trigger_debounced_redraw(&mut input_state.debounce_timer, &mut input_state.pending_redraw);
+                    }
+                }
+            });
+            ui.label(egui::RichText::new(
+                "Formula: z_{n+1} = c^k · z_n^{-2} + c"
+            ).small().weak());
+            ui.label(egui::RichText::new(
+                format!("Range: slider [{:.1}, {:.1}], text input: full f64", power_min, power_max)
+            ).small().weak());
+        });
+        
+        ui.add_space(10.0);
     }
 }
 

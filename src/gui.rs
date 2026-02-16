@@ -16,6 +16,7 @@
 use crate::perf_log;
 use scala_chromatica::ColorMap;
 use scala_chromatica::io as colorschemes_io;
+use crate::app_state::InputState;
 use crate::fractals::FractalView;
 use eframe::egui;
 use std::collections::HashMap;
@@ -54,6 +55,7 @@ fn open_directory_in_explorer(path: &Path) -> Result<(), String> {
 /// Trait for fractal type operations needed by GUI
 pub trait FractalTypeOps {
     fn get_name(&self) -> &str;
+    fn get_equation(&self) -> &str;
     fn all_types() -> Vec<Self> where Self: Sized;
     fn is_julia(&self) -> bool;
     fn is_mandelbrot(&self) -> bool;
@@ -61,11 +63,14 @@ pub trait FractalTypeOps {
         &self,
         view: &mut FractalView,
         params: &mut HashMap<String, f64>,
-        julia_c_real_input: &str,
-        julia_c_imag_input: &str,
-        mandelbrot_power_input: &str,
-        multifractal_julia_power_input: &str,
-        marek_dragon_phi_input: &str,
+        input: &InputState,
+    );
+    fn render_gui(
+        &self,
+        ui: &mut egui::Ui,
+        params: &mut HashMap<String, f64>,
+        input_state: &mut InputState,
+        needs_redraw: &mut bool,
     );
 }
 
@@ -209,18 +214,11 @@ pub fn render_dimensions_section(
 /// Render the fractal settings section
 pub fn render_fractal_settings<FT>(
     ui: &mut egui::Ui,
-    iterations_input: &mut String,
+    input_state: &mut InputState,
     needs_redraw: &mut bool,
     fractal_type: &mut FT,
     fractal_parameters: &mut HashMap<String, f64>,
-    julia_c_real_input: &mut String,
-    julia_c_imag_input: &mut String,
-    mandelbrot_power_input: &mut String,
-    multifractal_julia_power_input: &mut String,
-    marek_dragon_phi_input: &mut String,
     view: &mut FractalView,
-    input_debounce_timer: &mut Option<Instant>,
-    pending_redraw: &mut bool,
 ) 
 where
     FT: Copy + PartialEq + std::fmt::Debug,
@@ -243,11 +241,7 @@ where
                         ft.reset_view_and_params(
                             view,
                             fractal_parameters,
-                            julia_c_real_input,
-                            julia_c_imag_input,
-                            mandelbrot_power_input,
-                            multifractal_julia_power_input,
-                            marek_dragon_phi_input
+                            input_state,
                         );
                         *needs_redraw = true;
                     }
@@ -255,278 +249,59 @@ where
             });
     });
 
+    // Display the fractal's mathematical equation
+    let equation = fractal_type.get_equation();
+    if !equation.is_empty() {
+        ui.label(
+            egui::RichText::new(equation)
+                .weak()
+                .italics()
+                .size(14.0)
+        );
+    }
+
     ui.add_space(10.0);
 
-    // Dynamic fractal parameters (e.g., Julia Set sliders)
-    if fractal_type.is_julia() {
-        ui.label(
-            egui::RichText::new("Julia Set Parameters")
-                .strong()
-        );
-        ui.add_space(5.0);
-        
-        // C Real slider
-        let mut c_real = fractal_parameters.get("c_real").copied().unwrap_or(-0.7);
-        ui.horizontal(|ui| {
-            ui.label("C Real:");
-            ui.add_space(5.0);
-            if ui.add(egui::Slider::new(&mut c_real, -2.0..=2.0)
-                .text("")
-                .step_by(0.001)
-                .fixed_decimals(3))
-                .changed()
-            {
-                fractal_parameters.insert("c_real".to_string(), c_real);
-                *julia_c_real_input = format!("{:.6}", c_real);
-                *needs_redraw = true;
-            }
-        });
-        
-        // C Imaginary slider
-        let mut c_imag = fractal_parameters.get("c_imag").copied().unwrap_or(0.27015);
-        ui.horizontal(|ui| {
-            ui.label("C Imag:");
-            ui.add_space(3.0);
-            if ui.add(egui::Slider::new(&mut c_imag, -2.0..=2.0)
-                .text("")
-                .step_by(0.001)
-                .fixed_decimals(3))
-                .changed()
-            {
-                fractal_parameters.insert("c_imag".to_string(), c_imag);
-                *julia_c_imag_input = format!("{:.6}", c_imag);
-                *needs_redraw = true;
-            }
-        });
-        
-        // Show current values as editable text inputs below sliders
-        ui.add_space(5.0);
-        ui.collapsing("Advanced: Precise Values", |ui| {
-            ui.horizontal(|ui| {
-                ui.label("Real:");
-                if ui
-                    .add(egui::TextEdit::singleline(julia_c_real_input).desired_width(100.0))
-                    .changed()
-                {
-                    if let Ok(val) = julia_c_real_input.parse::<f64>() {
-                        let clamped = val.clamp(-2.0, 2.0);
-                        fractal_parameters.insert("c_real".to_string(), clamped);
-                        trigger_debounced_redraw(input_debounce_timer, pending_redraw);
-                    }
-                }
-            });
-            
-            ui.horizontal(|ui| {
-                ui.label("Imag:");
-                if ui
-                    .add(egui::TextEdit::singleline(julia_c_imag_input).desired_width(100.0))
-                    .changed()
-                {
-                    if let Ok(val) = julia_c_imag_input.parse::<f64>() {
-                        let clamped = val.clamp(-2.0, 2.0);
-                        fractal_parameters.insert("c_imag".to_string(), clamped);
-                        trigger_debounced_redraw(input_debounce_timer, pending_redraw);
-                    }
-                }
-            });
-        });
-        
-        ui.add_space(10.0);
-    }
-
-    // Mandelbrot power parameter
-    if fractal_type.is_mandelbrot() {
-        ui.label(
-            egui::RichText::new("Mandelbrot Power")
-                .strong()
-        );
-        ui.add_space(5.0);
-        
-        // Get parameter definition for bounds (supports arbitrary f64 range)
-        let power_min = -10.0; // Can be adjusted to any f64 value
-        let power_max = 10.0;  // Can be adjusted to any f64 value
-        
-        // Power slider (range determined by parameter bounds)
-        let mut power = fractal_parameters.get("power").copied().unwrap_or(2.0);
-        ui.horizontal(|ui| {
-            ui.label("Power:");
-            ui.add_space(5.0);
-            if ui.add(egui::Slider::new(&mut power, power_min..=power_max)
-                .text("")
-                .step_by(0.1)
-                .fixed_decimals(1))
-                .changed()
-            {
-                fractal_parameters.insert("power".to_string(), power);
-                *mandelbrot_power_input = format!("{:.1}", power);
-                *needs_redraw = true;
-            }
-        });
-        
-        // Show current value as editable text input (no clamping - full f64 range)
-        ui.add_space(5.0);
-        ui.collapsing("Advanced: Precise Value", |ui| {
-            ui.horizontal(|ui| {
-                ui.label("Power:");
-                if ui
-                    .add(egui::TextEdit::singleline(mandelbrot_power_input).desired_width(100.0))
-                    .changed()
-                {
-                    if let Ok(val) = mandelbrot_power_input.parse::<f64>() {
-                        // No clamping - accept any valid f64 value
-                        fractal_parameters.insert("power".to_string(), val);
-                        trigger_debounced_redraw(input_debounce_timer, pending_redraw);
-                    }
-                }
-            });
-            ui.label(egui::RichText::new(
-                format!("Range: slider [{:.1}, {:.1}], text input: full f64", power_min, power_max)
-            ).small().weak());
-        });
-        
-        ui.add_space(10.0);
-    }
-
-    // Multifractal-Julia Power parameter
-    if fractal_type.get_name() == "Multifractal-Julia" {
-        ui.label(
-            egui::RichText::new("Multifractal-Julia Parameters")
-                .strong()
-        );
-        ui.add_space(5.0);
-        
-        let power_min = -5.0;
-        let power_max = 5.0;
-        
-        // Power slider (k in z_{n+1} = c^k * z_n^{-2} + c)
-        let mut power = fractal_parameters.get("power").copied().unwrap_or(1.0);
-        ui.horizontal(|ui| {
-            ui.label("Power (k):");
-            ui.add_space(5.0);
-            if ui.add(egui::Slider::new(&mut power, power_min..=power_max)
-                .text("")
-                .step_by(0.1)
-                .fixed_decimals(1))
-                .changed()
-            {
-                fractal_parameters.insert("power".to_string(), power);
-                *multifractal_julia_power_input = format!("{:.1}", power);
-                *needs_redraw = true;
-            }
-        });
-        
-        // Show current value as editable text input
-        ui.add_space(5.0);
-        ui.collapsing("Advanced: Precise Value", |ui| {
-            ui.horizontal(|ui| {
-                ui.label("Power (k):");
-                if ui
-                    .add(egui::TextEdit::singleline(multifractal_julia_power_input).desired_width(100.0))
-                    .changed()
-                {
-                    if let Ok(val) = multifractal_julia_power_input.parse::<f64>() {
-                        fractal_parameters.insert("power".to_string(), val);
-                        trigger_debounced_redraw(input_debounce_timer, pending_redraw);
-                    }
-                }
-            });
-            ui.label(egui::RichText::new(
-                format!("Formula: z_{{n+1}} = c^k · z_n^{{-2}} + c")
-            ).small().weak());
-            ui.label(egui::RichText::new(
-                format!("Range: slider [{:.1}, {:.1}], text input: full f64", power_min, power_max)
-            ).small().weak());
-        });
-        
-        ui.add_space(10.0);
-    }
-
-    // Marek Dragon Phi parameter
-    if fractal_type.get_name() == "Marek Dragon" {
-        ui.label(
-            egui::RichText::new("Marek Dragon Parameters")
-                .strong()
-        );
-        ui.add_space(5.0);
-        
-        use crate::number_utils::TWO_PI;
-        
-        // Phi slider (rotation angle 0 to 2π)
-        let mut phi = fractal_parameters.get("phi").copied().unwrap_or(0.0);
-        ui.horizontal(|ui| {
-            ui.label("Phi (φ):");
-            ui.add_space(5.0);
-            if ui.add(egui::Slider::new(&mut phi, 0.0..=TWO_PI)
-                .text("")
-                .step_by(0.001)
-                .fixed_decimals(3))
-                .changed()
-            {
-                fractal_parameters.insert("phi".to_string(), phi);
-                *marek_dragon_phi_input = format!("{:.6}", phi);
-                *needs_redraw = true;
-            }
-        });
-        
-        // Show current value as editable text input
-        ui.add_space(5.0);
-        ui.collapsing("Advanced: Precise Value", |ui| {
-            ui.horizontal(|ui| {
-                ui.label("Phi (φ):");
-                if ui
-                    .add(egui::TextEdit::singleline(marek_dragon_phi_input).desired_width(100.0))
-                    .changed()
-                {
-                    if let Ok(val) = marek_dragon_phi_input.parse::<f64>() {
-                        let clamped = val.clamp(0.0, TWO_PI);
-                        fractal_parameters.insert("phi".to_string(), clamped);
-                        trigger_debounced_redraw(input_debounce_timer, pending_redraw);
-                    }
-                }
-            });
-            ui.label(egui::RichText::new(
-                "Formula: z_{n+1} = exp(jφ) · z_n + z_n²"
-            ).small().weak());
-            ui.label(egui::RichText::new(
-                format!("Range: 0 to 2π ({:.6})", TWO_PI)
-            ).small().weak());
-        });
-        
-        ui.add_space(10.0);
-    }
+    // Dynamic fractal parameters using FractalGUI trait
+    fractal_type.render_gui(
+        ui,
+        fractal_parameters,
+        input_state,
+        needs_redraw,
+    );
 
     // Iterations input with multiply/divide buttons
     ui.horizontal(|ui| {
         ui.label("Iterations:");
         ui.add_space(5.0);
         if ui
-            .add(egui::TextEdit::singleline(iterations_input).desired_width(80.0))
+            .add(egui::TextEdit::singleline(&mut input_state.iterations).desired_width(80.0))
             .changed()
         {
-            trigger_debounced_redraw(input_debounce_timer, pending_redraw);
+            trigger_debounced_redraw(&mut input_state.debounce_timer, &mut input_state.pending_redraw);
         }
 
         if ui.small_button("×2").clicked() {
-            if let Ok(val) = iterations_input.parse::<u32>() {
-                *iterations_input = (val * 2).to_string();
+            if let Ok(val) = input_state.iterations.parse::<u32>() {
+                input_state.iterations = (val * 2).to_string();
                 *needs_redraw = true;
             }
         }
         if ui.small_button("÷2").clicked() {
-            if let Ok(val) = iterations_input.parse::<u32>() {
-                *iterations_input = (val / 2).to_string();
+            if let Ok(val) = input_state.iterations.parse::<u32>() {
+                input_state.iterations = (val / 2).to_string();
                 *needs_redraw = true;
             }
         }
         if ui.small_button("×10").clicked() {
-            if let Ok(val) = iterations_input.parse::<u32>() {
-                *iterations_input = (val * 10).to_string();
+            if let Ok(val) = input_state.iterations.parse::<u32>() {
+                input_state.iterations = (val * 10).to_string();
                 *needs_redraw = true;
             }
         }
         if ui.small_button("÷10").clicked() {
-            if let Ok(val) = iterations_input.parse::<u32>() {
-                *iterations_input = (val / 10).to_string();
+            if let Ok(val) = input_state.iterations.parse::<u32>() {
+                input_state.iterations = (val / 10).to_string();
                 *needs_redraw = true;
             }
         }
@@ -981,7 +756,7 @@ pub fn render_zoom_square(
 // Helper functions
 
 /// Render a section header with consistent styling
-fn section_header(ui: &mut egui::Ui, title: &str) {
+pub fn section_header(ui: &mut egui::Ui, title: &str) {
     ui.label(egui::RichText::new(title).strong());
     ui.add_space(5.0);
 }

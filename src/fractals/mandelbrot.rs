@@ -13,6 +13,7 @@ use super::{Fractal, FractalView, Parameter};
 use num_complex::Complex64;
 use std::collections::HashMap;
 use crate::number_utils::ABSOLUTE_EPSILON;
+use eframe::egui;
 
 /// Mandelbrot set fractal with configurable power
 pub struct Mandelbrot;
@@ -93,6 +94,10 @@ impl Fractal for Mandelbrot {
         "Mandelbrot"
     }
 
+    fn equation(&self) -> &str {
+        "z_{n+1} = z_n^p + c"
+    }
+
     fn parameters(&self) -> Vec<Parameter> {
         vec![
             Parameter {
@@ -166,5 +171,65 @@ impl Mandelbrot {
         }
         
         series
+    }
+}
+
+/// GUI implementation for Mandelbrot power parameter
+impl super::fractal_gui::FractalGUI for Mandelbrot {
+    fn render_parameters_gui(
+        &self,
+        ui: &mut egui::Ui,
+        params: &mut std::collections::HashMap<String, f64>,
+        input_state: &mut crate::app_state::InputState,
+        needs_redraw: &mut bool,
+    ) {
+        use super::fractal_gui::trigger_debounced_redraw;
+        
+        ui.label(egui::RichText::new("Mandelbrot Power").strong());
+        ui.add_space(5.0);
+        
+        // Get parameter bounds
+        let power_min = -10.0;
+        let power_max = 10.0;
+        
+        // Power slider
+        let mut power = params.get("power").copied().unwrap_or(2.0);
+        ui.horizontal(|ui| {
+            ui.label("Power:");
+            ui.add_space(5.0);
+            if ui.add(egui::Slider::new(&mut power, power_min..=power_max)
+                .text("")
+                .step_by(0.1)
+                .fixed_decimals(1))
+                .changed()
+            {
+                params.insert("power".to_string(), power);
+                input_state.mandelbrot_power = format!("{:.1}", power);
+                *needs_redraw = true;
+            }
+        });
+        
+        // Show current value as editable text input (no clamping - full f64 range)
+        ui.add_space(5.0);
+        ui.collapsing("Advanced: Precise Value", |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Power:");
+                if ui
+                    .add(egui::TextEdit::singleline(&mut input_state.mandelbrot_power).desired_width(100.0))
+                    .changed()
+                {
+                    if let Ok(val) = input_state.mandelbrot_power.parse::<f64>() {
+                        // No clamping - accept any valid f64 value
+                        params.insert("power".to_string(), val);
+                        trigger_debounced_redraw(&mut input_state.debounce_timer, &mut input_state.pending_redraw);
+                    }
+                }
+            });
+            ui.label(egui::RichText::new(
+                format!("Range: slider [{:.1}, {:.1}], text input: full f64", power_min, power_max)
+            ).small().weak());
+        });
+        
+        ui.add_space(10.0);
     }
 }

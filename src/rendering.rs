@@ -18,6 +18,92 @@ use std::time::Instant;
 /// Maximum iterations for Mandelbrot calculation
 pub const MAX_ITERATIONS: u32 = 256;
 
+/// Compute iteration counts for all pixels without coloring
+/// Returns a vector of iteration counts suitable for caching
+///
+/// # Arguments
+/// * `view` - View parameters (center, zoom, dimensions)
+/// * `max_iterations` - Maximum iterations for fractal calculation
+/// * `fractal` - The fractal implementation to render
+/// * `fractal_parameters` - Parameters specific to the fractal type
+pub fn compute_iterations(
+    view: &FractalView,
+    max_iterations: u32,
+    fractal: &dyn Fractal,
+    fractal_parameters: &HashMap<String, f64>,
+) -> Vec<u32> {
+    let total_pixels = (view.width * view.height) as usize;
+    
+    perf_log!("[CACHE] Computing iterations for {}x{} = {} pixels", 
+        view.width, view.height, total_pixels);
+    
+    let timer = Instant::now();
+    let iterations: Vec<u32> = (0..total_pixels)
+        .into_par_iter()
+        .map(|i| {
+            let x = (i % view.width as usize) as u32;
+            let y = (i / view.width as usize) as u32;
+            let (real, imag) = view.screen_to_complex(x, y);
+            fractal.iterate(real, imag, fractal_parameters, max_iterations)
+        })
+        .collect();
+    
+    perf_log!("[CACHE] Iteration computation took {:.2?}", timer.elapsed());
+    iterations
+}
+
+/// Apply colors to pre-computed iteration data
+///
+/// # Arguments
+/// * `frame` - Mutable reference to the pixel buffer (RGBA format)
+/// * `iterations` - Pre-computed iteration counts from cache
+/// * `colormap` - Colormap to use for rendering
+/// * `max_iterations` - Maximum iterations used for the cache
+/// * `use_period` - Whether to enable period modulation
+/// * `period` - Period value for modulo operation on iterations
+/// * `use_interior_color` - Whether to use custom interior color
+/// * `interior_color` - RGB color for points inside the set
+/// * `use_log_scale` - Whether to apply logarithmic scaling to colors
+pub fn apply_colors_from_cache(
+    frame: &mut [u8],
+    iterations: &[u32],
+    colormap: &ColorMap,
+    max_iterations: u32,
+    use_period: bool,
+    period: u32,
+    use_interior_color: bool,
+    interior_color: [u8; 3],
+    use_log_scale: bool,
+) {
+    perf_log!("[CACHE] Applying colors to {} cached pixels", iterations.len());
+    
+    let timer = Instant::now();
+    let pixels: Vec<[u8; 4]> = iterations
+        .par_iter()
+        .map(|&iter| {
+            let color = color_from_iterations(
+                iter,
+                max_iterations,
+                colormap,
+                use_period,
+                period,
+                use_interior_color,
+                interior_color,
+                use_log_scale,
+            );
+            [color.r, color.g, color.b, 255]
+        })
+        .collect();
+    
+    // Copy computed pixels to frame buffer
+    for (i, pixel) in pixels.iter().enumerate() {
+        let idx = i * 4;
+        frame[idx..idx + 4].copy_from_slice(pixel);
+    }
+    
+    perf_log!("[CACHE] Color application took {:.2?}", timer.elapsed());
+}
+
 /// Renders any fractal to a pixel buffer using parallel processing
 ///
 /// # Arguments

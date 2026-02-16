@@ -74,5 +74,12 @@ impl Fractal for TippetsMandelbrot {
         "Tippets Mandelbrot"
     }
 
+    fn equation(&self) -> &str {
+        "z_{n+1} = z_n^2 + c*z_n + c"
+    }
+
     // Tippets Mandelbrot has no parameters, so we use the default empty Vec
 }
+
+// FractalGUI implementation (no parameters for Tippets' Mandelbrot)
+impl super::FractalGUI for TippetsMandelbrot {}

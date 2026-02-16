@@ -19,6 +19,7 @@ pub struct ViewState {
     pub view: FractalView,
     pub fractal_texture: Option<egui::TextureHandle>,
     pub needs_redraw: bool,
+    pub iteration_cache: Option<IterationCache>,
 }
 
 impl ViewState {
@@ -27,6 +28,7 @@ impl ViewState {
             view: FractalView::new(width, height),
             fractal_texture: None,
             needs_redraw: true,
+            iteration_cache: None,
         }
     }
 
@@ -51,6 +53,7 @@ pub struct InputState {
     pub mandelbrot_power: String,
     pub multifractal_julia_power: String,
     pub marek_dragon_phi: String,
+    pub tetration_threshold: String,
     pub period: String,
     pub export_scale: String,
     pub export_supersample: String,
@@ -71,6 +74,7 @@ impl Default for InputState {
             mandelbrot_power: String::from("2.0"),
             multifractal_julia_power: String::from("1.0"),
             marek_dragon_phi: String::from("0.0"),
+            tetration_threshold: String::from("1e7"),
             period: String::from("128"),
             export_scale: String::from("3.0"),
             export_supersample: String::from("4"),
@@ -125,6 +129,59 @@ impl InputState {
     pub fn parse_marek_dragon_phi(&self) -> f64 {
         self.marek_dragon_phi.parse::<f64>().unwrap_or(0.0)
     }
+
+    /// Parse Tetration threshold parameter (supports scientific notation)
+    pub fn parse_tetration_threshold(&self) -> f64 {
+        self.tetration_threshold.parse::<f64>().unwrap_or(1e7).max(1.0)
+    }
+}
+
+/// Iteration data cache for fast recoloring
+/// 
+/// Stores the raw iteration counts for each pixel, allowing color schemes
+/// to be changed without recomputing the fractal. This cache is invalidated
+/// when any rendering parameter changes (view, fractal type, parameters, etc.)
+/// but remains valid when only color-related settings change.
+#[derive(Clone)]
+pub struct IterationCache {
+    /// Iteration count for each pixel (row-major order)
+    pub data: Vec<u32>,
+    /// Width of the cached render
+    pub width: u32,
+    /// Height of the cached render
+    pub height: u32,
+    /// Maximum iterations used for this cache
+    pub max_iterations: u32,
+    /// Fractal type that generated this cache
+    pub fractal_type: FractalType,
+    /// Fractal parameters used for this cache
+    pub fractal_parameters: HashMap<String, f64>,
+    /// View coordinates used for this cache
+    pub center_x: f64,
+    pub center_y: f64,
+    pub zoom: f64,
+}
+
+impl IterationCache {
+    /// Check if the cache is valid for the given rendering parameters
+    pub fn is_valid(
+        &self,
+        width: u32,
+        height: u32,
+        max_iterations: u32,
+        fractal_type: FractalType,
+        fractal_parameters: &HashMap<String, f64>,
+        view: &FractalView,
+    ) -> bool {
+        self.width == width
+            && self.height == height
+            && self.max_iterations == max_iterations
+            && self.fractal_type == fractal_type
+            && self.fractal_parameters == *fractal_parameters
+            && (self.center_x - view.center_x).abs() < 1e-10
+            && (self.center_y - view.center_y).abs() < 1e-10
+            && (self.zoom - view.zoom).abs() < 1e-10
+    }
 }
 
 /// Fractal type enumeration
@@ -137,6 +194,7 @@ pub enum FractalType {
     MultifractalJulia,
     Cactus,
     MarekDragon,
+    Tetration,
 }
 
 impl FractalType {
@@ -149,11 +207,26 @@ impl FractalType {
             FractalType::MultifractalJulia => "Multifractal-Julia",
             FractalType::Cactus => "Cactus",
             FractalType::MarekDragon => "Marek Dragon",
+            FractalType::Tetration => "Tetration",
         }
     }
 
     pub fn name(&self) -> &str {
         self.as_str()
+    }
+
+    /// Get the mathematical equation for this fractal type
+    pub fn equation(&self) -> &str {
+        match self {
+            FractalType::Mandelbrot => "z_{n+1} = z_n^p + c",
+            FractalType::Julia => "z_{n+1} = z_n^2 + c",
+            FractalType::BurningShip => "z_{n+1} = (|Re(z_n)| + i|Im(z_n)|)^2 + c",
+            FractalType::TippetsMandelbrot => "z_{n+1} = z_n^2 + c*z_n + c",
+            FractalType::MultifractalJulia => "z_{n+1} = c^k * z_n^(-2) + c",
+            FractalType::Cactus => "z_{n+1} = z_n^3 + (z_0 - 1)*z_n - z_0",
+            FractalType::MarekDragon => "z_{n+1} = exp(iφ)*z_n + z_n^2",
+            FractalType::Tetration => "z_{n+1} = c^(z_n)",
+        }
     }
 
     pub fn all() -> &'static [FractalType] {
@@ -165,12 +238,13 @@ impl FractalType {
             FractalType::MultifractalJulia,
             FractalType::Cactus,
             FractalType::MarekDragon,
+            FractalType::Tetration,
         ]
     }
 
     /// Creates a fractal instance from the enum type
     pub fn create_instance(&self) -> Box<dyn crate::fractals::Fractal> {
-        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon};
+        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration};
         
         match self {
             FractalType::Mandelbrot => Box::new(Mandelbrot::new()),
@@ -180,6 +254,53 @@ impl FractalType {
             FractalType::MultifractalJulia => Box::new(MultifractalJulia::new()),
             FractalType::Cactus => Box::new(Cactus::new()),
             FractalType::MarekDragon => Box::new(MarekDragon::new()),
+            FractalType::Tetration => Box::new(Tetration::new()),
+        }
+    }
+
+    /// Render GUI parameters for this fractal type using the FractalGUI trait
+    pub fn render_gui(
+        &self,
+        ui: &mut egui::Ui,
+        params: &mut HashMap<String, f64>,
+        input_state: &mut InputState,
+        needs_redraw: &mut bool,
+    ) {
+        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, FractalGUI};
+        
+        match self {
+            FractalType::Mandelbrot => {
+                let fractal = Mandelbrot::new();
+                fractal.render_parameters_gui(ui, params, input_state, needs_redraw);
+            }
+            FractalType::Julia => {
+                let fractal = Julia::new();
+                fractal.render_parameters_gui(ui, params, input_state, needs_redraw);
+            }
+            FractalType::BurningShip => {
+                let fractal = BurningShip::new();
+                fractal.render_parameters_gui(ui, params, input_state, needs_redraw);
+            }
+            FractalType::TippetsMandelbrot => {
+                let fractal = TippetsMandelbrot::new();
+                fractal.render_parameters_gui(ui, params, input_state, needs_redraw);
+            }
+            FractalType::MultifractalJulia => {
+                let fractal = MultifractalJulia::new();
+                fractal.render_parameters_gui(ui, params, input_state, needs_redraw);
+            }
+            FractalType::Cactus => {
+                let fractal = Cactus::new();
+                fractal.render_parameters_gui(ui, params, input_state, needs_redraw);
+            }
+            FractalType::MarekDragon => {
+                let fractal = MarekDragon::new();
+                fractal.render_parameters_gui(ui, params, input_state, needs_redraw);
+            }
+            FractalType::Tetration => {
+                let fractal = Tetration::new();
+                fractal.render_parameters_gui(ui, params, input_state, needs_redraw);
+            }
         }
     }
 
@@ -248,6 +369,14 @@ impl FractalType {
                 params.clear();
                 params.insert("phi".to_string(), input.parse_marek_dragon_phi());
             }
+            FractalType::Tetration => {
+                view.center_x = 0.0;
+                view.center_y = 0.0;
+                view.zoom = 0.5;
+                params.clear();
+                params.insert("threshold".to_string(), input.parse_tetration_threshold());
+                params.insert("escape_mode".to_string(), 0.0); // Default to Magnitude mode
+            }
         }
     }
 }
@@ -256,6 +385,10 @@ impl FractalType {
 impl crate::gui::FractalTypeOps for FractalType {
     fn get_name(&self) -> &str {
         self.name()
+    }
+
+    fn get_equation(&self) -> &str {
+        self.equation()
     }
 
     fn all_types() -> Vec<Self> {
@@ -274,21 +407,21 @@ impl crate::gui::FractalTypeOps for FractalType {
         &self,
         view: &mut FractalView,
         params: &mut HashMap<String, f64>,
-        julia_c_real_input: &str,
-        julia_c_imag_input: &str,
-        mandelbrot_power_input: &str,
-        multifractal_julia_power_input: &str,
-        marek_dragon_phi_input: &str,
+        input: &InputState,
     ) {
-        // Create temporary InputState for compatibility
-        let mut input = InputState::default();
-        input.julia_c_real = julia_c_real_input.to_string();
-        input.julia_c_imag = julia_c_imag_input.to_string();
-        input.mandelbrot_power = mandelbrot_power_input.to_string();
-        input.multifractal_julia_power = multifractal_julia_power_input.to_string();
-        input.marek_dragon_phi = marek_dragon_phi_input.to_string();
-        
-        self.reset_view_and_params(view, params, &input);
+        // Directly call the native method
+        self.reset_view_and_params(view, params, input);
+    }
+
+    fn render_gui(
+        &self,
+        ui: &mut egui::Ui,
+        params: &mut HashMap<String, f64>,
+        input_state: &mut InputState,
+        needs_redraw: &mut bool,
+    ) {
+        // Directly call the native method
+        self.render_gui(ui, params, input_state, needs_redraw);
     }
 }
 
@@ -443,6 +576,7 @@ impl From<&crate::export::FractalMetadata> for ViewState {
             view: meta.to_fractal_view(),
             fractal_texture: None,
             needs_redraw: true,
+            iteration_cache: None,
         }
     }
 }
@@ -508,6 +642,11 @@ impl From<&crate::export::FractalMetadata> for InputState {
         let marek_dragon_phi = meta.fractal_parameters.get("phi")
             .copied()
             .unwrap_or(0.0);
+        
+        // Extract Tetration threshold if present
+        let tetration_threshold = meta.fractal_parameters.get("threshold")
+            .copied()
+            .unwrap_or(1e7);
 
         Self {
             width: meta.width.to_string(),
@@ -518,6 +657,7 @@ impl From<&crate::export::FractalMetadata> for InputState {
             mandelbrot_power: mandelbrot_power.to_string(),
             multifractal_julia_power: multifractal_julia_power.to_string(),
             marek_dragon_phi: marek_dragon_phi.to_string(),
+            tetration_threshold: format!("{:.2e}", tetration_threshold),
             period: meta.period.to_string(),
             export_scale: meta.export_scale.to_string(),
             export_supersample: meta.export_supersample.to_string(),

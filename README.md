@@ -14,8 +14,6 @@
 
 ---
 
----
-
 ## Key Features
 
 ![Mandelbrot Set](img_resources/mandelbrot_4320x1080_4xLanczos31771181432.png)
@@ -80,9 +78,10 @@ forma-fractalis render -i settings.json -o output.png --width 3840 --height 2160
 
 # High-quality 4K render
 forma-fractalis render -i input.png -o wallpaper.png --scale 3.0 --supersample 8
-```
 
----
+# Launch GUI with performance profiling
+forma-fractalis --profiling
+```
 
 ---
 
@@ -112,8 +111,8 @@ forma-fractalis render -i input.png -o wallpaper.png --scale 3.0 --supersample 8
 </td>
 <td width="50%">
 
-### Mandelbrot (Variant)
-![Mandelbrot 2](img_resources/mandelbrot_3840x2160_4xLanczos31768802455.png)
+### Tetration
+![Tetration](img_resources/tetration_3840x2160_4xLanczos31771201252.png)
 
 </td>
 </tr>
@@ -171,6 +170,7 @@ forma-fractalis render -i fractal.json -o poster_8k.png --width 7680 --height 43
 - `--iterations` - Override iteration count
 - `--scale` - Scaling factor
 - `--supersample` - Anti-aliasing (1-16)
+- `-p, --profiling` - Enable performance profiling output (GUI mode)
 
 ---
 
@@ -197,12 +197,21 @@ forma-fractalis render -i fractal.json -o poster_8k.png --width 7680 --height 43
 
 ## Releases
 
-**Latest: v0.1.7** (February 14, 2026)
+**Latest: v0.1.8** (February 15, 2026)
 
-CLI rendering, JSON export, Marek Dragon fractal, state refactoring, scala-chromatica migration complete.
+Tetration fractal, equation visualization, mandatory iteration cache, GUI resize, FractalGUI trait architecture.
 
 <details>
 <summary><b>View release history...</b></summary>
+
+### v0.1.8 (February 15, 2026)
+- Tetration fractal with 4 escape criteria modes
+- Fractal equation visualization (LaTeX-style)
+- Mandatory iteration cache (instant recoloring)
+- GUI resize to 1730×820
+- FractalGUI trait architecture (~287 lines removed)
+- Performance profiling flag (--profiling)
+- README showcase images
 
 ### v0.1.7 (February 14, 2026)
 - Command-line rendering with progress indicators

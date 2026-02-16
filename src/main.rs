@@ -1,9 +1,8 @@
 use eframe::egui;
 use forma_fractalis::{
-    app_state::{ViewState, InputState, FractalState, ColorState, MouseState, ExportState, FractalType},
-    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon}, 
+    app_state::{ViewState, InputState, FractalState, ColorState, MouseState, ExportState, FractalType, IterationCache},
+    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration}, 
     gui, cli,
-    rendering_pipeline::{render_with_config, RenderConfig, RenderTarget},
     perf_log, enable_profiling,
 };
 use std::time::{Duration, Instant};
@@ -11,24 +10,21 @@ use std::time::{Duration, Instant};
 fn main() -> Result<(), eframe::Error> {
     // Try CLI mode first
     match cli::try_cli() {
-        Ok(Some(())) => {
+        Ok((Some(()), _)) => {
             // CLI mode executed successfully
             std::process::exit(0);
         }
-        Ok(None) => {
-            // No CLI arguments, continue to GUI
+        Ok((None, profiling)) => {
+            // No CLI command, continue to GUI
+            if profiling {
+                enable_profiling();
+                println!("[INFO] Performance profiling enabled");
+            }
         }
         Err(e) => {
             eprintln!("Error: {}", e);
             std::process::exit(1);
         }
-    }
-
-    // Parse GUI-specific command-line arguments
-    let args: Vec<String> = std::env::args().collect();
-    if args.contains(&"--profiling".to_string()) || args.contains(&"-p".to_string()) {
-        enable_profiling();
-        println!("[INFO] Performance profiling enabled");
     }
     
     let options = eframe::NativeOptions {
@@ -114,8 +110,6 @@ impl Default for FractalApp {
 
 impl FractalApp {
     fn render_fractal(&mut self, ctx: &egui::Context) {
-        let total_timer = Instant::now();
-        
         // Parse period and iterations values (default to 256 if invalid)
         let period = self.input.parse_period();
         let max_iterations = self.input.parse_iterations();
@@ -128,6 +122,7 @@ impl FractalApp {
         let multifractal_julia = MultifractalJulia::new();
         let cactus = Cactus::new();
         let marek_dragon = MarekDragon::new();
+        let tetration = Tetration::new();
         
         let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
             FractalType::Mandelbrot => &mandelbrot,
@@ -137,18 +132,81 @@ impl FractalApp {
             FractalType::MultifractalJulia => &multifractal_julia,
             FractalType::Cactus => &cactus,
             FractalType::MarekDragon => &marek_dragon,
+            FractalType::Tetration => &tetration,
         };
 
-        // Build render configuration
-        let config = RenderConfig::new(self.view_state.view.clone(), &self.color.colormap, max_iterations, fractal)
-            .with_period(self.color.use_period, period)
-            .with_interior_color(self.color.use_interior_color, self.color.interior_color)
-            .with_log_scale(self.color.use_log_scale)
-            .with_fractal_parameters(self.fractal.parameters.clone());
+        // Check if we can use the iteration cache
+        let use_cache = self.view_state.iteration_cache.as_ref().map_or(false, |cache| {
+            cache.is_valid(
+                self.view_state.view.width,
+                self.view_state.view.height,
+                max_iterations,
+                self.fractal.fractal_type,
+                &self.fractal.parameters,
+                &self.view_state.view,
+            )
+        });
 
-        // Render for preview (no filtering)
-        let buffer = render_with_config(&config, RenderTarget::Preview);
+        let buffer_size = (self.view_state.view.width * self.view_state.view.height * 4) as usize;
+        let mut buffer = vec![0u8; buffer_size];
 
+        if use_cache {
+            // Use cached iterations, only apply colors
+            perf_log!("[CACHE] Using cached iterations");
+            let cache = self.view_state.iteration_cache.as_ref().unwrap();
+            
+            forma_fractalis::rendering::apply_colors_from_cache(
+                &mut buffer,
+                &cache.data,
+                &self.color.colormap,
+                max_iterations,
+                self.color.use_period,
+                period,
+                self.color.use_interior_color,
+                self.color.interior_color,
+                self.color.use_log_scale,
+            );
+        } else {
+            // Compute iterations and cache them
+            perf_log!("[CACHE] Computing and caching iterations");
+            let iterations = forma_fractalis::rendering::compute_iterations(
+                &self.view_state.view,
+                max_iterations,
+                fractal,
+                &self.fractal.parameters,
+            );
+            
+            // Store in cache
+            self.view_state.iteration_cache = Some(IterationCache {
+                data: iterations.clone(),
+                width: self.view_state.view.width,
+                height: self.view_state.view.height,
+                max_iterations,
+                fractal_type: self.fractal.fractal_type,
+                fractal_parameters: self.fractal.parameters.clone(),
+                center_x: self.view_state.view.center_x,
+                center_y: self.view_state.view.center_y,
+                zoom: self.view_state.view.zoom,
+            });
+            
+            // Apply colors to computed iterations
+            forma_fractalis::rendering::apply_colors_from_cache(
+                &mut buffer,
+                &iterations,
+                &self.color.colormap,
+                max_iterations,
+                self.color.use_period,
+                period,
+                self.color.use_interior_color,
+                self.color.interior_color,
+                self.color.use_log_scale,
+            );
+        }
+
+        self.finish_render(ctx, buffer);
+    }
+
+    fn finish_render(&mut self, ctx: &egui::Context, buffer: Vec<u8>) {
         // Convert to egui ColorImage
         let image_timer = Instant::now();
         let width = self.view_state.view.width as usize;
@@ -166,9 +224,8 @@ impl FractalApp {
         }
         let texture_time = texture_timer.elapsed();
         
-        let total_time = total_timer.elapsed();
-        perf_log!("[PERF] GUI overhead: image_convert={:.2?}, texture_upload={:.2?}, total_gui={:.2?}",
-            image_time, texture_time, total_time);
+        perf_log!("[PERF] Texture: image_convert={:.2?}, upload={:.2?}",
+            image_time, texture_time);
 
         self.view_state.clear_redraw();
     }
@@ -267,18 +324,11 @@ impl eframe::App for FractalApp {
                             // Fractal Settings
                             gui::render_fractal_settings(
                                 ui,
-                                &mut self.input.iterations,
+                                &mut self.input,
                                 &mut self.view_state.needs_redraw,
                                 &mut self.fractal.fractal_type,
                                 &mut self.fractal.parameters,
-                                &mut self.input.julia_c_real,
-                                &mut self.input.julia_c_imag,
-                                &mut self.input.mandelbrot_power,
-                                &mut self.input.multifractal_julia_power,
-                                &mut self.input.marek_dragon_phi,
                                 &mut self.view_state.view,
-                                &mut self.input.debounce_timer,
-                                &mut self.input.pending_redraw,
                             );
 
                             ui.add_space(15.0);
@@ -349,6 +399,7 @@ impl eframe::App for FractalApp {
                             let multifractal_julia = MultifractalJulia::new();
                             let cactus = Cactus::new();
                             let marek_dragon = MarekDragon::new();
+                            let tetration = Tetration::new();
                             
                             let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
                                 FractalType::Mandelbrot => &mandelbrot,
@@ -358,6 +409,7 @@ impl eframe::App for FractalApp {
                                 FractalType::MultifractalJulia => &multifractal_julia,
                                 FractalType::Cactus => &cactus,
                                 FractalType::MarekDragon => &marek_dragon,
+                                FractalType::Tetration => &tetration,
                             };
                             
                             gui::render_actions_section(

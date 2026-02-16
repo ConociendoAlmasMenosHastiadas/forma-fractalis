@@ -17,6 +17,10 @@ use crate::fractals::*;
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
+    
+    /// Enable performance profiling output
+    #[arg(short, long)]
+    pub profiling: bool,
 }
 
 #[derive(Subcommand)]
@@ -130,6 +134,7 @@ pub fn render_from_cli(args: &Commands) -> Result<(), String> {
             let multifractal_julia = MultifractalJulia::new();
             let cactus = Cactus::new();
             let marek_dragon = MarekDragon::new();
+            let tetration = Tetration::new();
             
             let fractal: &dyn Fractal = match fractal_state.fractal_type {
                 crate::app_state::FractalType::Mandelbrot => &mandelbrot,
@@ -139,6 +144,7 @@ pub fn render_from_cli(args: &Commands) -> Result<(), String> {
                 crate::app_state::FractalType::MultifractalJulia => &multifractal_julia,
                 crate::app_state::FractalType::Cactus => &cactus,
                 crate::app_state::FractalType::MarekDragon => &marek_dragon,
+                crate::app_state::FractalType::Tetration => &tetration,
             };
             
             pb.set_message(format!(
@@ -190,18 +196,20 @@ pub fn should_use_cli() -> bool {
 }
 
 /// Parse CLI arguments and render, or return Ok(()) if no CLI args
-pub fn try_cli() -> Result<Option<()>, String> {
+/// Returns (Option<()>, bool) where bool indicates if profiling is enabled
+pub fn try_cli() -> Result<(Option<()>, bool), String> {
     if !should_use_cli() {
-        return Ok(None);
+        return Ok((None, false));
     }
 
     let cli = Cli::parse();
+    let profiling = cli.profiling;
     
     if let Some(command) = cli.command {
         render_from_cli(&command)?;
-        Ok(Some(()))
+        Ok((Some(()), profiling))
     } else {
-        // No subcommand provided, show help
-        Ok(None)
+        // No subcommand provided, allow GUI to run with profiling flag
+        Ok((None, profiling))
     }
 }

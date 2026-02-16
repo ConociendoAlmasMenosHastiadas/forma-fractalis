@@ -14,6 +14,7 @@ use crate::fractals::{Fractal, FractalView};
 use crate::number_utils::TWO_PI;
 use num_complex::Complex64;
 use std::collections::HashMap;
+use eframe::egui;
 
 /// Marek Dragon fractal
 ///
@@ -73,6 +74,10 @@ impl Fractal for MarekDragon {
         "Marek Dragon"
     }
 
+    fn equation(&self) -> &str {
+        "z_{n+1} = exp(iφ)*z_n + z_n^2"
+    }
+
     fn parameters(&self) -> Vec<crate::fractals::Parameter> {
         vec![
             crate::fractals::Parameter {
@@ -84,6 +89,65 @@ impl Fractal for MarekDragon {
                 description: "Rotation parameter (0 to 2π)".to_string(),
             }
         ]
+    }
+}
+
+/// GUI implementation for Marek Dragon phi parameter
+impl super::fractal_gui::FractalGUI for MarekDragon {
+    fn render_parameters_gui(
+        &self,
+        ui: &mut egui::Ui,
+        params: &mut HashMap<String, f64>,
+        input_state: &mut crate::app_state::InputState,
+        needs_redraw: &mut bool,
+    ) {
+        use super::fractal_gui::trigger_debounced_redraw;
+        
+        ui.label(egui::RichText::new("Marek Dragon Parameters").strong());
+        ui.add_space(5.0);
+        
+        // Phi slider (rotation angle 0 to 2π)
+        let mut phi = params.get("phi").copied().unwrap_or(0.0);
+        ui.horizontal(|ui| {
+            ui.label("Phi (φ):");
+            ui.add_space(5.0);
+            if ui.add(egui::Slider::new(&mut phi, 0.0..=TWO_PI)
+                .text("")
+                .step_by(0.001)
+                .fixed_decimals(3))
+                .changed()
+            {
+                params.insert("phi".to_string(), phi);
+                input_state.marek_dragon_phi = format!("{:.6}", phi);
+                *needs_redraw = true;
+            }
+        });
+        
+        // Show current value as editable text input
+        ui.add_space(5.0);
+        ui.collapsing("Advanced: Precise Value", |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Phi (φ):");
+                if ui
+                    .add(egui::TextEdit::singleline(&mut input_state.marek_dragon_phi).desired_width(100.0))
+                    .changed()
+                {
+                    if let Ok(val) = input_state.marek_dragon_phi.parse::<f64>() {
+                        let clamped = val.clamp(0.0, TWO_PI);
+                        params.insert("phi".to_string(), clamped);
+                        trigger_debounced_redraw(&mut input_state.debounce_timer, &mut input_state.pending_redraw);
+                    }
+                }
+            });
+            ui.label(egui::RichText::new(
+                "Formula: z_{n+1} = exp(jφ) · z_n + z_n²"
+            ).small().weak());
+            ui.label(egui::RichText::new(
+                format!("Range: 0 to 2π ({:.6})", TWO_PI)
+            ).small().weak());
+        });
+        
+        ui.add_space(10.0);
     }
 }
 

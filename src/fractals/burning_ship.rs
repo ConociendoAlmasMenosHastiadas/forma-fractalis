@@ -59,5 +59,12 @@ impl Fractal for BurningShip {
         "Burning Ship"
     }
 
+    fn equation(&self) -> &str {
+        "z_{n+1} = (|Re(z_n)| + i|Im(z_n)|)^2 + c"
+    }
+
     // Burning Ship has no parameters, so we use the default empty Vec
 }
+
+// FractalGUI implementation (no parameters for Burning Ship)
+impl super::FractalGUI for BurningShip {}
