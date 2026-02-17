@@ -27,6 +27,7 @@ pub mod multifractal_julia;
 pub mod cactus;
 pub mod marek_dragon;
 pub mod tetration;
+pub mod lemon;
 
 // Parameter system extensions
 pub mod parameter_types;
@@ -41,6 +42,7 @@ pub use multifractal_julia::MultifractalJulia;
 pub use cactus::Cactus;
 pub use marek_dragon::MarekDragon;
 pub use tetration::Tetration;
+pub use lemon::Lemon;
 pub use parameter_types::EscapeMode;
 pub use fractal_gui::FractalGUI;
 

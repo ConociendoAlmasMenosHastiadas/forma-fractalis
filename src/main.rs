@@ -1,7 +1,7 @@
 use eframe::egui;
 use forma_fractalis::{
     app_state::{ViewState, InputState, FractalState, ColorState, MouseState, ExportState, FractalType, IterationCache},
-    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration}, 
+    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon}, 
     gui, cli,
     perf_log, enable_profiling,
 };
@@ -123,6 +123,7 @@ impl FractalApp {
         let cactus = Cactus::new();
         let marek_dragon = MarekDragon::new();
         let tetration = Tetration::new();
+        let lemon = Lemon::new();
         
         let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
             FractalType::Mandelbrot => &mandelbrot,
@@ -133,6 +134,7 @@ impl FractalApp {
             FractalType::Cactus => &cactus,
             FractalType::MarekDragon => &marek_dragon,
             FractalType::Tetration => &tetration,
+            FractalType::Lemon => &lemon,
         };
 
         // Check if we can use the iteration cache
@@ -400,6 +402,7 @@ impl eframe::App for FractalApp {
                             let cactus = Cactus::new();
                             let marek_dragon = MarekDragon::new();
                             let tetration = Tetration::new();
+                            let lemon = Lemon::new();
                             
                             let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
                                 FractalType::Mandelbrot => &mandelbrot,
@@ -410,6 +413,7 @@ impl eframe::App for FractalApp {
                                 FractalType::Cactus => &cactus,
                                 FractalType::MarekDragon => &marek_dragon,
                                 FractalType::Tetration => &tetration,
+                                FractalType::Lemon => &lemon,
                             };
                             
                             gui::render_actions_section(

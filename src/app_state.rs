@@ -54,6 +54,8 @@ pub struct InputState {
     pub multifractal_julia_power: String,
     pub marek_dragon_phi: String,
     pub tetration_threshold: String,
+    pub lemon_convergence_exp: String,
+    pub lemon_denom_power: String,
     pub period: String,
     pub export_scale: String,
     pub export_supersample: String,
@@ -75,6 +77,8 @@ impl Default for InputState {
             multifractal_julia_power: String::from("1.0"),
             marek_dragon_phi: String::from("0.0"),
             tetration_threshold: String::from("1e7"),
+            lemon_convergence_exp: String::from("6"),
+            lemon_denom_power: String::from("2.0"),
             period: String::from("128"),
             export_scale: String::from("3.0"),
             export_supersample: String::from("4"),
@@ -133,6 +137,16 @@ impl InputState {
     /// Parse Tetration threshold parameter (supports scientific notation)
     pub fn parse_tetration_threshold(&self) -> f64 {
         self.tetration_threshold.parse::<f64>().unwrap_or(1e7).max(1.0)
+    }
+
+    /// Parse Lemon convergence exponent parameter
+    pub fn parse_lemon_convergence_exp(&self) -> f64 {
+        self.lemon_convergence_exp.parse::<f64>().unwrap_or(6.0).clamp(1.0, 15.0)
+    }
+
+    /// Parse Lemon denominator power parameter
+    pub fn parse_lemon_denom_power(&self) -> f64 {
+        self.lemon_denom_power.parse::<f64>().unwrap_or(2.0).clamp(-5.0, 5.0)
     }
 }
 
@@ -195,6 +209,7 @@ pub enum FractalType {
     Cactus,
     MarekDragon,
     Tetration,
+    Lemon,
 }
 
 impl FractalType {
@@ -208,6 +223,7 @@ impl FractalType {
             FractalType::Cactus => "Cactus",
             FractalType::MarekDragon => "Marek Dragon",
             FractalType::Tetration => "Tetration",
+            FractalType::Lemon => "Lemon",
         }
     }
 
@@ -226,6 +242,7 @@ impl FractalType {
             FractalType::Cactus => "z_{n+1} = z_n^3 + (z_0 - 1)*z_n - z_0",
             FractalType::MarekDragon => "z_{n+1} = exp(iφ)*z_n + z_n^2",
             FractalType::Tetration => "z_{n+1} = c^(z_n)",
+            FractalType::Lemon => "z_{n+1} = z_0 * z_n^2 * (z_n^2 + 1) / (z_n^2 - 1)^k",
         }
     }
 
@@ -239,12 +256,13 @@ impl FractalType {
             FractalType::Cactus,
             FractalType::MarekDragon,
             FractalType::Tetration,
+            FractalType::Lemon,
         ]
     }
 
     /// Creates a fractal instance from the enum type
     pub fn create_instance(&self) -> Box<dyn crate::fractals::Fractal> {
-        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration};
+        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon};
         
         match self {
             FractalType::Mandelbrot => Box::new(Mandelbrot::new()),
@@ -255,6 +273,7 @@ impl FractalType {
             FractalType::Cactus => Box::new(Cactus::new()),
             FractalType::MarekDragon => Box::new(MarekDragon::new()),
             FractalType::Tetration => Box::new(Tetration::new()),
+            FractalType::Lemon => Box::new(Lemon::new()),
         }
     }
 
@@ -266,7 +285,7 @@ impl FractalType {
         input_state: &mut InputState,
         needs_redraw: &mut bool,
     ) {
-        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, FractalGUI};
+        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, FractalGUI};
         
         match self {
             FractalType::Mandelbrot => {
@@ -299,6 +318,10 @@ impl FractalType {
             }
             FractalType::Tetration => {
                 let fractal = Tetration::new();
+                fractal.render_parameters_gui(ui, params, input_state, needs_redraw);
+            }
+            FractalType::Lemon => {
+                let fractal = Lemon::new();
                 fractal.render_parameters_gui(ui, params, input_state, needs_redraw);
             }
         }
@@ -376,6 +399,14 @@ impl FractalType {
                 params.clear();
                 params.insert("threshold".to_string(), input.parse_tetration_threshold());
                 params.insert("escape_mode".to_string(), 0.0); // Default to Magnitude mode
+            }
+            FractalType::Lemon => {
+                view.center_x = 0.0;
+                view.center_y = 0.0;
+                view.zoom = 0.5;
+                params.clear();
+                params.insert("convergence_exp".to_string(), input.parse_lemon_convergence_exp());
+                params.insert("denom_power".to_string(), input.parse_lemon_denom_power());
             }
         }
     }
@@ -648,6 +679,16 @@ impl From<&crate::export::FractalMetadata> for InputState {
             .copied()
             .unwrap_or(1e7);
 
+        // Extract Lemon convergence exponent if present
+        let lemon_convergence_exp = meta.fractal_parameters.get("convergence_exp")
+            .copied()
+            .unwrap_or(6.0);
+
+        // Extract Lemon denominator power if present
+        let lemon_denom_power = meta.fractal_parameters.get("denom_power")
+            .copied()
+            .unwrap_or(2.0);
+
         Self {
             width: meta.width.to_string(),
             height: meta.height.to_string(),
@@ -658,6 +699,8 @@ impl From<&crate::export::FractalMetadata> for InputState {
             multifractal_julia_power: multifractal_julia_power.to_string(),
             marek_dragon_phi: marek_dragon_phi.to_string(),
             tetration_threshold: format!("{:.2e}", tetration_threshold),
+            lemon_convergence_exp: lemon_convergence_exp.to_string(),
+            lemon_denom_power: lemon_denom_power.to_string(),
             period: meta.period.to_string(),
             export_scale: meta.export_scale.to_string(),
             export_supersample: meta.export_supersample.to_string(),

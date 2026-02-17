@@ -11,7 +11,7 @@ release/
 # Exported images
 *.png
 !src/colormaps/*.png
-!img_resources/*.png
+!img_resources/**/*.png
 
 # IDE / Editor files
 .vscode/

@@ -42,7 +42,7 @@ Each benchmark tests all 4 fractal types (Mandelbrot, Julia, BurningShip, Tippet
 
 ### Performance Analysis
 
-**Status: ✅ NO REGRESSION**
+**Status: NO REGRESSION**
 - All fractals maintain v0.1.3 performance levels
 - HD @ 256 iter: 7-14ms (excellent)
 - HD @ 1024 iter: 8-42ms (all within target)

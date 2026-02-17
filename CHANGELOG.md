@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-02-16
+
+### Added
+- **Lemon Fractal**: Convergence-based Newton-type fractal
+  - Formula: z_{n+1} = z_0 * z_n^2 * (z_n^2 + 1) / (z_n^2 - 1)^k
+  - Configurable denominator power (k): slider range -5.0 to 5.0
+  - k=2 is canonical Lemon, k=1 is an interesting "typo variant"
+  - Convergence threshold parameter (10^-x notation)
+  - 8 unit tests for iteration and parameter behavior
+
+### Changed
+- **Dependencies Updated**:
+  - rayon: 1.8 -> 1.11
+  - once_cell: 1.19 -> 1.21
+  - clap: 4.4 -> 4.5
+  - tempfile: 3.8 -> 3.25
+  - rfd: 0.12 -> 0.17
+  - indicatif: 0.17 -> 0.18
+- **Repository Cleanup**:
+  - Removed AGENTS.md from version control (local-only LLM workspace file)
+  - Restructured img_resources into banners/, gallery/, gallery_expanded/
+  - Improved README banner placement for better visual flow
+  - Removed unused `directories` dependency
+  - Deleted stray test_load.rs file
+- **Documentation**:
+  - Removed emojis from CHANGELOG.md and BENCHMARKS.md
+  - Trimmed COLORMAP_SAVELOAD.md verbosity
+  - Added FractalGUI trait and Dependency Management sections to AGENTS.md
+  - Updated future plans with GPU phasing notes
+
+### Fixed
+- Fixed test_tetration_default_view assertion (zoom 0.5 -> 0.45)
+
 ## [0.1.8] - 2026-02-15
 
 ### Added
@@ -222,16 +255,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Technical Notes
 - Metadata version: 1.0 (first versioned format)
 - All state managed through v0.1.5's grouped state pattern
-- Error messages use ✓ and ❌ emojis for visual feedback
+- Error messages use visual feedback indicators
 - Status message prefixing ("LOAD_PNG:") for GUI-to-logic communication
 - Cactus fractal uses adaptive escape radius for accuracy
 
 ### Testing
-- ✅ All 28 unit tests passing (7 new for Cactus fractal)
-- ✅ Code compiles without errors or warnings
-- ✅ Release build successful
-- ✅ Manual testing confirmed: export → load → exact reproduction
-- ✅ Cactus fractal renders correctly with Vintage Lavender colormap
+- All 28 unit tests passing (7 new for Cactus fractal)
+- Code compiles without errors or warnings
+- Release build successful
+- Manual testing confirmed: export -> load -> exact reproduction
+- Cactus fractal renders correctly with Vintage Lavender colormap
 
 ## [0.1.5] - 2026-01-19
 

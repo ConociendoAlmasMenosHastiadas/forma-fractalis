@@ -204,26 +204,7 @@ Information about an available colormap:
 - `is_builtin: bool` - Whether it's a built-in or custom colormap
 - `filepath: Option<PathBuf>` - Path to the file (None for built-ins)
 
-## Implementation Details
-
-### ColorMap Structure Changes
-
-The `ColorMap` struct now includes a `name` field and public `stops` field:
-
-```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ColorMap {
-    pub name: String,
-    pub stops: Vec<ColorStop>,
-}
-```
-
-### Dependencies
-
-- `serde` and `serde_json` - For JSON serialization
-- `directories` - For platform-specific config directories
-
-### Testing
+## Testing
 
 Run the tests:
 ```bash
@@ -254,13 +235,3 @@ cargo run --example colormap_io
    let json = fs::read_to_string("my_colormap.json")?;
    let colormap: ColorMap = serde_json::from_str(&json)?;
    ```
-
-## Future Enhancements
-
-Possible future additions:
-- Import colormap from file path
-- Colormap preview/thumbnail generation
-- Colormap metadata (author, description, tags)
-- Colormap versioning
-- Batch import/export
-- Colormap presets/categories

@@ -1,14 +1,11 @@
 # Forma Fractalis - Interactive Fractal Explorer
 
-![Julia Set Hero Banner](img_resources/julia_set_4320x1080_4xLanczos31771181678.png)
+![Julia Set Hero Banner](img_resources/banners/julia_set_4320x1080_4xLanczos31771181678.png)
 
 **Explore, create, and render stunning fractals in Rust.** An interactive fractal explorer with real-time rendering, advanced color mapping, CLI automation, and professional export capabilities.
 
-> *Perfect for wallpapers, digital art, and mathematical visualization*  
-> **Pre-built Windows executables** available in [`builds/`](builds/)  
-> **New in v0.1.7**: Command-line rendering and automation
+> **Non-programmers:** Pre-built Windows executables available in [`builds/`](builds/)
 
-![Version](https://img.shields.io/badge/version-0.1.7-blue)
 ![Rust](https://img.shields.io/badge/rust-2021-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue)
 
@@ -16,10 +13,10 @@
 
 ## Key Features
 
-![Mandelbrot Set](img_resources/mandelbrot_4320x1080_4xLanczos31771181432.png)
+![Mandelbrot Set](img_resources/banners/mandelbrot_4320x1080_4xLanczos31771181432.png)
 
 ### Interactive Exploration
-- **7 Fractal Types**: Mandelbrot, Julia, Burning Ship, Tippets Mandelbrot, Multifractal-Julia, Cactus, Marek Dragon
+- **9 Fractal Types**: Mandelbrot, Julia, Burning Ship, Tippets Mandelbrot, Multifractal-Julia, Cactus, Marek Dragon, Tetration, Lemon
 - **Real-time Rendering**: Smooth 60 FPS with multi-threaded computation
 - **Click-to-Zoom**: Intuitive mouse controls for navigation
 - **Fractal Parameters**: Adjust Julia constants, powers, rotation angles with live sliders
@@ -29,8 +26,6 @@
 - **Custom Gradient Editor**: Drag-and-drop color stops with RGB precision
 - **Save/Load Colormaps**: Share your custom palettes as JSON
 - **Color Modulation**: Period cycles, custom interior colors, logarithmic scaling
-
-![Burning Ship](img_resources/burning_ship_4320x1080_4xLanczos31771182212.png)
 
 ### Professional Export
 - **High-Resolution PNG**: Scale up to 8K with Lanczos3/Gaussian filtering
@@ -44,14 +39,14 @@
 - **Parameter Overrides**: Change dimensions, iterations, scale via command-line
 - **JSON Settings**: Export GUI settings for scripting and version control
 
-![Cactus Fractal](img_resources/cactus_4320x1080_4xLanczos31771181941.png)
-
 ---
 
 ## Quick Start
 
+![Burning Ship](img_resources/banners/burning_ship_4320x1080_4xLanczos31771182212.png)
+
 ### Option 1: Pre-built Binary (Windows)
-1. Download `forma-fractalis_v0.1.7_windows.zip` from [`builds/`](builds/)
+1. Download the latest zip from [`builds/`](builds/)
 2. Extract and run `forma-fractalis.exe`
 3. Start exploring!
 
@@ -92,13 +87,13 @@ forma-fractalis --profiling
 <td width="50%">
 
 ### Mandelbrot Set
-![Mandelbrot 1](img_resources/mandelbrot_3840x2160_4xLanczos31768372087.png)
+![Mandelbrot 1](img_resources/gallery/mandelbrot_3840x2160_4xLanczos31768372087.png)
 
 </td>
 <td width="50%">
 
 ### Julia Set
-![Julia](img_resources/julia_set_3840_4xLanczos31768634818.png)
+![Julia](img_resources/gallery/julia_set_3840_4xLanczos31768634818.png)
 
 </td>
 </tr>
@@ -106,13 +101,13 @@ forma-fractalis --profiling
 <td width="50%">
 
 ### Tetration
-![Tetration](img_resources/tetration_3840x2160_4xLanczos31771201252.png)
+![Tetration](img_resources/gallery/tetration_3840x2160_4xLanczos31771201252.png)
 
 </td>
 <td width="50%">
 
-### Mandelbrot (Deep Zoom)
-![Mandelbrot 2](img_resources/mandelbrot_3840x2160_4xLanczos31768802455.png)
+### Powerbrot
+![Mandelbrot 2](img_resources/gallery/mandelbrot_3840x2160_4xLanczos31768802455.png)
 
 </td>
 </tr>
@@ -123,9 +118,9 @@ forma-fractalis --profiling
 
 | Multifractal-Julia & Mandelbrot Variations |
 |:--:|
-| ![Multifractal](img_resources/multifractal-julia_3840x2160_4xLanczos31769398723.png) |
-| ![Mandelbrot 3](img_resources/mandelbrot_3840x2160_4xLanczos31768887944.png) |
-| ![Mandelbrot 4](img_resources/mandelbrot_3840x2160_4xLanczos31769238284.png) |
+| ![Multifractal](img_resources/gallery_expanded/multifractal-julia_3840x2160_4xLanczos31769398723.png) |
+| ![Mandelbrot 3](img_resources/gallery_expanded/mandelbrot_3840x2160_4xLanczos31768887944.png) |
+| ![Mandelbrot 4](img_resources/gallery_expanded/mandelbrot_3840x2160_4xLanczos31769238284.png) |
 
 </details>
 
@@ -133,7 +128,9 @@ forma-fractalis --profiling
 
 ## Usage Guide
 
-### GUI  Navigation & Controls
+![Cactus Fractal](img_resources/banners/cactus_4320x1080_4xLanczos31771181941.png)
+
+### GUI Navigation & Controls
 
 **Zoom & Pan:**
 - Click and drag to position zoom box
@@ -198,12 +195,19 @@ forma-fractalis render -i fractal.json -o poster_8k.png --width 7680 --height 43
 
 ## Releases
 
-**Latest: v0.1.8** (February 15, 2026)
+**Latest: v0.1.9** (February 16, 2026)
 
-Tetration fractal, equation visualization, mandatory iteration cache, GUI resize, FractalGUI trait architecture.
+Lemon fractal (convergence-based with configurable denominator power), dependency updates, repository cleanup, documentation improvements.
 
 <details>
 <summary><b>View release history...</b></summary>
+
+### v0.1.9 (February 16, 2026)
+- Lemon fractal: z_{n+1} = z_0 * z_n^2 * (z_n^2 + 1) / (z_n^2 - 1)^k
+- Configurable denominator power (k=2 canonical, k=1 variant)
+- Dependencies updated (rayon, clap, rfd, indicatif)
+- Repository cleanup (AGENTS.md untracked, img_resources restructured)
+- Documentation improvements (emoji removal, trimmed verbosity)
 
 ### v0.1.8 (February 15, 2026)
 - Tetration fractal with 4 escape criteria modes
@@ -250,7 +254,7 @@ See [CHANGELOG.md](CHANGELOG.md) for complete version history.
 
 ---
 
-## 📄 License
+## License
 
 Dual-licensed under **Apache-2.0** or **MIT** (your choice).  
 See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for dependency licenses.

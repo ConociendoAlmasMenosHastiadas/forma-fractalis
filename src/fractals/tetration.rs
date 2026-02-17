@@ -239,7 +239,7 @@ mod tests {
         let view = fractal.default_view(1280, 720);
         assert_eq!(view.center_x, 0.0);
         assert_eq!(view.center_y, 0.0);
-        assert_eq!(view.zoom, 0.5);
+        assert_eq!(view.zoom, 0.45);
         assert_eq!(view.get_parameter("threshold"), Some(1e7));
         assert_eq!(view.get_parameter("escape_mode"), Some(0.0));
     }
