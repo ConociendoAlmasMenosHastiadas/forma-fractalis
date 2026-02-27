@@ -28,6 +28,8 @@ pub mod cactus;
 pub mod marek_dragon;
 pub mod tetration;
 pub mod lemon;
+pub mod insideout_dragon;
+pub mod zubieta;
 
 // Parameter system extensions
 pub mod parameter_types;
@@ -43,6 +45,8 @@ pub use cactus::Cactus;
 pub use marek_dragon::MarekDragon;
 pub use tetration::Tetration;
 pub use lemon::Lemon;
+pub use insideout_dragon::InsideoutDragon;
+pub use zubieta::Zubieta;
 pub use parameter_types::EscapeMode;
 pub use fractal_gui::FractalGUI;
 

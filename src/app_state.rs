@@ -13,6 +13,19 @@ use eframe::egui;
 use std::collections::HashMap;
 use std::time::Instant;
 
+/// Coordinate input mode for complex parameters
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoordinateMode {
+    Rectangular,
+    Polar,
+}
+
+impl Default for CoordinateMode {
+    fn default() -> Self {
+        CoordinateMode::Rectangular
+    }
+}
+
 /// View and rendering state
 #[derive(Clone)]
 pub struct ViewState {
@@ -50,12 +63,21 @@ pub struct InputState {
     pub iterations: String,
     pub julia_c_real: String,
     pub julia_c_imag: String,
+    pub julia_magnitude: String,
+    pub julia_angle: String,
+    pub julia_coord_mode: CoordinateMode,
     pub mandelbrot_power: String,
     pub multifractal_julia_power: String,
     pub marek_dragon_phi: String,
     pub tetration_threshold: String,
     pub lemon_convergence_exp: String,
     pub lemon_denom_power: String,
+    pub insideout_dragon_escape_radius: String,
+    pub zubieta_c_real: String,
+    pub zubieta_c_imag: String,
+    pub zubieta_magnitude: String,
+    pub zubieta_angle: String,
+    pub zubieta_coord_mode: CoordinateMode,
     pub period: String,
     pub export_scale: String,
     pub export_supersample: String,
@@ -73,12 +95,21 @@ impl Default for InputState {
             iterations: String::from("256"),
             julia_c_real: String::from("0.0"),
             julia_c_imag: String::from("0.0"),
+            julia_magnitude: String::from("0.0"),
+            julia_angle: String::from("0.0"),
+            julia_coord_mode: CoordinateMode::default(),
             mandelbrot_power: String::from("2.0"),
             multifractal_julia_power: String::from("1.0"),
             marek_dragon_phi: String::from("0.0"),
             tetration_threshold: String::from("1e7"),
             lemon_convergence_exp: String::from("6"),
             lemon_denom_power: String::from("2.0"),
+            insideout_dragon_escape_radius: String::from("4.0"),
+            zubieta_c_real: String::from("0.0"),
+            zubieta_c_imag: String::from("0.8"),
+            zubieta_magnitude: String::from("0.8"),
+            zubieta_angle: String::from("1.5707963267949"),
+            zubieta_coord_mode: CoordinateMode::default(),
             period: String::from("128"),
             export_scale: String::from("3.0"),
             export_supersample: String::from("4"),
@@ -148,6 +179,21 @@ impl InputState {
     pub fn parse_lemon_denom_power(&self) -> f64 {
         self.lemon_denom_power.parse::<f64>().unwrap_or(2.0).clamp(-5.0, 5.0)
     }
+
+    /// Parse Insideout Dragon escape radius parameter
+    pub fn parse_insideout_dragon_escape_radius(&self) -> f64 {
+        self.insideout_dragon_escape_radius.parse::<f64>().unwrap_or(4.0)
+    }
+
+    /// Parse Zubieta c_real parameter
+    pub fn parse_zubieta_c_real(&self) -> f64 {
+        self.zubieta_c_real.parse::<f64>().unwrap_or(0.0)
+    }
+
+    /// Parse Zubieta c_imag parameter
+    pub fn parse_zubieta_c_imag(&self) -> f64 {
+        self.zubieta_c_imag.parse::<f64>().unwrap_or(0.8)
+    }
 }
 
 /// Iteration data cache for fast recoloring
@@ -210,6 +256,8 @@ pub enum FractalType {
     MarekDragon,
     Tetration,
     Lemon,
+    InsideoutDragon,
+    Zubieta,
 }
 
 impl FractalType {
@@ -224,6 +272,8 @@ impl FractalType {
             FractalType::MarekDragon => "Marek Dragon",
             FractalType::Tetration => "Tetration",
             FractalType::Lemon => "Lemon",
+            FractalType::InsideoutDragon => "Insideout Dragon",
+            FractalType::Zubieta => "Zubieta",
         }
     }
 
@@ -243,6 +293,8 @@ impl FractalType {
             FractalType::MarekDragon => "z_{n+1} = exp(iφ)*z_n + z_n^2",
             FractalType::Tetration => "z_{n+1} = c^(z_n)",
             FractalType::Lemon => "z_{n+1} = z_0 * z_n^2 * (z_n^2 + 1) / (z_n^2 - 1)^k",
+            FractalType::InsideoutDragon => "z_{n+1} = z_n^2 + f(|z_n|) + i*g(|z_n|), z_0 = 1/c",
+            FractalType::Zubieta => "z_{n+1} = z_n^2 + c/z_n",
         }
     }
 
@@ -257,12 +309,15 @@ impl FractalType {
             FractalType::MarekDragon,
             FractalType::Tetration,
             FractalType::Lemon,
+            FractalType::Zubieta,
+            // InsideoutDragon: Hidden until v0.2.2 (numerical stability issues - needs singularity guards)
+            // FractalType::InsideoutDragon,
         ]
     }
 
     /// Creates a fractal instance from the enum type
     pub fn create_instance(&self) -> Box<dyn crate::fractals::Fractal> {
-        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon};
+        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta};
         
         match self {
             FractalType::Mandelbrot => Box::new(Mandelbrot::new()),
@@ -274,6 +329,8 @@ impl FractalType {
             FractalType::MarekDragon => Box::new(MarekDragon::new()),
             FractalType::Tetration => Box::new(Tetration::new()),
             FractalType::Lemon => Box::new(Lemon::new()),
+            FractalType::InsideoutDragon => Box::new(InsideoutDragon::new()),
+            FractalType::Zubieta => Box::new(Zubieta::new()),
         }
     }
 
@@ -285,7 +342,7 @@ impl FractalType {
         input_state: &mut InputState,
         needs_redraw: &mut bool,
     ) {
-        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, FractalGUI};
+        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, FractalGUI};
         
         match self {
             FractalType::Mandelbrot => {
@@ -322,6 +379,14 @@ impl FractalType {
             }
             FractalType::Lemon => {
                 let fractal = Lemon::new();
+                fractal.render_parameters_gui(ui, params, input_state, needs_redraw);
+            }
+            FractalType::InsideoutDragon => {
+                let fractal = InsideoutDragon::new();
+                fractal.render_parameters_gui(ui, params, input_state, needs_redraw);
+            }
+            FractalType::Zubieta => {
+                let fractal = Zubieta::new();
                 fractal.render_parameters_gui(ui, params, input_state, needs_redraw);
             }
         }
@@ -407,6 +472,21 @@ impl FractalType {
                 params.clear();
                 params.insert("convergence_exp".to_string(), input.parse_lemon_convergence_exp());
                 params.insert("denom_power".to_string(), input.parse_lemon_denom_power());
+            }
+            FractalType::InsideoutDragon => {
+                view.center_x = 0.0;
+                view.center_y = 0.0;
+                view.zoom = 0.25;
+                params.clear();
+                params.insert("escape_radius".to_string(), input.parse_insideout_dragon_escape_radius());
+            }
+            FractalType::Zubieta => {
+                view.center_x = 0.0;
+                view.center_y = 0.0;
+                view.zoom = 0.7;
+                params.clear();
+                params.insert("c_real".to_string(), input.parse_zubieta_c_real());
+                params.insert("c_imag".to_string(), input.parse_zubieta_c_imag());
             }
         }
     }
@@ -597,6 +677,49 @@ impl ExportState {
     }
 }
 
+/// Rendering backend state
+pub struct RenderState {
+    pub backend: crate::gpu::RenderBackend,
+    #[cfg(feature = "gpu")]
+    pub gpu_renderer: Option<crate::gpu::WgpuRenderer>,
+}
+
+impl Default for RenderState {
+    fn default() -> Self {
+        Self {
+            backend: crate::gpu::RenderBackend::default(),
+            #[cfg(feature = "gpu")]
+            gpu_renderer: None,  // Lazy initialization on first use
+        }
+    }
+}
+
+impl RenderState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    
+    /// Initialize GPU renderer if not already initialized
+    #[cfg(feature = "gpu")]
+    pub fn ensure_gpu_initialized(&mut self) -> Result<(), String> {
+        if self.gpu_renderer.is_none() {
+            match crate::gpu::WgpuRenderer::new() {
+                Ok(renderer) => {
+                    self.gpu_renderer = Some(renderer);
+                    Ok(())
+                }
+                Err(e) => {
+                    // Fall back to CPU if GPU initialization fails
+                    self.backend = crate::gpu::RenderBackend::Cpu;
+                    Err(format!("GPU initialization failed, falling back to CPU: {}", e))
+                }
+            }
+        } else {
+            Ok(())
+        }
+    }
+}
+
 /// Conversion from FractalMetadata to state structs
 /// These conversions enable clean bidirectional transformation between
 /// serialized metadata and application state.
@@ -689,18 +812,40 @@ impl From<&crate::export::FractalMetadata> for InputState {
             .copied()
             .unwrap_or(2.0);
 
+        // Extract Insideout Dragon escape radius if present
+        let insideout_dragon_escape_radius = meta.fractal_parameters.get("escape_radius")
+            .copied()
+            .unwrap_or(4.0);
+
+        // Extract Zubieta c values if present
+        let zubieta_c_real = meta.fractal_parameters.get("c_real")
+            .copied()
+            .unwrap_or(0.0);
+        let zubieta_c_imag = meta.fractal_parameters.get("c_imag")
+            .copied()
+            .unwrap_or(0.8);
+
         Self {
             width: meta.width.to_string(),
             height: meta.height.to_string(),
             iterations: meta.max_iterations.to_string(),
             julia_c_real: julia_c_real.to_string(),
             julia_c_imag: julia_c_imag.to_string(),
+            julia_magnitude: (julia_c_real * julia_c_real + julia_c_imag * julia_c_imag).sqrt().to_string(),
+            julia_angle: julia_c_imag.atan2(julia_c_real).to_string(),
+            julia_coord_mode: crate::app_state::CoordinateMode::default(),
             mandelbrot_power: mandelbrot_power.to_string(),
             multifractal_julia_power: multifractal_julia_power.to_string(),
             marek_dragon_phi: marek_dragon_phi.to_string(),
             tetration_threshold: format!("{:.2e}", tetration_threshold),
             lemon_convergence_exp: lemon_convergence_exp.to_string(),
             lemon_denom_power: lemon_denom_power.to_string(),
+            insideout_dragon_escape_radius: insideout_dragon_escape_radius.to_string(),
+            zubieta_c_real: zubieta_c_real.to_string(),
+            zubieta_c_imag: zubieta_c_imag.to_string(),
+            zubieta_magnitude: (zubieta_c_real * zubieta_c_real + zubieta_c_imag * zubieta_c_imag).sqrt().to_string(),
+            zubieta_angle: zubieta_c_imag.atan2(zubieta_c_real).to_string(),
+            zubieta_coord_mode: crate::app_state::CoordinateMode::default(),
             period: meta.period.to_string(),
             export_scale: meta.export_scale.to_string(),
             export_supersample: meta.export_supersample.to_string(),

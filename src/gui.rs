@@ -18,6 +18,9 @@ use scala_chromatica::ColorMap;
 use scala_chromatica::io as colorschemes_io;
 use crate::app_state::InputState;
 use crate::fractals::FractalView;
+use crate::gpu::RenderBackend;
+#[cfg(feature = "gpu")]
+use crate::gpu::FractalRenderer;
 use eframe::egui;
 use std::collections::HashMap;
 use std::path::Path;
@@ -78,6 +81,96 @@ pub trait FractalTypeOps {
 fn trigger_debounced_redraw(timer: &mut Option<Instant>, pending: &mut bool) {
     *timer = Some(Instant::now());
     *pending = true;
+}
+
+/// Render the performance/rendering backend section
+pub fn render_performance_section(
+    ui: &mut egui::Ui,
+    render_state: &mut crate::app_state::RenderState,
+    fractal: &dyn crate::fractals::Fractal,
+    status_message: &mut String,
+    needs_redraw: &mut bool,
+) {
+    section_header(ui, "Performance");
+    
+    // Backend selection
+    ui.horizontal(|ui| {
+        ui.label("Rendering:");
+        let previous_backend = render_state.backend;
+        egui::ComboBox::from_id_source("render_backend")
+            .selected_text(render_state.backend.as_str())
+            .show_ui(ui, |ui| {
+                for backend in crate::gpu::RenderBackend::all() {
+                    ui.selectable_value(&mut render_state.backend, backend, backend.as_str());
+                }
+            });
+        
+        // Initialize GPU and trigger redraw when backend changes
+        #[cfg(feature = "gpu")]
+        if previous_backend != render_state.backend {
+            if matches!(render_state.backend, crate::gpu::RenderBackend::Gpu) {
+                if let Err(e) = render_state.ensure_gpu_initialized() {
+                    *status_message = format!("GPU initialization failed: {}", e);
+                    // Revert to CPU on failure
+                    render_state.backend = crate::gpu::RenderBackend::Cpu;
+                } else {
+                    *status_message = "GPU initialized - re-rendering to show f32 precision".to_string();
+                    *needs_redraw = true;
+                    crate::perf_log!("[BACKEND] Switched to GPU - will re-render");
+                }
+            } else {
+                // Switched from GPU to CPU - trigger redraw to show f64 precision
+                *status_message = "Switched to CPU - re-rendering to show f64 precision".to_string();
+                *needs_redraw = true;
+                crate::perf_log!("[BACKEND] Switched to CPU - will re-render");
+            }
+        }
+    });
+    
+    // Backend explanation
+    let explanation = match render_state.backend {
+        crate::gpu::RenderBackend::Cpu => "CPU: f64 precision, compatible with all fractals",
+        #[cfg(feature = "gpu")]
+        crate::gpu::RenderBackend::Gpu => "GPU: f32 precision (faster, shows precision artifacts at deep zoom)",
+    };
+    
+    ui.label(
+        egui::RichText::new(explanation)
+            .small()
+            .italics()
+            .color(egui::Color32::GRAY),
+    );
+    
+    // GPU status
+    #[cfg(feature = "gpu")]
+    if matches!(render_state.backend, crate::gpu::RenderBackend::Gpu) {
+        ui.add_space(5.0);
+        
+        // Check if current fractal is supported on GPU
+        let fractal_supported = render_state.gpu_renderer.as_ref()
+            .map(|renderer| renderer.supports_fractal(fractal.name()))
+            .unwrap_or(false);
+        
+        if !render_state.gpu_renderer.is_some() {
+            ui.label(
+                egui::RichText::new("✗ GPU not initialized")
+                    .small()
+                    .color(egui::Color32::from_rgb(200, 0, 0)),
+            );
+        } else if !fractal_supported {
+            ui.label(
+                egui::RichText::new(format!("⚠ GPU not available for {} - will use CPU", fractal.name()))
+                    .small()
+                    .color(egui::Color32::from_rgb(255, 165, 0)), // Orange warning
+            );
+        } else {
+            ui.label(
+                egui::RichText::new("✓ GPU ready")
+                    .small()
+                    .color(egui::Color32::from_rgb(0, 200, 0)),
+            );
+        }
+    }
 }
 
 /// Render the preview window dimensions section
@@ -219,6 +312,7 @@ pub fn render_fractal_settings<FT>(
     fractal_type: &mut FT,
     fractal_parameters: &mut HashMap<String, f64>,
     view: &mut FractalView,
+    render_backend: RenderBackend,
 ) 
 where
     FT: Copy + PartialEq + std::fmt::Debug,
@@ -306,6 +400,29 @@ where
             }
         }
     });
+
+    // GPU iteration safety warning
+    #[cfg(feature = "gpu")]
+    if matches!(render_backend, RenderBackend::Gpu) {
+        if let Ok(iter_val) = input_state.iterations.parse::<u32>() {
+            if iter_val > crate::gpu::GPU_MAX_SAFE_ITERATIONS {
+                ui.label(
+                    egui::RichText::new(format!(
+                        "WARNING: {} iterations exceeds GPU safe limit ({}). \
+                         GPU will clamp to {}. Use CPU mode for higher iterations.",
+                        iter_val,
+                        crate::gpu::GPU_MAX_SAFE_ITERATIONS,
+                        crate::gpu::GPU_MAX_SAFE_ITERATIONS,
+                    ))
+                    .small()
+                    .color(egui::Color32::from_rgb(255, 165, 0)),
+                );
+            }
+        }
+    }
+    // Suppress unused variable warning when GPU feature is disabled
+    #[cfg(not(feature = "gpu"))]
+    let _ = render_backend;
 }
 
 /// Render the current view information section
@@ -511,7 +628,9 @@ pub fn render_actions_section(
     export_directory: &mut Option<std::path::PathBuf>,
     export_filter: &mut crate::filtering::FilterType,
     export_supersample_input: &mut String,
+    render_state: &mut crate::app_state::RenderState,
     status_message: &mut String,
+    _needs_redraw: &mut bool,
 ) {
     // Import section
     section_header(ui, "Import from PNG");
@@ -665,8 +784,17 @@ pub fn render_actions_section(
             .unwrap_or(1)
             .max(1);
 
+        // Initialize GPU if needed
+        #[cfg(feature = "gpu")]
+        if matches!(render_state.backend, crate::gpu::RenderBackend::Gpu) {
+            if let Err(e) = render_state.ensure_gpu_initialized() {
+                *status_message = format!("GPU initialization failed: {}", e);
+            }
+        }
+
         // Export the image
-        match crate::export::export_png(
+        #[cfg(feature = "gpu")]
+        let result = crate::export::export_png(
             view,
             colormap,
             max_iterations,
@@ -681,7 +809,30 @@ pub fn render_actions_section(
             supersample,
             scale,
             export_directory.as_ref(),
-        ) {
+            render_state.backend,
+            render_state.gpu_renderer.as_mut(),
+        );
+        
+        #[cfg(not(feature = "gpu"))]
+        let result = crate::export::export_png(
+            view,
+            colormap,
+            max_iterations,
+            fractal,
+            fractal_parameters,
+            use_period,
+            period,
+            use_interior_color,
+            interior_color,
+            use_log_scale,
+            *export_filter,
+            supersample,
+            scale,
+            export_directory.as_ref(),
+            render_state.backend,
+        );
+
+        match result {
             Ok(path) => {
                 *status_message = format!("Exported to: {}", path);
             }

@@ -1,9 +1,10 @@
 use eframe::egui;
 use forma_fractalis::{
-    app_state::{ViewState, InputState, FractalState, ColorState, MouseState, ExportState, FractalType, IterationCache},
-    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon}, 
+    app_state::{ViewState, InputState, FractalState, ColorState, MouseState, ExportState, RenderState, FractalType},
+    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta}, 
     gui, cli,
     perf_log, enable_profiling,
+    rendering_pipeline::{render_with_config, RenderConfig, RenderTarget},
 };
 use std::time::{Duration, Instant};
 
@@ -82,6 +83,7 @@ struct FractalApp {
     pub color: ColorState,
     pub mouse: MouseState,
     pub export: ExportState,
+    pub render: RenderState,
 
     // Status message
     pub status_message: String,
@@ -103,6 +105,7 @@ impl Default for FractalApp {
             color: ColorState::default(),
             mouse: MouseState::new(),
             export: ExportState::new(),
+            render: RenderState::new(),
             status_message: String::from("Ready - Click+drag to position zoom, scroll to resize"),
         }
     }
@@ -124,6 +127,8 @@ impl FractalApp {
         let marek_dragon = MarekDragon::new();
         let tetration = Tetration::new();
         let lemon = Lemon::new();
+        let insideout_dragon = InsideoutDragon::new();
+        let zubieta = Zubieta::new();
         
         let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
             FractalType::Mandelbrot => &mandelbrot,
@@ -135,74 +140,119 @@ impl FractalApp {
             FractalType::MarekDragon => &marek_dragon,
             FractalType::Tetration => &tetration,
             FractalType::Lemon => &lemon,
+            FractalType::InsideoutDragon => &insideout_dragon,
+            FractalType::Zubieta => &zubieta,
         };
-
-        // Check if we can use the iteration cache
-        let use_cache = self.view_state.iteration_cache.as_ref().map_or(false, |cache| {
-            cache.is_valid(
-                self.view_state.view.width,
-                self.view_state.view.height,
-                max_iterations,
-                self.fractal.fractal_type,
-                &self.fractal.parameters,
-                &self.view_state.view,
-            )
-        });
 
         let buffer_size = (self.view_state.view.width * self.view_state.view.height * 4) as usize;
         let mut buffer = vec![0u8; buffer_size];
 
-        if use_cache {
-            // Use cached iterations, only apply colors
-            perf_log!("[CACHE] Using cached iterations");
-            let cache = self.view_state.iteration_cache.as_ref().unwrap();
-            
-            forma_fractalis::rendering::apply_colors_from_cache(
-                &mut buffer,
-                &cache.data,
-                &self.color.colormap,
-                max_iterations,
-                self.color.use_period,
-                period,
-                self.color.use_interior_color,
-                self.color.interior_color,
-                self.color.use_log_scale,
-            );
+        // CPU mode: Use iteration cache for fast color-only updates
+        // GPU mode: Always use unified pipeline (fast enough to not need cache)
+        if matches!(self.render.backend, forma_fractalis::gpu::RenderBackend::Cpu) {
+            // Check if we can use the iteration cache for fast color-only updates
+            let use_cache = self.view_state.iteration_cache.as_ref().map_or(false, |cache| {
+                cache.is_valid(
+                    self.view_state.view.width,
+                    self.view_state.view.height,
+                    max_iterations,
+                    self.fractal.fractal_type,
+                    &self.fractal.parameters,
+                    &self.view_state.view,
+                )
+            });
+
+            if use_cache {
+                // Fast path: Only color settings changed, reuse cached iterations
+                perf_log!("[CACHE] Using cached iterations");
+                let cache = self.view_state.iteration_cache.as_ref().unwrap();
+                
+                forma_fractalis::rendering::apply_colors_from_cache(
+                    &mut buffer,
+                    &cache.data,
+                    &self.color.colormap,
+                    max_iterations,
+                    self.color.use_period,
+                    period,
+                    self.color.use_interior_color,
+                    self.color.interior_color,
+                    self.color.use_log_scale,
+                );
+            } else {
+                // Full render: Compute iterations and cache them
+                perf_log!("[CACHE] Computing and caching iterations");
+                perf_log!("[CPU] View: center=({:.10}, {:.10}), zoom={:.10}", 
+                    self.view_state.view.center_x, self.view_state.view.center_y, self.view_state.view.zoom);
+                let iterations = forma_fractalis::rendering::compute_iterations(
+                    &self.view_state.view,
+                    max_iterations,
+                    fractal,
+                    &self.fractal.parameters,
+                );
+                
+                // Store in cache for future color-only updates
+                self.view_state.iteration_cache = Some(forma_fractalis::app_state::IterationCache {
+                    data: iterations.clone(),
+                    width: self.view_state.view.width,
+                    height: self.view_state.view.height,
+                    max_iterations,
+                    fractal_type: self.fractal.fractal_type,
+                    fractal_parameters: self.fractal.parameters.clone(),
+                    center_x: self.view_state.view.center_x,
+                    center_y: self.view_state.view.center_y,
+                    zoom: self.view_state.view.zoom,
+                });
+                
+                // Apply colors to the computed iterations
+                forma_fractalis::rendering::apply_colors_from_cache(
+                    &mut buffer,
+                    &iterations,
+                    &self.color.colormap,
+                    max_iterations,
+                    self.color.use_period,
+                    period,
+                    self.color.use_interior_color,
+                    self.color.interior_color,
+                    self.color.use_log_scale,
+                );
+            }
         } else {
-            // Compute iterations and cache them
-            perf_log!("[CACHE] Computing and caching iterations");
-            let iterations = forma_fractalis::rendering::compute_iterations(
-                &self.view_state.view,
+            // GPU mode: Use unified rendering pipeline (no caching needed, fast enough)
+            perf_log!("[GPU] View: center=({:.10}, {:.10}), zoom={:.10}", 
+                self.view_state.view.center_x, self.view_state.view.center_y, self.view_state.view.zoom);
+            let config = RenderConfig::new(
+                self.view_state.view.clone(),
+                &self.color.colormap,
                 max_iterations,
                 fractal,
-                &self.fractal.parameters,
+            )
+            .with_fractal_parameters(self.fractal.parameters.clone())
+            .with_period(self.color.use_period, period)
+            .with_interior_color(self.color.use_interior_color, self.color.interior_color)
+            .with_log_scale(self.color.use_log_scale)
+            .with_backend(self.render.backend);
+
+            #[cfg(feature = "gpu")]
+            let render_result = render_with_config(
+                &config,
+                RenderTarget::Preview,
+                self.render.gpu_renderer.as_mut(),
             );
             
-            // Store in cache
-            self.view_state.iteration_cache = Some(IterationCache {
-                data: iterations.clone(),
-                width: self.view_state.view.width,
-                height: self.view_state.view.height,
-                max_iterations,
-                fractal_type: self.fractal.fractal_type,
-                fractal_parameters: self.fractal.parameters.clone(),
-                center_x: self.view_state.view.center_x,
-                center_y: self.view_state.view.center_y,
-                zoom: self.view_state.view.zoom,
-            });
+            #[cfg(not(feature = "gpu"))]
+            let render_result = render_with_config(&config, RenderTarget::Preview);
             
-            // Apply colors to computed iterations
-            forma_fractalis::rendering::apply_colors_from_cache(
-                &mut buffer,
-                &iterations,
-                &self.color.colormap,
-                max_iterations,
-                self.color.use_period,
-                period,
-                self.color.use_interior_color,
-                self.color.interior_color,
-                self.color.use_log_scale,
-            );
+            match render_result {
+                Ok(data) => buffer = data,
+                Err(e) => {
+                    self.status_message = format!("Render error: {}", e);
+                    eprintln!("[ERROR] {}", e);
+                    // Keep previous frame on screen (buffer stays zeroed, which is fine
+                    // for a single failed frame - the texture won't be updated)
+                    self.view_state.clear_redraw();
+                    return;
+                }
+            }
         }
 
         self.finish_render(ctx, buffer);
@@ -323,6 +373,46 @@ impl eframe::App for FractalApp {
                             ui.separator();
                             ui.add_space(10.0);
 
+                            // Create fractal instance for GUI and export
+                            let mandelbrot = Mandelbrot::new();
+                            let julia = Julia::new();
+                            let burning_ship = BurningShip::new();
+                            let tippets_mandelbrot = TippetsMandelbrot::new();
+                            let multifractal_julia = MultifractalJulia::new();
+                            let cactus = Cactus::new();
+                            let marek_dragon = MarekDragon::new();
+                            let tetration = Tetration::new();
+                            let lemon = Lemon::new();
+                            let insideout_dragon = InsideoutDragon::new();
+                            let zubieta = Zubieta::new();
+                            
+                            let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
+                                FractalType::Mandelbrot => &mandelbrot,
+                                FractalType::Julia => &julia,
+                                FractalType::BurningShip => &burning_ship,
+                                FractalType::TippetsMandelbrot => &tippets_mandelbrot,
+                                FractalType::MultifractalJulia => &multifractal_julia,
+                                FractalType::Cactus => &cactus,
+                                FractalType::MarekDragon => &marek_dragon,
+                                FractalType::Tetration => &tetration,
+                                FractalType::Lemon => &lemon,
+                                FractalType::InsideoutDragon => &insideout_dragon,
+                                FractalType::Zubieta => &zubieta,
+                            };
+
+                            // Performance / Rendering Backend
+                            gui::render_performance_section(
+                                ui,
+                                &mut self.render,
+                                fractal,
+                                &mut self.status_message,
+                                &mut self.view_state.needs_redraw,
+                            );
+
+                            ui.add_space(15.0);
+                            ui.separator();
+                            ui.add_space(10.0);
+
                             // Fractal Settings
                             gui::render_fractal_settings(
                                 ui,
@@ -331,6 +421,7 @@ impl eframe::App for FractalApp {
                                 &mut self.fractal.fractal_type,
                                 &mut self.fractal.parameters,
                                 &mut self.view_state.view,
+                                self.render.backend,
                             );
 
                             ui.add_space(15.0);
@@ -393,29 +484,6 @@ impl eframe::App for FractalApp {
                             let max_iterations = self.input.parse_iterations();
                             let period = self.input.parse_period();
                             
-                            // Create fractal instance for export
-                            let mandelbrot = Mandelbrot::new();
-                            let julia = Julia::new();
-                            let burning_ship = BurningShip::new();
-                            let tippets_mandelbrot = TippetsMandelbrot::new();
-                            let multifractal_julia = MultifractalJulia::new();
-                            let cactus = Cactus::new();
-                            let marek_dragon = MarekDragon::new();
-                            let tetration = Tetration::new();
-                            let lemon = Lemon::new();
-                            
-                            let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
-                                FractalType::Mandelbrot => &mandelbrot,
-                                FractalType::Julia => &julia,
-                                FractalType::BurningShip => &burning_ship,
-                                FractalType::TippetsMandelbrot => &tippets_mandelbrot,
-                                FractalType::MultifractalJulia => &multifractal_julia,
-                                FractalType::Cactus => &cactus,
-                                FractalType::MarekDragon => &marek_dragon,
-                                FractalType::Tetration => &tetration,
-                                FractalType::Lemon => &lemon,
-                            };
-                            
                             gui::render_actions_section(
                                 ui,
                                 &self.view_state.view,
@@ -432,7 +500,9 @@ impl eframe::App for FractalApp {
                                 &mut self.export.directory,
                                 &mut self.export.filter,
                                 &mut self.input.export_supersample,
+                                &mut self.render,
                                 &mut self.status_message,
+                                &mut self.view_state.needs_redraw,
                             );
 
                             // Export JSON button

@@ -136,6 +136,8 @@ pub fn render_from_cli(args: &Commands) -> Result<(), String> {
             let marek_dragon = MarekDragon::new();
             let tetration = Tetration::new();
             let lemon = Lemon::new();
+            let insideout_dragon = InsideoutDragon::new();
+            let zubieta = Zubieta::new();
             
             let fractal: &dyn Fractal = match fractal_state.fractal_type {
                 crate::app_state::FractalType::Mandelbrot => &mandelbrot,
@@ -147,6 +149,8 @@ pub fn render_from_cli(args: &Commands) -> Result<(), String> {
                 crate::app_state::FractalType::MarekDragon => &marek_dragon,
                 crate::app_state::FractalType::Tetration => &tetration,
                 crate::app_state::FractalType::Lemon => &lemon,
+                crate::app_state::FractalType::InsideoutDragon => &insideout_dragon,
+                crate::app_state::FractalType::Zubieta => &zubieta,
             };
             
             pb.set_message(format!(
@@ -158,6 +162,9 @@ pub fn render_from_cli(args: &Commands) -> Result<(), String> {
                 supersample_factor
             ));
             
+            // Create render state (CLI uses CPU by default, GPU can be enabled via settings)
+            let mut render_state = crate::app_state::RenderState::new();
+            
             // Render using the new state-based export function
             let result = crate::export::export_png_from_state(
                 &fractal_state,
@@ -165,6 +172,7 @@ pub fn render_from_cli(args: &Commands) -> Result<(), String> {
                 &color_state,
                 &input_state,
                 &export_state,
+                &mut render_state,
                 fractal,
                 scale_factor,
                 supersample_factor,

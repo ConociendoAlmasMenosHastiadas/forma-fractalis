@@ -131,6 +131,9 @@ pub fn export_png(
     supersample: u32,
     scale: f32,
     output_dir: Option<&PathBuf>,
+    backend: crate::gpu::RenderBackend,
+    #[cfg(feature = "gpu")]
+    gpu_renderer: Option<&mut crate::gpu::WgpuRenderer>,
 ) -> Result<String, String> {
     let export_timer = std::time::Instant::now();
     
@@ -156,17 +159,28 @@ pub fn export_png(
         .with_fractal_parameters(fractal_parameters.clone())
         .with_period(use_period, period)
         .with_interior_color(use_interior_color, interior_color)
-        .with_log_scale(use_log_scale);
+        .with_log_scale(use_log_scale)
+        .with_backend(backend);
 
     // Render at supersample resolution
     let render_start = std::time::Instant::now();
+    #[cfg(feature = "gpu")]
     let buffer = render_with_config(
         &config,
         RenderTarget::Export {
             width: render_width,
             height: render_height,
         },
-    );
+        gpu_renderer,
+    )?;
+    #[cfg(not(feature = "gpu"))]
+    let buffer = render_with_config(
+        &config,
+        RenderTarget::Export {
+            width: render_width,
+            height: render_height,
+        },
+    )?;
     let render_time = render_start.elapsed();
     perf_log!("[EXPORT-PERF] Render complete: {:?}", render_time);
 
@@ -296,6 +310,7 @@ pub fn export_png_from_state(
     color_state: &crate::app_state::ColorState,
     input_state: &crate::app_state::InputState,
     export_state: &crate::app_state::ExportState,
+    render_state: &mut crate::app_state::RenderState,
     fractal: &dyn Fractal,
     scale: f32,
     supersample: u32,
@@ -312,9 +327,19 @@ pub fn export_png_from_state(
     let use_log_scale = color_state.use_log_scale;
     let filter_type = export_state.filter;
     let output_dir = export_state.directory.as_ref();
+    let backend = render_state.backend;
+
+    // Initialize GPU if needed
+    #[cfg(feature = "gpu")]
+    if matches!(backend, crate::gpu::RenderBackend::Gpu) {
+        if let Err(e) = render_state.ensure_gpu_initialized() {
+            eprintln!("[ERROR] GPU initialization failed: {}", e);
+        }
+    }
 
     // Delegate to the original export_png function
-    export_png(
+    #[cfg(feature = "gpu")]
+    let result = export_png(
         view,
         colormap,
         max_iterations,
@@ -329,7 +354,30 @@ pub fn export_png_from_state(
         supersample,
         scale,
         output_dir,
-    )
+        backend,
+        render_state.gpu_renderer.as_mut(),
+    );
+    
+    #[cfg(not(feature = "gpu"))]
+    let result = export_png(
+        view,
+        colormap,
+        max_iterations,
+        fractal,
+        fractal_parameters,
+        use_period,
+        period,
+        use_interior_color,
+        interior_color,
+        use_log_scale,
+        filter_type,
+        supersample,
+        scale,
+        output_dir,
+        backend,
+    );
+    
+    result
 }
 
 /// Export settings as standalone JSON file
@@ -385,6 +433,44 @@ pub fn calculate_output_dimensions(view: &FractalView, scale: f32) -> (u32, u32)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Helper function for tests to call export_png without GPU
+    fn export_png_test(
+        view: &FractalView,
+        colormap: &ColorMap,
+        max_iterations: u32,
+        fractal: &dyn crate::fractals::Fractal,
+        fractal_parameters: &std::collections::HashMap<String, f64>,
+        use_period: bool,
+        period: u32,
+        use_interior_color: bool,
+        interior_color: [u8; 3],
+        use_log_scale: bool,
+        filter_type: FilterType,
+        supersample: u32,
+        scale: f32,
+        output_dir: Option<&PathBuf>,
+    ) -> Result<String, String> {
+        #[cfg(feature = "gpu")]
+        {
+            export_png(
+                view, colormap, max_iterations, fractal, fractal_parameters,
+                use_period, period, use_interior_color, interior_color, use_log_scale,
+                filter_type, supersample, scale, output_dir,
+                crate::gpu::RenderBackend::Cpu,  // Always use CPU for tests
+                None,
+            )
+        }
+        #[cfg(not(feature = "gpu"))]
+        {
+            export_png(
+                view, colormap, max_iterations, fractal, fractal_parameters,
+                use_period, period, use_interior_color, interior_color, use_log_scale,
+                filter_type, supersample, scale, output_dir,
+                crate::gpu::RenderBackend::Cpu,
+            )
+        }
+    }
 
     #[test]
     fn test_calculate_output_dimensions() {
@@ -572,7 +658,7 @@ mod tests {
         let julia = Julia::new();
         
         // Export a PNG with metadata
-        let result = export_png(
+        let result = export_png_test(
             &view,
             &colormap,
             256,
@@ -652,7 +738,7 @@ mod tests {
                 parameters: params.clone(),
             };
             let fractal = Mandelbrot::new();
-            let result = export_png(
+            let result = export_png_test(
                 &view, &colormap, 100, &fractal, &params,
                 false, 256, false, [0, 0, 0], false,
                 FilterType::None, 1, 1.0, Some(&temp_dir.path().to_path_buf()),
@@ -677,7 +763,7 @@ mod tests {
                 parameters: params.clone(),
             };
             let fractal = Julia::new();
-            let result = export_png(
+            let result = export_png_test(
                 &view, &colormap, 100, &fractal, &params,
                 false, 256, false, [0, 0, 0], false,
                 FilterType::None, 1, 1.0, Some(&temp_dir.path().to_path_buf()),
@@ -702,7 +788,7 @@ mod tests {
                 parameters: params.clone(),
             };
             let fractal = BurningShip::new();
-            let result = export_png(
+            let result = export_png_test(
                 &view, &colormap, 100, &fractal, &params,
                 false, 256, false, [0, 0, 0], false,
                 FilterType::None, 1, 1.0, Some(&temp_dir.path().to_path_buf()),
@@ -726,7 +812,7 @@ mod tests {
                 parameters: params.clone(),
             };
             let fractal = TippetsMandelbrot::new();
-            let result = export_png(
+            let result = export_png_test(
                 &view, &colormap, 100, &fractal, &params,
                 false, 256, false, [0, 0, 0], false,
                 FilterType::None, 1, 1.0, Some(&temp_dir.path().to_path_buf()),
@@ -753,7 +839,7 @@ mod tests {
                 parameters: params.clone(),
             };
             let fractal = MultifractalJulia::new();
-            let result = export_png(
+            let result = export_png_test(
                 &view, &colormap, 100, &fractal, &params,
                 false, 256, false, [0, 0, 0], false,
                 FilterType::None, 1, 1.0, Some(&temp_dir.path().to_path_buf()),
@@ -777,7 +863,7 @@ mod tests {
                 parameters: params.clone(),
             };
             let fractal = Cactus::new();
-            let result = export_png(
+            let result = export_png_test(
                 &view, &colormap, 100, &fractal, &params,
                 false, 256, false, [0, 0, 0], false,
                 FilterType::None, 1, 1.0, Some(&temp_dir.path().to_path_buf()),
@@ -849,7 +935,7 @@ mod tests {
         let colormap = ColorMap::default_scheme();
         let julia = Julia::new();
         
-        let result = export_png(
+        let result = export_png_test(
             &view, &colormap, 512, &julia, &params,
             true, 128, true, [255, 0, 128], true,
             FilterType::Lanczos3, 2, 2.5,
@@ -903,7 +989,7 @@ mod tests {
         let mandelbrot = Mandelbrot::new();
         let colormap = ColorMap::default_scheme();
         
-        let mandelbrot_result = export_png(
+        let mandelbrot_result = export_png_test(
             &mandelbrot_view, &colormap, 256, &mandelbrot, &mandelbrot_params,
             false, 256, false, [0, 0, 0], false,
             FilterType::None, 1, 1.0,
@@ -924,7 +1010,7 @@ mod tests {
         };
         let burning_ship = BurningShip::new();
         
-        let burning_ship_result = export_png(
+        let burning_ship_result = export_png_test(
             &burning_ship_view, &colormap, 512, &burning_ship, &burning_ship_params,
             true, 64, true, [128, 64, 0], false,
             FilterType::Gaussian, 4, 1.5,
@@ -1210,3 +1296,5 @@ impl FractalMetadata {
         }
     }
 }
+
+

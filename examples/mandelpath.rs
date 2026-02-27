@@ -194,8 +194,12 @@ impl MandelPathApp {
             use_interior_color: self.color.use_interior_color,
             interior_color: self.color.interior_color,
             use_log_scale: self.color.use_log_scale,
+            backend: forma_fractalis::gpu::RenderBackend::Cpu,
         };
 
+        #[cfg(feature = "gpu")]
+        let buffer = render_with_config(&config, RenderTarget::Preview, None);
+        #[cfg(not(feature = "gpu"))]
         let buffer = render_with_config(&config, RenderTarget::Preview);
         
         // Convert RGBA buffer to ColorImage

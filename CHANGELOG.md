@@ -7,6 +7,116 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-02-27
+
+### Added
+- **GPU Acceleration**: Full compute shader pipeline via WGPU
+  - Backend selection: CPU or GPU mode (explicit user control)
+  - Mandelbrot and Powerbrot GPU support
+  - Compute shaders for parallel iteration calculation
+  - Tiled rendering for large exports (handles >256 MB buffers)
+  - Automatic buffer limit detection and tile size calculation
+  - GPU safety: 500k iteration cap, explicit error handling
+  - No silent CPU fallback - errors shown in status bar
+  - Performance profiling integration with --profiling flag
+  - f32 precision on GPU vs f64 on CPU (visible at deep zoom)
+- **Zubieta Fractal**: Julia variant with division operator
+  - Formula: z_{n+1} = z_n^2 + c/z_n
+  - Division-by-zero guards (epsilon checks)
+  - Full CPU and GPU implementation
+  - 8 unit tests for iteration and edge cases
+- **Polar/Rectangular Coordinate Mode**: Complex parameter input
+  - Toggle for Julia and Zubieta c parameter
+  - Rectangular mode: Re{c} / Im{c} sliders and text inputs
+  - Polar mode: |c| (0-3) / ang(c) (0-2π) sliders and text inputs
+  - Real-time coordinate conversion
+  - 15-digit precision text inputs
+  - Normalized atan2 handling for correct slider behavior
+- **Shader Composition Architecture**: Modular GPU shader system
+  - common.wgsl: Shared framework (bindings, utilities, entry point)
+  - Per-fractal kernel files: Isolated iteration logic
+  - Template marker replacement at shader load time
+  - Single unified GpuFractalParams struct (param_0/param_1 slots)
+  - Eliminates code duplication across fractals
+- **Unified Rendering Pipeline**: Single path for preview and export
+  - RenderBackend enum with explicit mode selection
+  - RenderTarget enum (Preview vs Export with dimensions)
+  - Result-based error handling throughout pipeline
+  - Identical color application on CPU and GPU
+  - Deprecates old iteration cache in ViewState
+- **Release Showcase Pattern**: Version-specific fractal images
+  - img_resources/showcases/ folder for release images
+  - Showcase displayed below release notes in README
+  - Previous releases moved to gallery_expanded/
+  - Passive gallery growth pattern
+
+### Changed
+- **GPU State Management**: Explicit mode selection
+  - Removed "Auto" mode (was ambiguous and unpredictable)
+  - User chooses CPU or GPU explicitly in Performance section
+  - GPU initializes immediately when switched to GPU mode
+  - Clear indication which backend is active
+- **Error Handling**: No silent failures
+  - render_with_config() returns Result<Vec<u8>, String>
+  - GPU errors displayed in status bar with fallback prompt
+  - User decides whether to switch to CPU after GPU error
+  - No automatic silent fallback masking issues
+- **Shader Code**: Unified parameters and reduced duplicatoin
+  - wgpu_backend.rs: 760 lines -> 482 lines (37% reduction)
+  - Single render_fractal() and render_fractal_tiled() for all fractals
+  - Eliminated per-fractal parameter structs and render methods
+  - Composition-based shader loading and compilation
+- **Insideout Dragon**: Deferred to v0.2.2
+  - Implementation exists but hidden from GUI
+  - FractalType::all() excludes InsideoutDragon
+  - Numerical stability issues require deeper investigation
+  - Will be added with proper singularity handling in v0.2.2
+
+### Technical
+- **Dependencies Added** (optional, default enabled):
+  - wgpu 0.19: WebGPU implementation for Rust
+  - pollster 0.3: Blocking on async GPU operations
+  - bytemuck 1.14: Safe buffer casting for GPU data
+- **Dependencies Updated**:
+  - scala-chromatica: Git dependency -> 0.1.2 (now published on crates.io)
+- **Feature Flag**: `gpu` feature enabled by default
+  - Can disable with --no-default-features for CPU-only builds
+  - Conditional compilation throughout codebase
+- **Testing**: 73 tests passing (up from 71)
+  - Zubieta iteration tests
+  - GPU safety and buffer limit tests
+  - Coordinate conversion tests
+  - Integration tests for both CPU and GPU paths
+- **Code Architecture Improvements**:
+  - Grouped state pattern leveraged for GPU state
+  - FractalGUI trait extended for polar/rectangular toggles
+  - CoordinateMode enum in app_state.rs
+  - InputState extended with magnitude/angle fields
+- **WGSL Shader Utilities**:
+  - pixel_to_complex() coordinate mapping
+  - complex_mul() and complex_pow() helpers
+  - Coordinate parity verified between CPU and GPU
+
+### Performance
+- **GPU Speedup**: Significant for high-resolution exports
+  - Parallel processing thousands of pixels simultaneously
+  - Ideal for 4K+ exports with high iteration counts
+  - Tiled rendering prevents memory exhaustion
+- **Preview Latency**: GPU initialization ~100-200ms
+  - Users should manually select GPU mode when desired
+  - CPU mode maintains instant preview updates
+
+### Documentation
+- **AGENTS.md Updates**:
+  - GPU Shader Composition pattern documented
+  - Polar Coordinate GUI Pattern with atan2 normalization
+  - Release showcase image workflow
+  - Added step 6b to "Adding New Fractals" checklist
+- **README.md Enhancements**:
+  - v0.2.0 release notes and showcase image
+  - Zubieta fractal in release showcase
+  - Vertical cactus added to expanded gallery
+
 ## [0.1.9] - 2026-02-16
 
 ### Added

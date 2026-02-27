@@ -13,12 +13,14 @@
 /// - [`filtering`]: Image filtering and supersampling for high-quality exports
 /// - [`number_utils`]: Numerical constants and utilities
 /// - [`cli`]: Command-line interface for headless rendering
+/// - [`gpu`]: GPU acceleration for fractal rendering (optional, feature-gated)
 pub mod app_state;
 pub mod cli;
 pub mod colorschemes_gui;
 pub mod export;
 pub mod filtering;
 pub mod fractals;
+pub mod gpu;
 pub mod gui;
 pub mod number_utils;
 pub mod rendering;

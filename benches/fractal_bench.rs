@@ -1,8 +1,8 @@
 use forma_fractalis::{
-    colorschemes::ColorMap,
     fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, FractalView, Fractal},
     rendering_pipeline::{render_with_config, RenderConfig, RenderTarget},
 };
+use scala_chromatica::ColorMap;
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -25,12 +25,18 @@ fn benchmark_fractal(
 
     // Warmup
     for _ in 0..2 {
+        #[cfg(feature = "gpu")]
+        render_with_config(&config, RenderTarget::Preview, None);
+        #[cfg(not(feature = "gpu"))]
         render_with_config(&config, RenderTarget::Preview);
     }
 
     // Actual benchmark
     for _ in 0..runs {
         let start = Instant::now();
+        #[cfg(feature = "gpu")]
+        render_with_config(&config, RenderTarget::Preview, None);
+        #[cfg(not(feature = "gpu"))]
         render_with_config(&config, RenderTarget::Preview);
         times.push(start.elapsed().as_secs_f64() * 1000.0); // Convert to ms
     }

@@ -121,6 +121,7 @@ forma-fractalis --profiling
 | ![Multifractal](img_resources/gallery_expanded/multifractal-julia_3840x2160_4xLanczos31769398723.png) |
 | ![Mandelbrot 3](img_resources/gallery_expanded/mandelbrot_3840x2160_4xLanczos31768887944.png) |
 | ![Mandelbrot 4](img_resources/gallery_expanded/mandelbrot_3840x2160_4xLanczos31769238284.png) |
+| ![Cactus Vertical](img_resources/gallery_expanded/cactus_1080x2400_4xLanczos31772175230.png) |
 
 </details>
 
@@ -172,10 +173,69 @@ forma-fractalis render -i fractal.json -o poster_8k.png --width 7680 --height 43
 
 ---
 
+## GPU Acceleration
+
+Forma Fractalis includes GPU compute shader support for significantly faster rendering of high-resolution exports.
+
+### Backend Selection
+
+Open the **Performance** section in the GUI sidebar to choose your rendering backend:
+
+- **CPU Mode**: Uses f64 precision, supports all fractals, guaranteed compatibility
+- **GPU Mode**: Uses f32 precision via WGPU compute shaders, faster for large exports
+
+The active backend is displayed in the status bar. GPU mode initializes when you first select it (takes ~100-200ms).
+
+### Supported Fractals
+
+GPU acceleration currently supports:
+- Mandelbrot Set
+- Powerbrot (configurable power)
+- Zubieta
+
+Other fractals automatically use CPU rendering. GPU support will expand in future releases.
+
+### Requirements
+
+- **Graphics API**: Vulkan, DirectX 12, or Metal support
+- **Drivers**: Up-to-date GPU drivers recommended
+- **Tested on**: NVIDIA RTX 3000 series (should work on most modern GPUs)
+
+### GPU Limitations
+
+- **Precision**: GPU uses f32 (single precision) vs CPU f64 (double precision)
+  - Visible precision loss at very deep zoom levels (>10^10)
+  - For extreme zooms, use CPU mode
+- **Iteration Cap**: GPU rendering limited to 500,000 iterations for safety
+  - Higher iteration counts automatically fall back to CPU
+- **Memory**: Large exports automatically use tiled rendering
+  - Exports >256 MB buffer size split into tiles
+  - Tile size calculated based on your GPU's limits
+
+### Troubleshooting
+
+**GPU initialization fails:**
+- Check GPU drivers are up-to-date
+- Ensure graphics API support (Vulkan/DirectX 12/Metal)
+- Fall back to CPU mode (always available)
+
+**GPU rendering errors:**
+- Error messages displayed in status bar
+- Switch to CPU mode if GPU encounters issues
+- Enable `--profiling` flag to see detailed GPU logs
+
+**Export fails with GPU:**
+- Very large exports (8K+) may exceed GPU memory
+- Tiled rendering handles this automatically
+- If issues persist, export with CPU mode
+
+---
+
 ## Technical Details
 
 **Built with:**
 - [egui](https://github.com/emilk/egui) - Immediate mode GUI
+- [wgpu](https://github.com/gfx-rs/wgpu) - GPU compute shaders (WebGPU)
 - [Rayon](https://github.com/rayon-rs/rayon) - Parallel rendering
 - [scala-chromatica](https://github.com/ConociendoAlmasMenosHastiadas/scala-chromatica) - Color gradients
 - [clap](https://github.com/clap-rs/clap) - CLI argument parsing
@@ -195,12 +255,25 @@ forma-fractalis render -i fractal.json -o poster_8k.png --width 7680 --height 43
 
 ## Releases
 
-**Latest: v0.1.9** (February 16, 2026)
+**Latest: v0.2.0** (February 27, 2026)
 
-Lemon fractal (convergence-based with configurable denominator power), dependency updates, repository cleanup, documentation improvements.
+GPU acceleration, Zubieta fractal with polar/rectangular parameter input, shader composition architecture, tiled rendering for large exports, explicit error handling, 73 tests passing.
+
+![v0.2.0 Release - Zubieta](img_resources/showcase/v0.2.0_zubieta.png)
 
 <details>
 <summary><b>View release history...</b></summary>
+
+### v0.2.0 (February 27, 2026)
+- GPU acceleration via WGPU (Mandelbrot/Powerbrot support)
+- Zubieta fractal: z_{n+1} = z_n^2 + c/z_n (Julia variant with division)
+- Polar/rectangular coordinate mode for complex parameters (Julia & Zubieta)
+- Shader composition architecture (common.wgsl + per-fractal kernels)
+- Tiled rendering for large GPU exports (>256 MB buffers)
+- GPU safety: 500k iteration cap, explicit error handling
+- Backend selection UI (CPU/GPU modes, no silent fallback)
+- Unified rendering pipeline for preview and export
+- 73 tests passing, 37% reduction in wgpu_backend.rs
 
 ### v0.1.9 (February 16, 2026)
 - Lemon fractal: z_{n+1} = z_0 * z_n^2 * (z_n^2 + 1) / (z_n^2 - 1)^k

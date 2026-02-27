@@ -16,6 +16,7 @@
 
 use scala_chromatica::ColorMap;
 use crate::fractals::{Fractal, FractalView};
+use crate::gpu::RenderBackend;
 use crate::perf_log;
 use crate::rendering::render_fractal;
 use std::collections::HashMap;
@@ -34,6 +35,7 @@ pub struct RenderConfig<'a> {
     pub use_log_scale: bool,
     pub fractal: &'a dyn Fractal,
     pub fractal_parameters: HashMap<String, f64>,
+    pub backend: RenderBackend,
 }
 
 impl<'a> RenderConfig<'a> {
@@ -55,7 +57,14 @@ impl<'a> RenderConfig<'a> {
             use_log_scale: false,
             fractal,
             fractal_parameters: HashMap::new(),
+            backend: RenderBackend::default(),
         }
+    }
+
+    /// Builder pattern: set rendering backend
+    pub fn with_backend(mut self, backend: RenderBackend) -> Self {
+        self.backend = backend;
+        self
     }
 
     /// Builder pattern: set period modulation
@@ -99,10 +108,172 @@ pub enum RenderTarget {
 /// # Arguments
 /// * `config` - Rendering configuration
 /// * `target` - Render target (preview or export with dimensions)
+/// * `gpu_renderer` - Optional GPU renderer (required if backend is GPU)
 ///
 /// # Returns
 /// RGBA buffer ready for use (texture upload or image encoding)
-pub fn render_with_config(config: &RenderConfig, target: RenderTarget) -> Vec<u8> {
+#[cfg(feature = "gpu")]
+pub fn render_with_config(
+    config: &RenderConfig,
+    target: RenderTarget,
+    gpu_renderer: Option<&mut crate::gpu::WgpuRenderer>,
+) -> Result<Vec<u8>, String> {
+    use crate::gpu::{FractalRenderer, self};
+    
+    let _total_timer = Instant::now();
+    
+    // Determine output dimensions based on target
+    let (width, height) = match target {
+        RenderTarget::Preview => (config.view.width, config.view.height),
+        RenderTarget::Export { width, height } => (width, height),
+    };
+
+    // Create view with target dimensions (may differ from config.view for export)
+    let mut target_view = config.view.clone();
+    target_view.width = width;
+    target_view.height = height;
+
+    // Use the backend the user explicitly selected - no heuristics
+    let use_gpu = matches!(config.backend, gpu::RenderBackend::Gpu) 
+        && gpu_renderer.is_some()
+        && gpu_renderer.as_ref().unwrap().supports_fractal(config.fractal.name());
+
+    if use_gpu {
+        match render_with_gpu(config, &target_view, gpu_renderer.unwrap()) {
+            Ok(buffer) => {
+                let total_time = _total_timer.elapsed();
+                if matches!(target, RenderTarget::Preview) {
+                    perf_log!("[PERF] GPU Render {}x{} @ {} iter: total={:.2?}",
+                        width, height, config.max_iterations, total_time);
+                }
+                return Ok(buffer);
+            }
+            Err(e) => {
+                // Do NOT fall back to CPU silently - the user must choose to switch.
+                // Silent fallback could run for minutes/hours at high iteration counts.
+                return Err(format!("GPU rendering failed: {}. Switch to CPU mode if needed.", e));
+            }
+        }
+    } else if matches!(config.backend, gpu::RenderBackend::Gpu) {
+        // User requested GPU but it's not available
+        if gpu_renderer.is_none() {
+            return Err("GPU requested but not initialized. Switch to CPU mode.".to_string());
+        } else if gpu_renderer.is_some() && !gpu_renderer.as_ref().unwrap().supports_fractal(config.fractal.name()) {
+            return Err(format!("GPU does not support fractal: {}. Switch to CPU mode.", config.fractal.name()));
+        }
+    }
+
+    // CPU rendering path
+    Ok(render_with_cpu(config, &target_view, target, _total_timer))
+}
+
+/// CPU rendering path
+#[cfg(feature = "gpu")]
+fn render_with_cpu(
+    config: &RenderConfig,
+    target_view: &FractalView,
+    target: RenderTarget,
+    total_timer: Instant,
+) -> Vec<u8> {
+    let alloc_timer = Instant::now();
+    let buffer_size = (target_view.width * target_view.height * 4) as usize;
+    let mut buffer = vec![0u8; buffer_size];
+    let alloc_time = alloc_timer.elapsed();
+
+    let render_timer = Instant::now();
+    render_fractal(
+        &mut buffer,
+        target_view,
+        config.colormap,
+        config.max_iterations,
+        config.use_period,
+        config.period,
+        config.use_interior_color,
+        config.interior_color,
+        config.use_log_scale,
+        config.fractal,
+        &config.fractal_parameters,
+    );
+    let render_time = render_timer.elapsed();
+
+    if matches!(target, RenderTarget::Preview) {
+        let total_time = total_timer.elapsed();
+        perf_log!("[PERF] CPU Render {}x{} @ {} iter: total={:.2?} (alloc={:.2?}, render={:.2?})",
+            target_view.width, target_view.height, config.max_iterations,
+            total_time, alloc_time, render_time);
+    }
+
+    buffer
+}
+
+/// GPU rendering path
+#[cfg(feature = "gpu")]
+fn render_with_gpu(
+    config: &RenderConfig,
+    target_view: &FractalView,
+    gpu_renderer: &mut crate::gpu::WgpuRenderer,
+) -> Result<Vec<u8>, String> {
+    use crate::gpu::{FractalRenderer, RenderConfig as GpuRenderConfig};
+    use scala_chromatica::color_from_iterations;
+    use rayon::prelude::*;
+    
+    // Convert fractal parameters to vec
+    let param_values: Vec<f64> = config.fractal.parameters()
+        .iter()
+        .map(|p| config.fractal_parameters.get(&p.name).copied().unwrap_or(p.default))
+        .collect();
+    
+    // Create GPU render config
+    let gpu_config = GpuRenderConfig {
+        center_x: target_view.center_x,
+        center_y: target_view.center_y,
+        zoom: target_view.zoom,
+        max_iter: config.max_iterations,
+        width: target_view.width,
+        height: target_view.height,
+        fractal_params: param_values,
+    };
+
+    // Render iteration counts on GPU
+    let iterations = gpu_renderer.render_iterations(&gpu_config, config.fractal)?;
+
+    // Apply colormap on CPU using proper color_from_iterations (handles period, log scale, etc.)
+    let buffer_size = (target_view.width * target_view.height * 4) as usize;
+    let mut buffer = vec![0u8; buffer_size];
+    
+    // Use parallel processing for color application (same as CPU path)
+    let pixels: Vec<[u8; 4]> = iterations
+        .par_iter()
+        .map(|&iter| {
+            let color = color_from_iterations(
+                iter,
+                config.max_iterations,
+                config.colormap,
+                config.use_period,
+                config.period,
+                config.use_interior_color,
+                config.interior_color,
+                config.use_log_scale,
+            );
+            [color.r, color.g, color.b, 255]
+        })
+        .collect();
+    
+    // Copy computed pixels to frame buffer
+    for (i, pixel) in pixels.iter().enumerate() {
+        let idx = i * 4;
+        buffer[idx..idx + 4].copy_from_slice(pixel);
+    }
+
+    Ok(buffer)
+}
+
+/// Unified rendering function when GPU feature is disabled
+#[cfg(not(feature = "gpu"))]
+pub fn render_with_config(
+    config: &RenderConfig,
+    target: RenderTarget,
+) -> Result<Vec<u8>, String> {
     let _total_timer = Instant::now();
     
     // Determine output dimensions based on target
@@ -147,7 +318,7 @@ pub fn render_with_config(config: &RenderConfig, target: RenderTarget) -> Vec<u8
             total_time, alloc_time, render_time);
     }
 
-    buffer
+    Ok(buffer)
 }
 
 #[cfg(test)]
@@ -165,13 +336,15 @@ mod tests {
         let config = RenderConfig::new(view, &colormap, 256, &mandelbrot)
             .with_period(true, 128)
             .with_interior_color(true, [255, 0, 0])
-            .with_log_scale(true);
+            .with_log_scale(true)
+            .with_backend(crate::gpu::RenderBackend::Cpu);
 
         assert!(config.use_period);
         assert_eq!(config.period, 128);
         assert!(config.use_interior_color);
         assert_eq!(config.interior_color, [255, 0, 0]);
         assert!(config.use_log_scale);
+        assert!(matches!(config.backend, crate::gpu::RenderBackend::Cpu));
     }
 
     #[test]
@@ -182,11 +355,17 @@ mod tests {
         let config = RenderConfig::new(view, &colormap, 128, &mandelbrot);
 
         // Preview uses view dimensions
-        let buffer = render_with_config(&config, RenderTarget::Preview);
+        #[cfg(feature = "gpu")]
+        let buffer = render_with_config(&config, RenderTarget::Preview, None).expect("render failed");
+        #[cfg(not(feature = "gpu"))]
+        let buffer = render_with_config(&config, RenderTarget::Preview).expect("render failed");
         assert_eq!(buffer.len(), 640 * 480 * 4);
 
         // Export uses specified dimensions
-        let buffer = render_with_config(&config, RenderTarget::Export { width: 1920, height: 1080 });
+        #[cfg(feature = "gpu")]
+        let buffer = render_with_config(&config, RenderTarget::Export { width: 1920, height: 1080 }, None).expect("render failed");
+        #[cfg(not(feature = "gpu"))]
+        let buffer = render_with_config(&config, RenderTarget::Export { width: 1920, height: 1080 }).expect("render failed");
         assert_eq!(buffer.len(), 1920 * 1080 * 4);
     }
 }

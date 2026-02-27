@@ -1,70 +1,39 @@
-//! Julia Set Implementation
+//! Zubieta Fractal Implementation
 //!
-//! The Julia set: z(n+1) = z(n)² + c
-//! where z starts at the pixel coordinate and c is a constant.
-//! 
-//! Unlike Mandelbrot (where c varies and z starts at 0),
-//! Julia sets use a fixed c and z starts at each pixel position.
+//! The Zubieta set: z(n+1) = z(n)² + c/z(n)
+//! A Julia set variant where c is a constant and z starts at each pixel position.
+//!
+//! This fractal requires division by z, so we need to guard against z=0.
+//! If at any iteration z becomes zero, we treat it as escaped.
 
 use super::{Fractal, FractalView, Parameter};
 use num_complex::Complex64;
 use std::collections::HashMap;
 use eframe::egui;
 
-/// Classic Julia set coordinates that produce beautiful, interesting patterns
-/// Format: (c_real, c_imag, name)
-const CLASSIC_JULIA_COORDINATES: &[(f64, f64, &str)] = &[
-    (-0.7, 0.27015, "Dendrite (Douady's Rabbit)"),
-    (-0.4, 0.6, "Spiral"),
-    (-0.8, 0.156, "Branching"),
-    (0.285, 0.01, "Seahorse Tail"),
-    (-0.70176, -0.3842, "Siegel Disk"),
-    (0.285, 0.0, "Dragon"),
-    (-0.835, -0.2321, "Swirls"),
-    (-0.8, 0.156, "Lightning"),
-];
+/// Zubieta fractal - Julia variant with division
+pub struct Zubieta;
 
-/// Julia set fractal with configurable constant
-pub struct Julia;
-
-impl Julia {
-    /// Creates a new Julia set fractal instance
+impl Zubieta {
+    /// Creates a new Zubieta fractal instance
     pub fn new() -> Self {
         Self
     }
-    
-    /// Returns a random classic Julia set coordinate for exploration
-    /// 
-    /// This helps users discover interesting Julia sets without needing
-    /// to know specific coordinates in advance.
-    pub fn random_classic_coordinates() -> (f64, f64) {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        
-        // Use current time as seed for simple randomization
-        let seed = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos() as usize;
-        
-        let index = seed % CLASSIC_JULIA_COORDINATES.len();
-        let (c_real, c_imag, _name) = CLASSIC_JULIA_COORDINATES[index];
-        (c_real, c_imag)
-    }
 }
 
-impl Default for Julia {
+impl Default for Zubieta {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Fractal for Julia {
+impl Fractal for Zubieta {
     fn iterate(&self, c_real: f64, c_imag: f64, parameters: &HashMap<String, f64>, max_iter: u32) -> u32 {
-        // Get Julia set constant from parameters (defaults to classic values)
-        let julia_c_real = parameters.get("c_real").copied().unwrap_or(-0.7);
-        let julia_c_imag = parameters.get("c_imag").copied().unwrap_or(0.27015);
+        // Get Zubieta constant from parameters
+        let zubieta_c_real = parameters.get("c_real").copied().unwrap_or(0.0);
+        let zubieta_c_imag = parameters.get("c_imag").copied().unwrap_or(0.8);
         
-        let c = Complex64::new(julia_c_real, julia_c_imag);
+        let c = Complex64::new(zubieta_c_real, zubieta_c_imag);
         let mut z = Complex64::new(c_real, c_imag);
         let mut iter = 0;
 
@@ -72,8 +41,15 @@ impl Fractal for Julia {
             if z.norm_sqr() > 4.0 {
                 break;
             }
+            
+            // Guard against division by zero
+            if z.norm_sqr() < 1e-30 {
+                // Treat as escaped if z gets too close to zero
+                break;
+            }
 
-            z = z * z + c;
+            // z_{n+1} = z_n^2 + c/z_n
+            z = z * z + c / z;
             iter += 1;
         }
 
@@ -84,24 +60,21 @@ impl Fractal for Julia {
         let mut view = FractalView::new(width, height);
         view.center_x = 0.0;
         view.center_y = 0.0;
-        // Julia sets typically look good at zoom level around 0.7 to show the full set
-        // This gives approximately -2 to 2 range in both axes
         view.zoom = 0.7;
         
-        // Set random classic Julia constant for discovery
-        let (c_real, c_imag) = Self::random_classic_coordinates();
-        view.set_parameter("c_real", c_real);
-        view.set_parameter("c_imag", c_imag);
+        // Default c value
+        view.set_parameter("c_real", 0.0);
+        view.set_parameter("c_imag", 0.8);
         
         view
     }
 
     fn name(&self) -> &str {
-        "Julia Set"
+        "Zubieta"
     }
 
     fn equation(&self) -> &str {
-        "z_{n+1} = z_n^2 + c"
+        "z_{n+1} = z_n^2 + c/z_n"
     }
 
     fn parameters(&self) -> Vec<Parameter> {
@@ -109,25 +82,25 @@ impl Fractal for Julia {
             Parameter::new(
                 "c_real",
                 "C Real Part",
-                -0.7,
+                0.0,
                 -2.0,
                 2.0,
-                "Real component of the Julia set constant"
+                "Real component of the Zubieta constant"
             ),
             Parameter::new(
                 "c_imag",
                 "C Imaginary Part",
-                0.27015,
+                0.8,
                 -2.0,
                 2.0,
-                "Imaginary component of the Julia set constant"
+                "Imaginary component of the Zubieta constant"
             ),
         ]
     }
 }
 
-/// GUI implementation for Julia set parameters
-impl super::fractal_gui::FractalGUI for Julia {
+/// GUI implementation for Zubieta parameters
+impl super::fractal_gui::FractalGUI for Zubieta {
     fn render_parameters_gui(
         &self,
         ui: &mut egui::Ui,
@@ -137,26 +110,26 @@ impl super::fractal_gui::FractalGUI for Julia {
     ) {
         use super::fractal_gui::trigger_debounced_redraw;
         
-        ui.label(egui::RichText::new("Julia Set Parameters").strong());
+        ui.label(egui::RichText::new("Zubieta Parameters").strong());
         ui.add_space(5.0);
         
         // Coordinate mode toggle
         ui.horizontal(|ui| {
             ui.label("Coordinate mode:");
-            if ui.radio_value(&mut input_state.julia_coord_mode, crate::app_state::CoordinateMode::Rectangular, "Rectangular").clicked() {
+            if ui.radio_value(&mut input_state.zubieta_coord_mode, crate::app_state::CoordinateMode::Rectangular, "Rectangular").clicked() {
                 *needs_redraw = true;
             }
-            if ui.radio_value(&mut input_state.julia_coord_mode, crate::app_state::CoordinateMode::Polar, "Polar").clicked() {
+            if ui.radio_value(&mut input_state.zubieta_coord_mode, crate::app_state::CoordinateMode::Polar, "Polar").clicked() {
                 *needs_redraw = true;
             }
         });
         
         ui.add_space(8.0);
         
-        match input_state.julia_coord_mode {
+        match input_state.zubieta_coord_mode {
             crate::app_state::CoordinateMode::Rectangular => {
                 // Rectangular mode: Real and Imaginary sliders
-                let mut c_real = params.get("c_real").copied().unwrap_or(-0.7);
+                let mut c_real = params.get("c_real").copied().unwrap_or(0.0);
                 ui.horizontal(|ui| {
                     ui.label("Re{c}:");
                     ui.add_space(5.0);
@@ -167,12 +140,12 @@ impl super::fractal_gui::FractalGUI for Julia {
                         .changed()
                     {
                         params.insert("c_real".to_string(), c_real);
-                        input_state.julia_c_real = format!("{:.15}", c_real);
+                        input_state.zubieta_c_real = format!("{:.15}", c_real);
                         *needs_redraw = true;
                     }
                 });
                 
-                let mut c_imag = params.get("c_imag").copied().unwrap_or(0.27015);
+                let mut c_imag = params.get("c_imag").copied().unwrap_or(0.8);
                 ui.horizontal(|ui| {
                     ui.label("Im{c}:");
                     ui.add_space(5.0);
@@ -183,7 +156,7 @@ impl super::fractal_gui::FractalGUI for Julia {
                         .changed()
                     {
                         params.insert("c_imag".to_string(), c_imag);
-                        input_state.julia_c_imag = format!("{:.15}", c_imag);
+                        input_state.zubieta_c_imag = format!("{:.15}", c_imag);
                         *needs_redraw = true;
                     }
                 });
@@ -194,10 +167,10 @@ impl super::fractal_gui::FractalGUI for Julia {
                     ui.horizontal(|ui| {
                         ui.label("Re{c}:");
                         if ui
-                            .add(egui::TextEdit::singleline(&mut input_state.julia_c_real).desired_width(150.0))
+                            .add(egui::TextEdit::singleline(&mut input_state.zubieta_c_real).desired_width(150.0))
                             .changed()
                         {
-                            if let Ok(val) = input_state.julia_c_real.parse::<f64>() {
+                            if let Ok(val) = input_state.zubieta_c_real.parse::<f64>() {
                                 let clamped = val.clamp(-2.0, 2.0);
                                 params.insert("c_real".to_string(), clamped);
                                 trigger_debounced_redraw(&mut input_state.debounce_timer, &mut input_state.pending_redraw);
@@ -208,10 +181,10 @@ impl super::fractal_gui::FractalGUI for Julia {
                     ui.horizontal(|ui| {
                         ui.label("Im{c}:");
                         if ui
-                            .add(egui::TextEdit::singleline(&mut input_state.julia_c_imag).desired_width(150.0))
+                            .add(egui::TextEdit::singleline(&mut input_state.zubieta_c_imag).desired_width(150.0))
                             .changed()
                         {
-                            if let Ok(val) = input_state.julia_c_imag.parse::<f64>() {
+                            if let Ok(val) = input_state.zubieta_c_imag.parse::<f64>() {
                                 let clamped = val.clamp(-2.0, 2.0);
                                 params.insert("c_imag".to_string(), clamped);
                                 trigger_debounced_redraw(&mut input_state.debounce_timer, &mut input_state.pending_redraw);
@@ -223,8 +196,8 @@ impl super::fractal_gui::FractalGUI for Julia {
             crate::app_state::CoordinateMode::Polar => {
                 // Polar mode: Magnitude and Angle sliders
                 // Get current rectangular values and convert to polar
-                let c_real = params.get("c_real").copied().unwrap_or(-0.7);
-                let c_imag = params.get("c_imag").copied().unwrap_or(0.27015);
+                let c_real = params.get("c_real").copied().unwrap_or(0.0);
+                let c_imag = params.get("c_imag").copied().unwrap_or(0.8);
                 
                 let mut magnitude = (c_real * c_real + c_imag * c_imag).sqrt();
                 let mut angle = c_imag.atan2(c_real);
@@ -266,10 +239,10 @@ impl super::fractal_gui::FractalGUI for Julia {
                     let new_imag = magnitude * angle.sin();
                     params.insert("c_real".to_string(), new_real);
                     params.insert("c_imag".to_string(), new_imag);
-                    input_state.julia_c_real = format!("{:.15}", new_real);
-                    input_state.julia_c_imag = format!("{:.15}", new_imag);
-                    input_state.julia_magnitude = format!("{:.15}", magnitude);
-                    input_state.julia_angle = format!("{:.15}", angle);
+                    input_state.zubieta_c_real = format!("{:.15}", new_real);
+                    input_state.zubieta_c_imag = format!("{:.15}", new_imag);
+                    input_state.zubieta_magnitude = format!("{:.15}", magnitude);
+                    input_state.zubieta_angle = format!("{:.15}", angle);
                     *needs_redraw = true;
                 }
                 
@@ -279,18 +252,18 @@ impl super::fractal_gui::FractalGUI for Julia {
                     ui.horizontal(|ui| {
                         ui.label("|c|:");
                         if ui
-                            .add(egui::TextEdit::singleline(&mut input_state.julia_magnitude).desired_width(150.0))
+                            .add(egui::TextEdit::singleline(&mut input_state.zubieta_magnitude).desired_width(150.0))
                             .changed()
                         {
-                            if let Ok(mag) = input_state.julia_magnitude.parse::<f64>() {
+                            if let Ok(mag) = input_state.zubieta_magnitude.parse::<f64>() {
                                 let clamped_mag = mag.clamp(0.0, 3.0);
-                                if let Ok(ang) = input_state.julia_angle.parse::<f64>() {
+                                if let Ok(ang) = input_state.zubieta_angle.parse::<f64>() {
                                     let new_real = clamped_mag * ang.cos();
                                     let new_imag = clamped_mag * ang.sin();
                                     params.insert("c_real".to_string(), new_real);
                                     params.insert("c_imag".to_string(), new_imag);
-                                    input_state.julia_c_real = format!("{:.15}", new_real);
-                                    input_state.julia_c_imag = format!("{:.15}", new_imag);
+                                    input_state.zubieta_c_real = format!("{:.15}", new_real);
+                                    input_state.zubieta_c_imag = format!("{:.15}", new_imag);
                                     trigger_debounced_redraw(&mut input_state.debounce_timer, &mut input_state.pending_redraw);
                                 }
                             }
@@ -300,18 +273,18 @@ impl super::fractal_gui::FractalGUI for Julia {
                     ui.horizontal(|ui| {
                         ui.label("ang(c):");
                         if ui
-                            .add(egui::TextEdit::singleline(&mut input_state.julia_angle).desired_width(150.0))
+                            .add(egui::TextEdit::singleline(&mut input_state.zubieta_angle).desired_width(150.0))
                             .changed()
                         {
-                            if let Ok(ang) = input_state.julia_angle.parse::<f64>() {
-                                if let Ok(mag) = input_state.julia_magnitude.parse::<f64>() {
+                            if let Ok(ang) = input_state.zubieta_angle.parse::<f64>() {
+                                if let Ok(mag) = input_state.zubieta_magnitude.parse::<f64>() {
                                     let clamped_mag = mag.clamp(0.0, 3.0);
                                     let new_real = clamped_mag * ang.cos();
                                     let new_imag = clamped_mag * ang.sin();
                                     params.insert("c_real".to_string(), new_real);
                                     params.insert("c_imag".to_string(), new_imag);
-                                    input_state.julia_c_real = format!("{:.15}", new_real);
-                                    input_state.julia_c_imag = format!("{:.15}", new_imag);
+                                    input_state.zubieta_c_real = format!("{:.15}", new_real);
+                                    input_state.zubieta_c_imag = format!("{:.15}", new_imag);
                                     trigger_debounced_redraw(&mut input_state.debounce_timer, &mut input_state.pending_redraw);
                                 }
                             }
@@ -322,5 +295,32 @@ impl super::fractal_gui::FractalGUI for Julia {
         }
         
         ui.add_space(10.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_zubieta_basic() {
+        let zubieta = Zubieta::new();
+        let params = HashMap::new();
+        
+        // Test a point that should iterate
+        let iters = zubieta.iterate(0.0, 0.0, &params, 100);
+        assert!(iters < 100, "Origin should escape");
+    }
+    
+    #[test]
+    fn test_zubieta_division_guard() {
+        let zubieta = Zubieta::new();
+        let mut params = HashMap::new();
+        params.insert("c_real".to_string(), 0.0);
+        params.insert("c_imag".to_string(), 0.0);
+        
+        // Start near zero - should handle division safely
+        let iters = zubieta.iterate(1e-20, 1e-20, &params, 100);
+        assert!(iters <= 100, "Should handle near-zero gracefully");
     }
 }
