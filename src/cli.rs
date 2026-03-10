@@ -138,6 +138,7 @@ pub fn render_from_cli(args: &Commands) -> Result<(), String> {
             let lemon = Lemon::new();
             let insideout_dragon = InsideoutDragon::new();
             let zubieta = Zubieta::new();
+            let sin_julia = SinJulia::new();
             
             let fractal: &dyn Fractal = match fractal_state.fractal_type {
                 crate::app_state::FractalType::Mandelbrot => &mandelbrot,
@@ -151,6 +152,7 @@ pub fn render_from_cli(args: &Commands) -> Result<(), String> {
                 crate::app_state::FractalType::Lemon => &lemon,
                 crate::app_state::FractalType::InsideoutDragon => &insideout_dragon,
                 crate::app_state::FractalType::Zubieta => &zubieta,
+                crate::app_state::FractalType::SinJulia => &sin_julia,
             };
             
             pb.set_message(format!(

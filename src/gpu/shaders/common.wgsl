@@ -7,9 +7,9 @@
 //   fn iterate_fractal(c: vec2<f32>) -> u32
 //
 // Available to kernels:
-//   - params.param_0, params.param_1 (per-fractal parameters)
+//   - params.param_0, params.param_1, params.param_2 (per-fractal parameters)
 //   - params.max_iter, params.width, params.height, params.zoom
-//   - pixel_to_complex(), complex_mul(), complex_pow()
+//   - pixel_to_complex(), complex_mul(), complex_pow(), sinh(), cosh()
 
 struct FractalParams {
     center_x: f32,
@@ -20,6 +20,7 @@ struct FractalParams {
     height: u32,
     param_0: f32,   // Per-fractal parameter slot 0
     param_1: f32,   // Per-fractal parameter slot 1
+    param_2: f32,   // Per-fractal parameter slot 2
 }
 
 @group(0) @binding(0)
@@ -71,6 +72,18 @@ fn complex_pow(z: vec2<f32>, power: f32) -> vec2<f32> {
         r_pow * cos(theta_pow),
         r_pow * sin(theta_pow)
     );
+}
+
+// Hyperbolic sine: sinh(x) = (e^x - e^(-x)) / 2
+fn sinh(x: f32) -> f32 {
+    let ex = exp(x);
+    return (ex - 1.0 / ex) * 0.5;
+}
+
+// Hyperbolic cosine: cosh(x) = (e^x + e^(-x)) / 2
+fn cosh(x: f32) -> f32 {
+    let ex = exp(x);
+    return (ex + 1.0 / ex) * 0.5;
 }
 
 // --- FRACTAL KERNEL INSERTED HERE ---

@@ -1397,7 +1397,7 @@ dependencies = [
 
 [[package]]
 name = "forma-fractalis"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bytemuck",
  "clap",
@@ -2952,9 +2952,9 @@ dependencies = [
 
 [[package]]
 name = "scala-chromatica"
-version = "0.1.2"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "956d3be27075ba7ac3da0299d2c8a00d333397e76993c78135418fa3df044c5a"
+checksum = "f2c4cda67031f56f11508700c6a20b539073757bb6c9cc346b91a6150735315d"
 dependencies = [
  "directories",
  "serde",

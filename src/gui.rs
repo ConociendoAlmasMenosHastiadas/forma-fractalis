@@ -97,13 +97,13 @@ pub fn render_performance_section(
     ui.horizontal(|ui| {
         ui.label("Rendering:");
         let previous_backend = render_state.backend;
-        egui::ComboBox::from_id_source("render_backend")
-            .selected_text(render_state.backend.as_str())
-            .show_ui(ui, |ui| {
-                for backend in crate::gpu::RenderBackend::all() {
-                    ui.selectable_value(&mut render_state.backend, backend, backend.as_str());
-                }
-            });
+        
+        // Radio buttons for backend selection
+        for backend in crate::gpu::RenderBackend::all() {
+            if ui.radio_value(&mut render_state.backend, backend, backend.as_str()).clicked() {
+                // Radio button was clicked (optional: can add specific click handling here)
+            }
+        }
         
         // Initialize GPU and trigger redraw when backend changes
         #[cfg(feature = "gpu")]
@@ -633,23 +633,22 @@ pub fn render_actions_section(
     _needs_redraw: &mut bool,
 ) {
     // Import section
-    section_header(ui, "Import from PNG");
+    section_header(ui, "Import");
     
     if ui
         .add_sized(
             [ui.available_width(), 30.0],
-            egui::Button::new("📂 Load from PNG"),
+            egui::Button::new("📂 Load from PNG or JSON"),
         )
         .clicked()
     {
         if let Some(path) = rfd::FileDialog::new()
+            .add_filter("Fractal files", &["png", "json"])
             .add_filter("PNG Image", &["png"])
+            .add_filter("JSON Settings", &["json"])
             .pick_file()
         {
-            *status_message = format!("Loading from: {}", path.display());
-            // Placeholder for actual loading logic (will be implemented in main.rs)
-            // We'll return the path through status_message with a special prefix
-            *status_message = format!("LOAD_PNG:{}", path.display());
+            *status_message = format!("LOAD_FILE:{}", path.display());
         }
     }
     
@@ -902,6 +901,174 @@ pub fn render_zoom_square(
         0.0,
         egui::Stroke::new(2.0, egui::Color32::from_rgb(255, 0, 255)), // Magenta
     );
+}
+
+/// Render animation generation section
+/// Returns true if animation generation should be started
+/// Action requested from the animation section UI
+pub enum AnimationAction {
+    None,
+    Start,
+    Cancel,
+}
+
+pub fn render_animation_section(
+    ui: &mut egui::Ui,
+    animation_state: &mut crate::app_state::AnimationState,
+    _view_state: &crate::app_state::ViewState,
+    _color_state: &crate::app_state::ColorState,
+    _fractal_state: &crate::app_state::FractalState,
+    _max_iterations: u32,
+    export_scale: &str,
+    export_filter: &crate::filtering::FilterType,
+    export_supersample: &str,
+    export_directory: Option<&std::path::PathBuf>,
+    status_message: &mut String,
+) -> AnimationAction {
+    use crate::app_state::AnimationType;
+    
+    section_header(ui, "Animation");
+    
+    // Animation type selector
+    ui.horizontal(|ui| {
+        ui.label("Type:");
+        egui::ComboBox::from_id_source("anim_type")
+            .selected_text(animation_state.animation_type.as_str())
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut animation_state.animation_type, AnimationType::Zoom, "Zoom Sequence");
+                ui.selectable_value(&mut animation_state.animation_type, AnimationType::IterationFade, "Iteration Fade-In");
+                // Julia Parameter Sweep hidden - planned for v0.3.x once project variables system is in place
+            });
+    });
+    
+    ui.add_space(10.0);
+    
+    // General settings
+    ui.label(egui::RichText::new("General Settings").small().italics());
+    
+    ui.horizontal(|ui| {
+        ui.label("Frames:");
+        if ui.add(egui::TextEdit::singleline(&mut animation_state.num_frames_text).desired_width(80.0)).changed() {
+            if let Ok(val) = animation_state.num_frames_text.parse::<u32>() {
+                animation_state.num_frames = val;
+            }
+        }
+    });
+    
+    ui.horizontal(|ui| {
+        ui.label("FPS:");
+        if ui.add(egui::TextEdit::singleline(&mut animation_state.fps_text).desired_width(80.0)).changed() {
+            if let Ok(val) = animation_state.fps_text.parse::<u8>() {
+                animation_state.fps = val;
+            }
+        }
+    });
+    
+    ui.add_space(10.0);
+    
+    // Animation-specific parameters
+    match animation_state.animation_type {
+        AnimationType::Zoom => {
+            ui.label(egui::RichText::new("Zoom Parameters").small().italics());
+            
+            ui.horizontal(|ui| {
+                ui.label("From Zoom:");
+                if ui.add(egui::TextEdit::singleline(&mut animation_state.zoom_from_text).desired_width(100.0)).changed() {
+                    if let Ok(val) = animation_state.zoom_from_text.parse::<f64>() {
+                        animation_state.zoom_from = val;
+                    }
+                }
+            });
+            
+            ui.horizontal(|ui| {
+                ui.label("To Zoom:");
+                if ui.add(egui::TextEdit::singleline(&mut animation_state.zoom_to_text).desired_width(100.0)).changed() {
+                    if let Ok(val) = animation_state.zoom_to_text.parse::<f64>() {
+                        animation_state.zoom_to = val;
+                    }
+                }
+            });
+            
+            ui.label(egui::RichText::new("Center: Current view position").small().color(egui::Color32::GRAY));
+        }
+        
+        AnimationType::JuliaParamSweep => {
+            // Not reachable from the UI (hidden until v0.3.x), but handle
+            // gracefully in case state was loaded from an old session file.
+            ui.label(egui::RichText::new(
+                "Julia Parameter Sweep is not available in this version. Select a different animation type."
+            ).small().color(egui::Color32::YELLOW));
+        }
+        
+        AnimationType::IterationFade => {
+            ui.label(egui::RichText::new("Iteration Fade Parameters").small().italics());
+            
+            ui.horizontal(|ui| {
+                ui.label("From Iterations:");
+                if ui.add(egui::TextEdit::singleline(&mut animation_state.iter_from_text).desired_width(100.0)).changed() {
+                    if let Ok(val) = animation_state.iter_from_text.parse::<u32>() {
+                        animation_state.iter_from = val;
+                    }
+                }
+            });
+            
+            ui.horizontal(|ui| {
+                ui.label("To Iterations:");
+                if ui.add(egui::TextEdit::singleline(&mut animation_state.iter_to_text).desired_width(100.0)).changed() {
+                    if let Ok(val) = animation_state.iter_to_text.parse::<u32>() {
+                        animation_state.iter_to = val;
+                    }
+                }
+            });
+        }
+    }
+    
+    ui.add_space(10.0);
+    
+    // Show current export settings being used
+    ui.label(egui::RichText::new("Export Settings (from PNG section):").small().italics());
+    let scale_val: f64 = export_scale.parse().unwrap_or(1.0);
+    let supersample_val: u32 = export_supersample.parse().unwrap_or(1);
+    ui.label(egui::RichText::new(format!(
+        "Scale: {:.1}x, Filter: {}, Supersample: {}x",
+        scale_val,
+        export_filter.as_str(),
+        supersample_val
+    )).small().color(egui::Color32::GRAY));
+
+    match export_directory {
+        Some(dir) => ui.label(egui::RichText::new(format!("Output: {}", dir.display())).small().color(egui::Color32::GRAY)),
+        None => ui.label(egui::RichText::new("No output directory set - choose one in the Export Image section above.").small().color(egui::Color32::YELLOW)),
+    };
+    
+    ui.add_space(10.0);
+    
+    // Generate button (disabled if generating or no output directory)
+    let can_generate = export_directory.is_some() && !animation_state.generating;
+
+    let action = if animation_state.generating {
+        if ui.button("Cancel").clicked() {
+            AnimationAction::Cancel
+        } else {
+            AnimationAction::None
+        }
+    } else if ui.add_enabled(can_generate, egui::Button::new("Generate GIF")).clicked() {
+        *status_message = "Starting animation generation...".to_string();
+        animation_state.generating = true;
+        animation_state.progress = 0.0;
+        animation_state.progress_message = String::new();
+        AnimationAction::Start
+    } else {
+        AnimationAction::None
+    };
+
+    // Progress indicator
+    if animation_state.generating {
+        ui.add_space(5.0);
+        ui.add(egui::ProgressBar::new(animation_state.progress).text(&animation_state.progress_message));
+    }
+
+    action
 }
 
 // Helper functions

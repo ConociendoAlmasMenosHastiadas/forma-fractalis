@@ -30,6 +30,7 @@ pub mod tetration;
 pub mod lemon;
 pub mod insideout_dragon;
 pub mod zubieta;
+pub mod sin_julia;
 
 // Parameter system extensions
 pub mod parameter_types;
@@ -47,6 +48,7 @@ pub use tetration::Tetration;
 pub use lemon::Lemon;
 pub use insideout_dragon::InsideoutDragon;
 pub use zubieta::Zubieta;
+pub use sin_julia::SinJulia;
 pub use parameter_types::EscapeMode;
 pub use fractal_gui::FractalGUI;
 

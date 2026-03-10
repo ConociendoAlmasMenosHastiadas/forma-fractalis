@@ -1,12 +1,14 @@
 use eframe::egui;
 use forma_fractalis::{
-    app_state::{ViewState, InputState, FractalState, ColorState, MouseState, ExportState, RenderState, FractalType},
-    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta}, 
+    app_state::{ViewState, InputState, FractalState, ColorState, MouseState, ExportState, RenderState, AnimationState, FractalType},
+    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia}, 
     gui, cli,
     perf_log, enable_profiling,
     rendering_pipeline::{render_with_config, RenderConfig, RenderTarget},
 };
 use std::time::{Duration, Instant};
+use std::sync::mpsc::{self, Receiver};
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
 fn main() -> Result<(), eframe::Error> {
     // Try CLI mode first
@@ -84,9 +86,26 @@ struct FractalApp {
     pub mouse: MouseState,
     pub export: ExportState,
     pub render: RenderState,
+    pub animation: AnimationState,
 
     // Status message
     pub status_message: String,
+    
+    // Animation progress channel
+    animation_progress_rx: Option<Receiver<AnimationProgress>>,
+    // Cancel token for the animation background thread
+    animation_cancel: Option<Arc<AtomicBool>>,
+}
+
+/// Messages sent from the animation generation thread
+#[derive(Debug, Clone)]
+enum AnimationProgress {
+    /// Progress update (current frame, total frames)
+    Progress(u32, u32),
+    /// Animation generation completed successfully
+    Complete(std::path::PathBuf),
+    /// Animation generation failed with error message
+    Error(String),
 }
 
 impl Default for FractalApp {
@@ -106,7 +125,10 @@ impl Default for FractalApp {
             mouse: MouseState::new(),
             export: ExportState::new(),
             render: RenderState::new(),
+            animation: AnimationState::new(),
             status_message: String::from("Ready - Click+drag to position zoom, scroll to resize"),
+            animation_progress_rx: None,
+            animation_cancel: None,
         }
     }
 }
@@ -129,6 +151,7 @@ impl FractalApp {
         let lemon = Lemon::new();
         let insideout_dragon = InsideoutDragon::new();
         let zubieta = Zubieta::new();
+        let sin_julia = SinJulia::new();
         
         let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
             FractalType::Mandelbrot => &mandelbrot,
@@ -142,6 +165,7 @@ impl FractalApp {
             FractalType::Lemon => &lemon,
             FractalType::InsideoutDragon => &insideout_dragon,
             FractalType::Zubieta => &zubieta,
+            FractalType::SinJulia => &sin_julia,
         };
 
         let buffer_size = (self.view_state.view.width * self.view_state.view.height * 4) as usize;
@@ -306,12 +330,66 @@ impl eframe::App for FractalApp {
         // Note: Window title is set once at startup in main()
         // eframe 0.25 doesn't support dynamic title changes
         
-        // Check if we need to load a PNG file (set by GUI button)
-        if self.status_message.starts_with("LOAD_PNG:") {
-            let path = self.status_message.strip_prefix("LOAD_PNG:").unwrap().to_string();
-            match forma_fractalis::export::load_png_metadata(&path) {
+        // Check for animation progress updates from background thread
+        if let Some(rx) = self.animation_progress_rx.as_ref() {
+            let mut should_clear_channel = false;
+            
+            while let Ok(msg) = rx.try_recv() {
+                match msg {
+                    AnimationProgress::Progress(current, total) => {
+                        self.animation.progress = current as f32 / total as f32;
+                        self.animation.progress_message = format!("Frame {}/{}", current, total);
+                        ctx.request_repaint(); // Force UI update
+                    }
+                    AnimationProgress::Complete(path) => {
+                        self.animation.generating = false;
+                        self.animation.progress = 1.0;
+                        self.animation.progress_message = String::new();
+                        self.status_message = format!("Animation saved to: {}", path.display());
+                        perf_log!("[ANIM] Thread reported complete: {}", path.display());
+                        self.animation_cancel = None;
+                        should_clear_channel = true;
+                    }
+                    AnimationProgress::Error(err) => {
+                        self.animation.generating = false;
+                        self.animation.progress = 0.0;
+                        self.animation.progress_message = String::new();
+                        self.status_message = if err == "Animation generation cancelled" {
+                            "Animation cancelled.".to_string()
+                        } else {
+                            format!("Animation failed: {}", err)
+                        };
+                        perf_log!("[ANIM] Thread reported error: {}", err);
+                        self.animation_cancel = None;
+                        should_clear_channel = true;
+                    }
+                }
+            }
+            
+            if should_clear_channel {
+                self.animation_progress_rx = None; // Clean up channel
+            }
+        }
+        
+        // Check if we need to load a file (PNG or JSON)
+        if self.status_message.starts_with("LOAD_FILE:") || self.status_message.starts_with("LOAD_PNG:") {
+            let path = if self.status_message.starts_with("LOAD_FILE:") {
+                self.status_message.strip_prefix("LOAD_FILE:").unwrap().to_string()
+            } else {
+                self.status_message.strip_prefix("LOAD_PNG:").unwrap().to_string()
+            };
+            let ext = std::path::Path::new(&path)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            let metadata_result = match ext.as_str() {
+                "json" => forma_fractalis::export::load_json_metadata(&path),
+                "png" => forma_fractalis::export::load_png_metadata(&path),
+                other => Err(format!("Unsupported file type '.{}' - expected PNG or JSON", other)),
+            };
+            match metadata_result {
                 Ok(metadata) => {
-                    // Apply metadata to app state
                     match self.load_from_metadata(metadata) {
                         Ok(()) => {
                             self.status_message = format!("✓ Loaded from: {}", path);
@@ -323,7 +401,7 @@ impl eframe::App for FractalApp {
                     }
                 }
                 Err(e) => {
-                    self.status_message = format!("❌ Failed to read PNG metadata: {}", e);
+                    self.status_message = format!("❌ Failed to load: {}", e);
                 }
             }
         }
@@ -385,6 +463,7 @@ impl eframe::App for FractalApp {
                             let lemon = Lemon::new();
                             let insideout_dragon = InsideoutDragon::new();
                             let zubieta = Zubieta::new();
+                            let sin_julia = SinJulia::new();
                             
                             let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
                                 FractalType::Mandelbrot => &mandelbrot,
@@ -398,6 +477,7 @@ impl eframe::App for FractalApp {
                                 FractalType::Lemon => &lemon,
                                 FractalType::InsideoutDragon => &insideout_dragon,
                                 FractalType::Zubieta => &zubieta,
+                                FractalType::SinJulia => &sin_julia,
                             };
 
                             // Performance / Rendering Backend
@@ -520,6 +600,40 @@ impl eframe::App for FractalApp {
                             ui.separator();
                             ui.add_space(10.0);
 
+                            // Animation Generation
+                            {
+                                let action = gui::render_animation_section(
+                                    ui,
+                                    &mut self.animation,
+                                    &self.view_state,
+                                    &self.color,
+                                    &self.fractal,
+                                    max_iterations,
+                                    &self.input.export_scale,
+                                    &self.export.filter,
+                                    &self.input.export_supersample,
+                                    self.export.directory.as_ref(),
+                                    &mut self.status_message,
+                                );
+                                
+                                match action {
+                                    gui::AnimationAction::Start => {
+                                        self.start_animation_generation(ctx.clone(), max_iterations, period, fractal);
+                                    }
+                                    gui::AnimationAction::Cancel => {
+                                        if let Some(token) = &self.animation_cancel {
+                                            token.store(true, Ordering::Relaxed);
+                                            perf_log!("[ANIM] Cancellation requested by user");
+                                        }
+                                    }
+                                    gui::AnimationAction::None => {}
+                                }
+                            }
+
+                            ui.add_space(15.0);
+                            ui.separator();
+                            ui.add_space(10.0);
+
                             // Status
                             ui.label(egui::RichText::new(&self.status_message).small().italics());
                         });
@@ -610,9 +724,172 @@ impl eframe::App for FractalApp {
             }
         });
 
-        // Request repaint for smooth interaction
+        //Request repaint for smooth interaction
         if self.mouse.is_dragging {
             ctx.request_repaint();
         }
     }
 }
+
+impl FractalApp {
+    /// Start animation generation in a background thread
+    fn start_animation_generation(
+        &mut self,
+        ctx: egui::Context,
+        max_iterations: u32,
+        period: u32,
+        fractal: &dyn forma_fractalis::fractals::Fractal,
+    ) {
+        use forma_fractalis::animation::{AnimationConfig, AnimationType as AnimType};
+        use forma_fractalis::app_state::AnimationType;
+        
+        // Create channel for progress updates
+        let (tx, rx) = mpsc::channel();
+        self.animation_progress_rx = Some(rx);
+
+        // Create cancel token for this generation run
+        let cancel_token = Arc::new(AtomicBool::new(false));
+        self.animation_cancel = Some(cancel_token.clone());
+        let cancel_token_thread = cancel_token;
+        
+        // Clone data needed for thread
+        let animation_state = self.animation.clone();
+        let view = self.view_state.view.clone();
+        let colormap = self.color.colormap.clone();
+        let fractal_params = self.fractal.parameters.clone();
+        let fractal_name = fractal.name().to_string();
+        
+        // Clone color modulation settings (these affect how iteration counts
+        // map to colors — missing these was the root cause of color/zoom settings
+        // not being honored in GIF frames).
+        let use_period = self.color.use_period;
+        let color_period = period;
+        let use_interior_color = self.color.use_interior_color;
+        let interior_color = self.color.interior_color;
+        let use_log_scale = self.color.use_log_scale;
+
+        // Clone export settings for rendering each frame
+        let export_scale = self.input.parse_export_scale();
+        let export_filter = self.export.filter;
+        let export_supersample = self.input.parse_export_supersample();
+        let render_backend = self.render.backend;
+        let output_dir = self.export.directory.as_ref()
+            .expect("Output directory should be set").clone();
+        
+        // Spawn background thread
+        std::thread::spawn(move || {
+            // Build filename matching PNG export convention:
+            // animation_{fractal_name}_{width}x{height}{filter_suffix}{unix_timestamp}.gif
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let (out_w, out_h) = forma_fractalis::export::calculate_output_dimensions(&view, export_scale as f32);
+            let filter_suffix = if export_filter != forma_fractalis::filtering::FilterType::None && export_supersample > 1 {
+                format!("_{}x{}", export_supersample, export_filter.as_str())
+            } else {
+                String::new()
+            };
+            let fractal_slug = fractal_name.to_lowercase().replace(' ', "_");
+            let filename = format!(
+                "animation_{}_{}x{}{}{}.gif",
+                fractal_slug, out_w, out_h, filter_suffix, timestamp
+            );
+            let output_path = output_dir.join(filename);
+            
+            let anim_type = match animation_state.animation_type {
+                AnimationType::Zoom => AnimType::Zoom {
+                    from_zoom: animation_state.parse_zoom_from(),
+                    to_zoom: animation_state.parse_zoom_to(),
+                    center_x: view.center_x,
+                    center_y: view.center_y,
+                },
+                AnimationType::JuliaParamSweep => {
+                    let _ = tx.send(AnimationProgress::Error(
+                        "Julia Parameter Sweep is not available in this version.".to_string()
+                    ));
+                    return;
+                }
+                AnimationType::IterationFade => AnimType::IterationFade {
+                    from_iterations: animation_state.parse_iter_from(),
+                    to_iterations: animation_state.parse_iter_to(),
+                },
+            };
+            
+            let config = AnimationConfig::new(
+                anim_type,
+                animation_state.parse_num_frames(),
+                animation_state.parse_fps(),
+                output_path.clone(),
+                // Use scaled dimensions so AnimationConfig matches the buffer render_frame produces.
+                // This is the same calculation as render_frame -> calculate_output_dimensions.
+                {
+                    let (w, _) = forma_fractalis::export::calculate_output_dimensions(&view, export_scale as f32);
+                    w
+                },
+                {
+                    let (_, h) = forma_fractalis::export::calculate_output_dimensions(&view, export_scale as f32);
+                    h
+                },
+            );
+
+            perf_log!("[ANIM] Thread started: {} frames, {}fps, {}x{}, backend={:?}, output={}",
+                config.num_frames, config.fps, config.width, config.height,
+                render_backend, config.output_path.display()
+            );
+            
+            // Create fractal instance in thread
+            let fractal: Box<dyn forma_fractalis::fractals::Fractal> = match fractal_name.as_str() {
+                "Mandelbrot" => Box::new(Mandelbrot::new()),
+                "Julia Set" => Box::new(Julia::new()),
+                "Burning Ship" => Box::new(BurningShip::new()),
+                "Tippets Mandelbrot" => Box::new(TippetsMandelbrot::new()),
+                "Multifractal Julia" => Box::new(MultifractalJulia::new()),
+                "Cactus" => Box::new(Cactus::new()),
+                "Marek Dragon" => Box::new(MarekDragon::new()),
+                "Tetration" => Box::new(Tetration::new()),
+                "Lemon" => Box::new(Lemon::new()),
+                "Insideout Dragon" => Box::new(InsideoutDragon::new()),
+                "Zubieta" => Box::new(Zubieta::new()),
+                "Sin Julia" => Box::new(SinJulia::new()),
+                _ => Box::new(Mandelbrot::new()), // Fallback
+            };
+            
+            // Generate animation with progress callback
+            let result = forma_fractalis::animation::generate_animation(
+                &config,
+                &view,
+                &colormap,
+                max_iterations,
+                use_period,
+                color_period,
+                use_interior_color,
+                interior_color,
+                use_log_scale,
+                fractal.as_ref(),
+                &fractal_params,
+                export_scale,
+                export_filter,
+                export_supersample,
+                render_backend,
+                Some(cancel_token_thread),
+                Some(|current, total| {
+                    let _ = tx.send(AnimationProgress::Progress(current, total));
+                    ctx.request_repaint(); // Request UI update
+                }),
+            );
+            
+            // Send completion message
+            match result {
+                Ok(path) => {
+                    let _ = tx.send(AnimationProgress::Complete(path));
+                }
+                Err(e) => {
+                    let _ = tx.send(AnimationProgress::Error(e));
+                }
+            }
+            ctx.request_repaint(); // Final UI update
+        });
+    }
+}
+

@@ -35,8 +35,11 @@ use wgpu::util::DeviceExt;
 /// Per-fractal data is passed through param_0 and param_1 slots:
 /// - Mandelbrot/Powerbrot: param_0 = power (default 2.0)
 /// - Insideout Dragon: param_0 = escape_radius (default 4.0)
+/// - Julia Set: param_0 = c_real, param_1 = c_imag
+/// - Zubieta: param_0 = c_real, param_1 = c_imag
+/// - Sin Julia: param_0 = c_real, param_1 = c_imag, param_2 = escape_radius (default 50.0)
 #[repr(C)]
-#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct GpuFractalParams {
     center_x: f32,
     center_y: f32,
@@ -46,6 +49,8 @@ struct GpuFractalParams {
     height: u32,
     param_0: f32,
     param_1: f32,
+    param_2: f32,
+    _padding: [u32; 3], // Ensure 16-byte alignment
 }
 
 /// WGPU-based GPU renderer
@@ -199,8 +204,8 @@ impl WgpuRenderer {
             width: config.width,
             height: config.height,
             param_0: config.fractal_params.first().copied().unwrap_or(0.0) as f32,
-            param_1: config.fractal_params.get(1).copied().unwrap_or(0.0) as f32,
-        };
+            param_1: config.fractal_params.get(1).copied().unwrap_or(0.0) as f32,            param_2: config.fractal_params.get(2).copied().unwrap_or(0.0) as f32,
+            _padding: [0; 3],        };
         
         let label_params = format!("{} Params Buffer", pipeline_name);
         let label_bind = format!("{} Bind Group", pipeline_name);
@@ -432,8 +437,10 @@ impl WgpuRenderer {
     fn pipeline_name_for(fractal_name: &str) -> Option<&'static str> {
         match fractal_name {
             "Mandelbrot" | "Powerbrot" => Some("Mandelbrot"),
+            "Julia Set" => Some("Julia Set"),
             "Insideout Dragon" => Some("Insideout Dragon"),
             "Zubieta" => Some("Zubieta"),
+            "Sin Julia" => Some("Sin Julia"),
             _ => None,
         }
     }
@@ -497,8 +504,10 @@ impl WgpuRenderer {
         
         // Pre-compile all fractal shaders using kernel composition
         renderer.load_shader("Mandelbrot", include_str!("shaders/mandelbrot_kernel.wgsl"))?;
+        renderer.load_shader("Julia Set", include_str!("shaders/julia_kernel.wgsl"))?;
         renderer.load_shader("Insideout Dragon", include_str!("shaders/insideout_dragon_kernel.wgsl"))?;
         renderer.load_shader("Zubieta", include_str!("shaders/zubieta_kernel.wgsl"))?;
+        renderer.load_shader("Sin Julia", include_str!("shaders/sin_julia_kernel.wgsl"))?;
         
         Ok(renderer)
     }

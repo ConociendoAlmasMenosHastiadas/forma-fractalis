@@ -4,7 +4,7 @@
 
 **Explore, create, and render stunning fractals in Rust.** An interactive fractal explorer with real-time rendering, advanced color mapping, CLI automation, and professional export capabilities.
 
-> **Non-programmers:** Pre-built Windows executables available in [`builds/`](builds/)
+> **Non-programmers:** Pre-built Windows executables available on the [Releases page](https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/releases)
 
 ![Rust](https://img.shields.io/badge/rust-2021-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue)
@@ -16,7 +16,7 @@
 ![Mandelbrot Set](img_resources/banners/mandelbrot_4320x1080_4xLanczos31771181432.png)
 
 ### Interactive Exploration
-- **9 Fractal Types**: Mandelbrot, Julia, Burning Ship, Tippets Mandelbrot, Multifractal-Julia, Cactus, Marek Dragon, Tetration, Lemon
+- **11 Fractal Types**: Mandelbrot, Julia, Burning Ship, Tippets Mandelbrot, Multifractal-Julia, Cactus, Marek Dragon, Tetration, Lemon, Zubieta, Sin Julia
 - **Real-time Rendering**: Smooth 60 FPS with multi-threaded computation
 - **Click-to-Zoom**: Intuitive mouse controls for navigation
 - **Fractal Parameters**: Adjust Julia constants, powers, rotation angles with live sliders
@@ -31,7 +31,8 @@
 - **High-Resolution PNG**: Scale up to 8K with Lanczos3/Gaussian filtering
 - **8x Supersampling**: Ultra-sharp anti-aliased results
 - **Complete Metadata**: All settings embedded in PNG tEXt chunks
-- **Round-Trip Loading**: Import any exported PNG to recreate exact settings
+- **Round-Trip Loading**: Import any exported PNG or JSON settings file
+- **Animated GIF Export**: Zoom sequences and iteration-fade animations with GPU acceleration
 
 ### CLI Automation (New in v0.1.7!)
 - **Headless Rendering**: Generate fractals without GUI
@@ -46,7 +47,7 @@
 ![Burning Ship](img_resources/banners/burning_ship_4320x1080_4xLanczos31771182212.png)
 
 ### Option 1: Pre-built Binary (Windows)
-1. Download the latest zip from [`builds/`](builds/)
+1. Download the latest zip from the [Releases page](https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/releases)
 2. Extract and run `forma-fractalis.exe`
 3. Start exploring!
 
@@ -86,8 +87,8 @@ forma-fractalis --profiling
 <tr>
 <td width="50%">
 
-### Mandelbrot Set
-![Mandelbrot 1](img_resources/gallery/mandelbrot_3840x2160_4xLanczos31768372087.png)
+### Zubieta
+![Zubieta](img_resources/gallery/v0.2.0_zubieta.png)
 
 </td>
 <td width="50%">
@@ -119,6 +120,7 @@ forma-fractalis --profiling
 | Multifractal-Julia & Mandelbrot Variations |
 |:--:|
 | ![Multifractal](img_resources/gallery_expanded/multifractal-julia_3840x2160_4xLanczos31769398723.png) |
+| ![Mandelbrot 1](img_resources/gallery_expanded/mandelbrot_3840x2160_4xLanczos31768372087.png) |
 | ![Mandelbrot 3](img_resources/gallery_expanded/mandelbrot_3840x2160_4xLanczos31768887944.png) |
 | ![Mandelbrot 4](img_resources/gallery_expanded/mandelbrot_3840x2160_4xLanczos31769238284.png) |
 | ![Cactus Vertical](img_resources/gallery_expanded/cactus_1080x2400_4xLanczos31772175230.png) |
@@ -192,6 +194,8 @@ GPU acceleration currently supports:
 - Mandelbrot Set
 - Powerbrot (configurable power)
 - Zubieta
+- Julia Set
+- Sin Julia
 
 Other fractals automatically use CPU rendering. GPU support will expand in future releases.
 
@@ -255,14 +259,28 @@ Other fractals automatically use CPU rendering. GPU support will expand in futur
 
 ## Releases
 
-**Latest: v0.2.0** (February 27, 2026)
+**Latest: v0.2.1** (March 9, 2026)
 
-GPU acceleration, Zubieta fractal with polar/rectangular parameter input, shader composition architecture, tiled rendering for large exports, explicit error handling, 73 tests passing.
+Sin Julia fractal, animated GIF export (zoom sequences, iteration-fade, GPU-accelerated frames, cancel support), logarithmic zoom interpolation, load from JSON, colorstop endpoint fix (scala-chromatica v0.1.4), 82 tests passing.
 
-![v0.2.0 Release - Zubieta](img_resources/showcase/v0.2.0_zubieta.png)
+![v0.2.1 Release - Sin Julia](img_resources/showcase/v0.2.1_sin_julia.png)
 
 <details>
 <summary><b>View release history...</b></summary>
+
+### v0.2.1 (March 9, 2026)
+- Sin Julia fractal: z_{n+1} = c·sin(z_n) with GPU acceleration (param_2 infrastructure)
+- Animated GIF export: zoom sequences and iteration-fade animations
+- GPU-accelerated animation frames (uses selected backend, initialized once per run)
+- Logarithmic zoom interpolation for perceptually uniform zoom pacing
+- Animation cancel button (stops mid-run, partial file deleted)
+- Load from PNG or JSON (import dialog accepts both; routes by extension)
+- Animation color settings fix (use_period, interior color, log scale now reach every frame)
+- Animation export scale fix (export_scale was silently ignored)
+- Colorstop endpoint fix via scala-chromatica v0.1.4 (inclusive period sampling)
+- GPU/CPU selector changed to radio buttons
+- GIF filename convention aligned with PNG (timestamp-based, filter suffix)
+- 82 tests passing
 
 ### v0.2.0 (February 27, 2026)
 - GPU acceleration via WGPU (Mandelbrot/Powerbrot support)

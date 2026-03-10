@@ -41,6 +41,9 @@ Desktop.ini
 # Temporary captures
 /captures/
 
+# Distribution builds (local staging only - distributed via GitHub Releases)
+/builds/
+
 plans/
 
 AGENTS.md

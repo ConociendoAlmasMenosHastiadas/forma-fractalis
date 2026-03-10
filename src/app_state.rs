@@ -78,6 +78,12 @@ pub struct InputState {
     pub zubieta_magnitude: String,
     pub zubieta_angle: String,
     pub zubieta_coord_mode: CoordinateMode,
+    pub sin_julia_c_real: String,
+    pub sin_julia_c_imag: String,
+    pub sin_julia_magnitude: String,
+    pub sin_julia_angle: String,
+    pub sin_julia_coord_mode: CoordinateMode,
+    pub sin_julia_escape_radius: String,
     pub period: String,
     pub export_scale: String,
     pub export_supersample: String,
@@ -110,6 +116,12 @@ impl Default for InputState {
             zubieta_magnitude: String::from("0.8"),
             zubieta_angle: String::from("1.5707963267949"),
             zubieta_coord_mode: CoordinateMode::default(),
+            sin_julia_c_real: String::from("1.0"),
+            sin_julia_c_imag: String::from("0.1"),
+            sin_julia_magnitude: String::from("1.0049875621120890"),
+            sin_julia_angle: String::from("0.09966865249116204"),
+            sin_julia_coord_mode: CoordinateMode::default(),
+            sin_julia_escape_radius: String::from("50.0"),
             period: String::from("128"),
             export_scale: String::from("3.0"),
             export_supersample: String::from("4"),
@@ -194,6 +206,21 @@ impl InputState {
     pub fn parse_zubieta_c_imag(&self) -> f64 {
         self.zubieta_c_imag.parse::<f64>().unwrap_or(0.8)
     }
+
+    /// Parse Sin Julia c_real parameter
+    pub fn parse_sin_julia_c_real(&self) -> f64 {
+        self.sin_julia_c_real.parse::<f64>().unwrap_or(1.0)
+    }
+
+    /// Parse Sin Julia c_imag parameter
+    pub fn parse_sin_julia_c_imag(&self) -> f64 {
+        self.sin_julia_c_imag.parse::<f64>().unwrap_or(0.1)
+    }
+
+    /// Parse Sin Julia escape radius parameter
+    pub fn parse_sin_julia_escape_radius(&self) -> f64 {
+        self.sin_julia_escape_radius.parse::<f64>().unwrap_or(50.0)
+    }
 }
 
 /// Iteration data cache for fast recoloring
@@ -258,6 +285,7 @@ pub enum FractalType {
     Lemon,
     InsideoutDragon,
     Zubieta,
+    SinJulia,
 }
 
 impl FractalType {
@@ -274,6 +302,7 @@ impl FractalType {
             FractalType::Lemon => "Lemon",
             FractalType::InsideoutDragon => "Insideout Dragon",
             FractalType::Zubieta => "Zubieta",
+            FractalType::SinJulia => "Sin Julia",
         }
     }
 
@@ -295,6 +324,7 @@ impl FractalType {
             FractalType::Lemon => "z_{n+1} = z_0 * z_n^2 * (z_n^2 + 1) / (z_n^2 - 1)^k",
             FractalType::InsideoutDragon => "z_{n+1} = z_n^2 + f(|z_n|) + i*g(|z_n|), z_0 = 1/c",
             FractalType::Zubieta => "z_{n+1} = z_n^2 + c/z_n",
+            FractalType::SinJulia => "z_{n+1} = c * sin(z_n)",
         }
     }
 
@@ -310,6 +340,7 @@ impl FractalType {
             FractalType::Tetration,
             FractalType::Lemon,
             FractalType::Zubieta,
+            FractalType::SinJulia,
             // InsideoutDragon: Hidden until v0.2.2 (numerical stability issues - needs singularity guards)
             // FractalType::InsideoutDragon,
         ]
@@ -317,7 +348,7 @@ impl FractalType {
 
     /// Creates a fractal instance from the enum type
     pub fn create_instance(&self) -> Box<dyn crate::fractals::Fractal> {
-        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta};
+        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia};
         
         match self {
             FractalType::Mandelbrot => Box::new(Mandelbrot::new()),
@@ -331,6 +362,7 @@ impl FractalType {
             FractalType::Lemon => Box::new(Lemon::new()),
             FractalType::InsideoutDragon => Box::new(InsideoutDragon::new()),
             FractalType::Zubieta => Box::new(Zubieta::new()),
+            FractalType::SinJulia => Box::new(SinJulia::new()),
         }
     }
 
@@ -342,7 +374,7 @@ impl FractalType {
         input_state: &mut InputState,
         needs_redraw: &mut bool,
     ) {
-        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, FractalGUI};
+        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, FractalGUI};
         
         match self {
             FractalType::Mandelbrot => {
@@ -387,6 +419,10 @@ impl FractalType {
             }
             FractalType::Zubieta => {
                 let fractal = Zubieta::new();
+                fractal.render_parameters_gui(ui, params, input_state, needs_redraw);
+            }
+            FractalType::SinJulia => {
+                let fractal = SinJulia::new();
                 fractal.render_parameters_gui(ui, params, input_state, needs_redraw);
             }
         }
@@ -487,6 +523,15 @@ impl FractalType {
                 params.clear();
                 params.insert("c_real".to_string(), input.parse_zubieta_c_real());
                 params.insert("c_imag".to_string(), input.parse_zubieta_c_imag());
+            }
+            FractalType::SinJulia => {
+                view.center_x = 0.0;
+                view.center_y = 0.0;
+                view.zoom = 0.4;
+                params.clear();
+                params.insert("c_real".to_string(), input.parse_sin_julia_c_real());
+                params.insert("c_imag".to_string(), input.parse_sin_julia_c_imag());
+                params.insert("escape_radius".to_string(), input.parse_sin_julia_escape_radius());
             }
         }
     }
@@ -720,6 +765,160 @@ impl RenderState {
     }
 }
 
+/// Animation generation state
+#[derive(Clone)]
+pub struct AnimationState {
+    /// Selected animation type
+    pub animation_type: AnimationType,
+    
+    /// Number of frames
+    pub num_frames: u32,
+    pub num_frames_text: String,
+    
+    /// Frames per second
+    pub fps: u8,
+    pub fps_text: String,
+    
+    /// Zoom animation parameters
+    pub zoom_from: f64,
+    pub zoom_from_text: String,
+    pub zoom_to: f64,
+    pub zoom_to_text: String,
+    
+    /// Julia parameter sweep parameters
+    pub julia_from_real: f64,
+    pub julia_from_real_text: String,
+    pub julia_from_imag: f64,
+    pub julia_from_imag_text: String,
+    pub julia_to_real: f64,
+    pub julia_to_real_text: String,
+    pub julia_to_imag: f64,
+    pub julia_to_imag_text: String,
+    
+    /// Iteration fade parameters
+    pub iter_from: u32,
+    pub iter_from_text: String,
+    pub iter_to: u32,
+    pub iter_to_text: String,
+    
+    /// Progress tracking
+    pub generating: bool,
+    pub progress: f32,
+    pub progress_message: String,
+}
+
+/// Animation type selector
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnimationType {
+    Zoom,
+    JuliaParamSweep,
+    IterationFade,
+    // ColormapTransition,  // TODO: Implement in future version
+}
+
+impl Default for AnimationType {
+    fn default() -> Self {
+        AnimationType::Zoom
+    }
+}
+
+impl AnimationType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AnimationType::Zoom => "Zoom Sequence",
+            AnimationType::JuliaParamSweep => "Julia Parameter Sweep",
+            AnimationType::IterationFade => "Iteration Fade-In",
+        }
+    }
+}
+
+impl Default for AnimationState {
+    fn default() -> Self {
+        Self {
+            animation_type: AnimationType::default(),
+            num_frames: 60,
+            num_frames_text: "60".to_string(),
+            fps: 15,
+            fps_text: "15".to_string(),
+            zoom_from: 1.0,
+            zoom_from_text: "1.0".to_string(),
+            zoom_to: 100.0,
+            zoom_to_text: "100.0".to_string(),
+            julia_from_real: -0.7,
+            julia_from_real_text: "-0.7".to_string(),
+            julia_from_imag: 0.27015,
+            julia_from_imag_text: "0.27015".to_string(),
+            julia_to_real: -0.4,
+            julia_to_real_text: "-0.4".to_string(),
+            julia_to_imag: 0.6,
+            julia_to_imag_text: "0.6".to_string(),
+            iter_from: 100,
+            iter_from_text: "100".to_string(),
+            iter_to: 1000,
+            iter_to_text: "1000".to_string(),
+            generating: false,
+            progress: 0.0,
+            progress_message: String::new(),
+        }
+    }
+}
+
+impl AnimationState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    
+    /// Parse num_frames from text input
+    pub fn parse_num_frames(&self) -> u32 {
+        self.num_frames_text.parse().unwrap_or(self.num_frames)
+    }
+    
+    /// Parse fps from text input
+    pub fn parse_fps(&self) -> u8 {
+        self.fps_text.parse().unwrap_or(self.fps)
+    }
+    
+    /// Parse zoom_from from text input
+    pub fn parse_zoom_from(&self) -> f64 {
+        self.zoom_from_text.parse().unwrap_or(self.zoom_from)
+    }
+    
+    /// Parse zoom_to from text input
+    pub fn parse_zoom_to(&self) -> f64 {
+        self.zoom_to_text.parse().unwrap_or(self.zoom_to)
+    }
+    
+    /// Parse julia_from_real from text input
+    pub fn parse_julia_from_real(&self) -> f64 {
+        self.julia_from_real_text.parse().unwrap_or(self.julia_from_real)
+    }
+    
+    /// Parse julia_from_imag from text input
+    pub fn parse_julia_from_imag(&self) -> f64 {
+        self.julia_from_imag_text.parse().unwrap_or(self.julia_from_imag)
+    }
+    
+    /// Parse julia_to_real from text input
+    pub fn parse_julia_to_real(&self) -> f64 {
+        self.julia_to_real_text.parse().unwrap_or(self.julia_to_real)
+    }
+    
+    /// Parse julia_to_imag from text input
+    pub fn parse_julia_to_imag(&self) -> f64 {
+        self.julia_to_imag_text.parse().unwrap_or(self.julia_to_imag)
+    }
+    
+    /// Parse iter_from from text input
+    pub fn parse_iter_from(&self) -> u32 {
+        self.iter_from_text.parse().unwrap_or(self.iter_from)
+    }
+    
+    /// Parse iter_to from text input
+    pub fn parse_iter_to(&self) -> u32 {
+        self.iter_to_text.parse().unwrap_or(self.iter_to)
+    }
+}
+
 /// Conversion from FractalMetadata to state structs
 /// These conversions enable clean bidirectional transformation between
 /// serialized metadata and application state.
@@ -825,6 +1024,17 @@ impl From<&crate::export::FractalMetadata> for InputState {
             .copied()
             .unwrap_or(0.8);
 
+        // Extract Sin Julia c values if present
+        let sin_julia_c_real = meta.fractal_parameters.get("c_real")
+            .copied()
+            .unwrap_or(1.0);
+        let sin_julia_c_imag = meta.fractal_parameters.get("c_imag")
+            .copied()
+            .unwrap_or(0.1);
+        let sin_julia_escape_radius = meta.fractal_parameters.get("escape_radius")
+            .copied()
+            .unwrap_or(50.0);
+
         Self {
             width: meta.width.to_string(),
             height: meta.height.to_string(),
@@ -846,6 +1056,12 @@ impl From<&crate::export::FractalMetadata> for InputState {
             zubieta_magnitude: (zubieta_c_real * zubieta_c_real + zubieta_c_imag * zubieta_c_imag).sqrt().to_string(),
             zubieta_angle: zubieta_c_imag.atan2(zubieta_c_real).to_string(),
             zubieta_coord_mode: crate::app_state::CoordinateMode::default(),
+            sin_julia_c_real: sin_julia_c_real.to_string(),
+            sin_julia_c_imag: sin_julia_c_imag.to_string(),
+            sin_julia_magnitude: (sin_julia_c_real * sin_julia_c_real + sin_julia_c_imag * sin_julia_c_imag).sqrt().to_string(),
+            sin_julia_angle: sin_julia_c_imag.atan2(sin_julia_c_real).to_string(),
+            sin_julia_coord_mode: crate::app_state::CoordinateMode::default(),
+            sin_julia_escape_radius: sin_julia_escape_radius.to_string(),
             period: meta.period.to_string(),
             export_scale: meta.export_scale.to_string(),
             export_supersample: meta.export_supersample.to_string(),

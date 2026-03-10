@@ -1297,4 +1297,18 @@ impl FractalMetadata {
     }
 }
 
+/// Load metadata from a JSON settings file written by `export_settings_json`
+///
+/// # Arguments
+/// * `path` - Path to the JSON file
+///
+/// # Returns
+/// Result with FractalMetadata, or an error message
+pub fn load_json_metadata<P: AsRef<Path>>(path: P) -> Result<FractalMetadata, String> {
+    let path = path.as_ref();
+    let json = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read JSON file: {}", e))?;
+    serde_json::from_str(&json)
+        .map_err(|e| format!("Failed to parse JSON settings: {}", e))
+}
 

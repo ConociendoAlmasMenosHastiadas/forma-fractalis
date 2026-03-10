@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-03-09
+
+### Added
+- **Sin Julia Fractal**: z_{n+1} = c·sin(z_n)
+  - Hyperbolic decomposition: x_{n+1} = sin(x)cosh(y), y_{n+1} = cos(x)sinh(y)
+  - Parameters: c (real/imaginary) with rectangular and polar input modes
+  - Configurable escape radius (4.0 to 200.0, default 50.0)
+  - Full GPU acceleration via sin_julia_kernel.wgsl
+  - sinh/cosh utilities added to common.wgsl
+  - GPU infrastructure extended: param_2 added to GpuFractalParams
+- **Animated GIF Export**: Generate zoom sequences and iteration-fade animations
+  - Zoom animation: logarithmic interpolation between two zoom levels
+  - Iteration fade: animate from low to high iteration counts
+  - Configurable frame count and FPS
+  - GPU-accelerated frame rendering (uses selected backend, initialized once per run)
+  - Cancel button: stops generation mid-run, deletes partial file
+  - Export settings (scale, filter, directory) inherited from PNG export section
+  - Per-frame profiling with zoom/center or iteration details
+  - GIF filename convention matches PNG: animation_{fractal}_{W}x{H}{filter}_{timestamp}.gif
+- **Load from JSON**: Settings files loadable alongside PNG files
+  - "Load from PNG or JSON" dialog accepts .png and .json
+  - Routes by file extension; unsupported extensions produce a clear error
+- **Julia GPU Acceleration**: Julia Set now renders via compute shader
+  - julia_kernel.wgsl with c as uniform parameter (param_0/param_1)
+- **Logarithmic Zoom Interpolation**: Perceptually uniform zoom sequences
+  - Each frame multiplies zoom by the same ratio (geometric mean interpolation)
+  - Replaces linear lerp that produced visually uneven pacing
+- **Colorstop Period Fix**: scala-chromatica updated to v0.1.4
+  - Inclusive sampling formula: (iter % period) / (period - 1)
+  - Endpoint colors (position=1.0 stops) now correctly sampled
+  - Fixes Egyptian Echo and similar colormaps not showing endpoint colors
+
+### Changed
+- **Animation UI**: Julia Parameter Sweep hidden from dropdown (deferred to v0.3.x)
+  - Pending project variables system; returns explicit error if triggered via old state
+- **Import Section**: Renamed from "Import from PNG" to "Import"
+  - File dialog accepts both .png and .json with combined filter
+- **GPU/CPU Selector**: Changed from ComboBox to radio buttons
+  - Fewer clicks, clearer selection state
+- **Animation Output Directory**: Merged with PNG export directory
+  - Single "Choose Directory" button in Export section
+  - Animation reuses export directory with warning if unset
+- **GIF Filename Convention**: Aligned with PNG convention
+  - Removed chrono dependency (replaced with std::time::SystemTime)
+
+### Fixed
+- **Animation Color Settings**: Color modulation never reached animation frames
+  - use_period, period, use_interior_color, interior_color, use_log_scale now threaded through full call chain
+- **Animation Export Scale**: export_scale was silently ignored in animation frames
+- **Animation GIF Dimensions**: Width/height assertion panic on dimension mismatch fixed
+  - AnimationConfig now uses scaled output dimensions to match render_frame
+
+### Technical
+- **Dependencies Updated**:
+  - scala-chromatica: v0.1.2 → v0.1.4 (colorstop period fix)
+  - chrono: removed (std::time::SystemTime used instead)
+- **GPU Infrastructure**: param_2 added to GpuFractalParams for fractals needing 3 parameters
+- **Testing**: 82 tests passing (up from 73)
+  - Animation color regression test (test_color_settings_affect_frame_output)
+  - examples/test_v0_1_4.rs for colorstop period verification
+
 ## [0.2.0] - 2026-02-27
 
 ### Added
