@@ -40,3 +40,6 @@ harness = false
 [[bench]]
 name = "gpu_bench"
 harness = false
+
+[profile.release]
+strip = true  # Remove symbol/debug info from binary

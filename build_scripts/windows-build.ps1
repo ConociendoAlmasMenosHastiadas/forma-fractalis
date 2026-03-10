@@ -5,6 +5,13 @@ $ErrorActionPreference = "Stop"
 
 Write-Host "Building Forma Fractalis for Windows (release mode)..." -ForegroundColor Cyan
 
+# Remap all user-specific build paths so they don't appear in panic messages.
+# Covers: project source, cargo registry, and rustup stdlib paths.
+$projectRoot = (Get-Location).Path
+$cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { "$env:USERPROFILE\.cargo" }
+$rustupHome = if ($env:RUSTUP_HOME) { $env:RUSTUP_HOME } else { "$env:USERPROFILE\.rustup" }
+$env:RUSTFLAGS = "--remap-path-prefix=${projectRoot}=. --remap-path-prefix=${cargoHome}=<cargo> --remap-path-prefix=${rustupHome}=<rustup>"
+
 # Build the release executable
 cargo build --release
 
