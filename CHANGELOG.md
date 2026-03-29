@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-03-28
+
+### Added
+- **Insideout Dragon Fractal**: z_{n+1} = z_n^2 + f(|z_n|) + i*g(|z_n|), z_0 = 1/c
+  - Magnitude-based perturbation via f(r) and g(r) rational functions
+  - Configurable escape radius with GUI controls
+  - Numerical stability guards (singularity, NaN/Inf, near-zero denominator)
+  - CPU and GPU rendering support
+  - Hi-precision support (BigFloat z^2 accumulation, f64 perturbation terms)
+- **CPU High-Precision Pipeline**: Arbitrary-precision rendering via astro-float BigFloat
+  - User-selectable bit width: 64, 128, 256, 512, 1024 bits
+  - CpuHiPrec backend alongside CPU and GPU in Performance section
+  - BigFloat coordinate pipeline for clean rendering at extreme zoom (>1e15)
+  - Mandelbrot: full power support via polar form complex exponentiation
+  - Insideout Dragon: hi-prec with f64 perturbation fallback
+  - Warning displayed for fractals without hi-prec support
+- **HSV Color Picker**: Replaces RGB slider triplets with interactive visual picker
+  - 2D saturation-value plane with click/drag interaction
+  - Horizontal hue bar with full spectrum selection
+  - Hex input field (6-character, with or without #)
+  - Editable R/G/B text inputs for direct numeric entry
+  - Live color swatch preview
+  - Used for both interior color and colormap stop editing
+- **Burning Ship GPU Shader**: GPU acceleration for Burning Ship fractal
+  - burning_ship_kernel.wgsl with abs() on both components
+- **CPU Thread Limit**: User-controlled thread count for CPU/CpuHiPrec backends
+  - Slider in Performance section (1 to max cores, 0 = all cores)
+  - Local rayon ThreadPool with graceful fallback
+- **Preview Zoom Control**: Manual preview scale (0.1x-1.0x)
+  - Auto-halved to 0.5x when entering CpuHiPrec mode
+  - Restored on exit from CpuHiPrec
+
+### Changed
+- **Color Editing UI**: RGB sliders removed in favor of HSV color picker
+  - Interior color section uses chromator-inspired HSV picker
+  - Colormap stop editor uses same picker widget
+  - Both hex and RGB text entry available for precision
+
+### Fixed
+- **Export Pipeline**: hiprec_bits and max_threads now propagated to PNG export
+  - RenderConfig builder chains .with_hiprec_bits() and .with_max_threads()
+  - Both GUI export paths (GPU/non-GPU) pass new parameters
+
+### Technical
+- **Dependencies Updated**:
+  - astro-float: v0.9 added (arbitrary-precision floating point)
+- **Testing**: 95 tests passing (up from 82)
+  - 5 Mandelbrot hi-prec tests (origin, escape, f64 agreement, bit widths, general power)
+  - 4 Insideout Dragon hi-prec tests (origin, escape, f64 agreement, bit widths)
+  - 4 color picker tests (HSV roundtrip, hex parsing, state management)
+
 ## [0.2.1] - 2026-03-09
 
 ### Added

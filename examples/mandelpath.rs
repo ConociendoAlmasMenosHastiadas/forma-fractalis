@@ -319,7 +319,6 @@ impl eframe::App for MandelPathApp {
                         ui.add_space(10.0);
 
                         // Colormap
-                        let [r, g, b] = &mut self.color.interior_color_rgb_text;
                         gui::render_colormap_section(
                             ui,
                             &mut self.color.available_colormaps,
@@ -331,9 +330,7 @@ impl eframe::App for MandelPathApp {
                             &mut self.input.period,
                             &mut self.color.use_interior_color,
                             &mut self.color.interior_color,
-                            r,
-                            g,
-                            b,
+                            &mut self.color.interior_picker,
                             &mut self.color.use_log_scale,
                             &mut self.input.debounce_timer,
                             &mut self.input.pending_redraw,

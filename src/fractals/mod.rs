@@ -17,6 +17,7 @@
 //! ```
 
 use std::collections::HashMap;
+use astro_float::{BigFloat, RoundingMode};
 
 // Fractal implementations
 pub mod mandelbrot;
@@ -99,6 +100,54 @@ impl FractalView {
             + (x as f64 - self.width as f64 / 2.0) * scale / self.width as f64 * aspect_ratio;
         let imag =
             self.center_y + (y as f64 - self.height as f64 / 2.0) * scale / self.height as f64;
+
+        (real, imag)
+    }
+
+    /// Converts screen pixel coordinates to complex plane coordinates using
+    /// arbitrary-precision BigFloat arithmetic.
+    ///
+    /// At extreme zoom levels (>1e15), f64 cannot distinguish adjacent pixels.
+    /// This method performs the full coordinate mapping at `bits` precision so
+    /// that every pixel maps to a unique complex value.
+    ///
+    /// NOTE: `center_x`, `center_y`, `zoom` are stored as f64 and converted here.
+    /// The per-pixel delta arithmetic is the critical part that must be hi-prec.
+    pub fn screen_to_complex_hiprec(&self, x: u32, y: u32, bits: u32) -> (BigFloat, BigFloat) {
+        let p = bits as usize;
+        let rm = RoundingMode::ToEven;
+
+        let center_x = BigFloat::from_f64(self.center_x, p);
+        let center_y = BigFloat::from_f64(self.center_y, p);
+        let zoom = BigFloat::from_f64(self.zoom, p);
+        let width = BigFloat::from_f64(self.width as f64, p);
+        let height = BigFloat::from_f64(self.height as f64, p);
+        let two = BigFloat::from_f64(2.0, p);
+
+        // scale = 3.5 / zoom
+        let three_point_five = BigFloat::from_f64(3.5, p);
+        let scale = three_point_five.div(&zoom, p, rm);
+
+        // aspect_ratio = width / height
+        let aspect_ratio = width.div(&height, p, rm);
+
+        // real = center_x + (x - width/2) * scale / width * aspect_ratio
+        let x_bf = BigFloat::from_f64(x as f64, p);
+        let half_w = width.div(&two, p, rm);
+        let offset_x = x_bf.sub(&half_w, p, rm);
+        let real = center_x.add(
+            &offset_x.mul(&scale, p, rm).div(&width, p, rm).mul(&aspect_ratio, p, rm),
+            p, rm,
+        );
+
+        // imag = center_y + (y - height/2) * scale / height
+        let y_bf = BigFloat::from_f64(y as f64, p);
+        let half_h = height.div(&two, p, rm);
+        let offset_y = y_bf.sub(&half_h, p, rm);
+        let imag = center_y.add(
+            &offset_y.mul(&scale, p, rm).div(&height, p, rm),
+            p, rm,
+        );
 
         (real, imag)
     }
@@ -215,5 +264,38 @@ pub trait Fractal: Sync {
             .iter()
             .map(|p| (p.name.clone(), p.default))
             .collect()
+    }
+
+    /// Returns whether this fractal supports the CPU hi-precision rendering backend.
+    ///
+    /// Fractals that return `true` must also implement `iterate_hiprec`.
+    /// Defaults to `false` — most fractals do not yet support hi-prec.
+    fn supports_hiprec(&self) -> bool {
+        false
+    }
+
+    /// Compute iterations using software arbitrary-precision arithmetic.
+    ///
+    /// Only called when `supports_hiprec()` returns `true` and the backend is `CpuHiPrec`.
+    /// The `bits` argument is one of: 64, 128, 256, 512, 1024.
+    ///
+    /// Coordinates are received as `BigFloat` to preserve per-pixel precision at
+    /// extreme zoom levels. The caller (`compute_iterations_hiprec` / `render_fractal_hiprec`)
+    /// computes them via `FractalView::screen_to_complex_hiprec()`.
+    ///
+    /// The default implementation panics — fractals that advertise `supports_hiprec() == true`
+    /// MUST override this method.
+    fn iterate_hiprec(
+        &self,
+        _c_real: &BigFloat,
+        _c_imag: &BigFloat,
+        _parameters: &HashMap<String, f64>,
+        _max_iter: u32,
+        _bits: u32,
+    ) -> u32 {
+        panic!(
+            "iterate_hiprec called on fractal '{}' but supports_hiprec() was not overridden",
+            self.name()
+        )
     }
 }

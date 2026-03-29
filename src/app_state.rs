@@ -6,6 +6,7 @@
 //! and reducing function parameter counts from 10-15 to 3-5.
 
 use scala_chromatica::ColorMap;
+use crate::color_picker::ColorPickerState;
 use crate::colorschemes_gui::ColorEditor;
 use crate::filtering::FilterType;
 use crate::fractals::FractalView;
@@ -33,6 +34,10 @@ pub struct ViewState {
     pub fractal_texture: Option<egui::TextureHandle>,
     pub needs_redraw: bool,
     pub iteration_cache: Option<IterationCache>,
+    /// Display zoom factor for the preview panel ([0.1, 1.0]).
+    /// 1.0 = fit-to-panel (fills available space); 0.5 = half the panel.
+    /// Auto-set to 0.5 when CpuHiPrec is selected and restored on exit.
+    pub preview_zoom: f32,
 }
 
 impl ViewState {
@@ -42,6 +47,7 @@ impl ViewState {
             fractal_texture: None,
             needs_redraw: true,
             iteration_cache: None,
+            preview_zoom: 1.0,
         }
     }
 
@@ -247,6 +253,10 @@ pub struct IterationCache {
     pub center_x: f64,
     pub center_y: f64,
     pub zoom: f64,
+    /// Backend that computed the iterations (CPU f64 vs CpuHiPrec BigFloat produce different counts)
+    pub backend: crate::gpu::RenderBackend,
+    /// Bit width used when backend == CpuHiPrec; ignored for other backends
+    pub hiprec_bits: u32,
 }
 
 impl IterationCache {
@@ -259,6 +269,8 @@ impl IterationCache {
         fractal_type: FractalType,
         fractal_parameters: &HashMap<String, f64>,
         view: &FractalView,
+        backend: crate::gpu::RenderBackend,
+        hiprec_bits: u32,
     ) -> bool {
         self.width == width
             && self.height == height
@@ -268,6 +280,8 @@ impl IterationCache {
             && (self.center_x - view.center_x).abs() < 1e-10
             && (self.center_y - view.center_y).abs() < 1e-10
             && (self.zoom - view.zoom).abs() < 1e-10
+            && self.backend == backend
+            && self.hiprec_bits == hiprec_bits
     }
 }
 
@@ -341,8 +355,7 @@ impl FractalType {
             FractalType::Lemon,
             FractalType::Zubieta,
             FractalType::SinJulia,
-            // InsideoutDragon: Hidden until v0.2.2 (numerical stability issues - needs singularity guards)
-            // FractalType::InsideoutDragon,
+            FractalType::InsideoutDragon,
         ]
     }
 
@@ -622,6 +635,10 @@ pub struct ColorState {
     pub colormap: ColorMap,
     pub color_editor: ColorEditor,
     
+    // Color picker states
+    pub interior_picker: ColorPickerState,
+    pub stop_picker: ColorPickerState,
+    
     // Color modulation options
     pub use_period: bool,
     pub use_interior_color: bool,
@@ -649,6 +666,8 @@ impl Default for ColorState {
             selected_colormap_name,
             colormap,
             color_editor: ColorEditor::new(),
+            interior_picker: ColorPickerState::default(),
+            stop_picker: ColorPickerState::default(),
             use_period: false,
             use_interior_color: false,
             interior_color: [0, 0, 0],
@@ -725,6 +744,15 @@ impl ExportState {
 /// Rendering backend state
 pub struct RenderState {
     pub backend: crate::gpu::RenderBackend,
+    /// Bit width used when backend == CpuHiPrec. Must be one of HIPREC_BIT_OPTIONS.
+    pub hiprec_bits: u32,
+    /// Maximum rayon threads for CPU rendering.
+    /// 0 = use all available threads (rayon default). 1..N = limited parallelism.
+    pub max_threads: usize,
+    /// Saved (width, height, export_scale_string, preview_zoom) from before CpuHiPrec was selected.
+    /// Set when switching TO CpuHiPrec, cleared when switching away.
+    /// Used to restore exact original dimensions and display zoom without floating-point drift.
+    pub hiprec_preview_saved: Option<(u32, u32, String, f32)>,
     #[cfg(feature = "gpu")]
     pub gpu_renderer: Option<crate::gpu::WgpuRenderer>,
 }
@@ -733,6 +761,9 @@ impl Default for RenderState {
     fn default() -> Self {
         Self {
             backend: crate::gpu::RenderBackend::default(),
+            hiprec_bits: crate::gpu::HIPREC_DEFAULT_BITS,
+            max_threads: 0,
+            hiprec_preview_saved: None,
             #[cfg(feature = "gpu")]
             gpu_renderer: None,  // Lazy initialization on first use
         }
@@ -930,6 +961,7 @@ impl From<&crate::export::FractalMetadata> for ViewState {
             fractal_texture: None,
             needs_redraw: true,
             iteration_cache: None,
+            preview_zoom: 1.0,
         }
     }
 }
@@ -958,6 +990,8 @@ impl From<&crate::export::FractalMetadata> for ColorState {
             selected_colormap_name: meta.colormap_name.clone(),
             colormap: meta.colormap_data.clone(),
             color_editor: ColorEditor::new(),
+            interior_picker: ColorPickerState::default(),
+            stop_picker: ColorPickerState::default(),
             use_period: meta.use_period,
             use_interior_color: meta.use_interior_color,
             interior_color: meta.interior_color,

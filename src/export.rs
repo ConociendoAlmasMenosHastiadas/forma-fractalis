@@ -132,6 +132,10 @@ pub fn export_png(
     scale: f32,
     output_dir: Option<&PathBuf>,
     backend: crate::gpu::RenderBackend,
+    // Bit width for CPU Hi-Prec rendering. Ignored for other backends.
+    hiprec_bits: u32,
+    // Max rayon threads for CPU rendering. 0 = use all available.
+    max_threads: usize,
     #[cfg(feature = "gpu")]
     gpu_renderer: Option<&mut crate::gpu::WgpuRenderer>,
 ) -> Result<String, String> {
@@ -160,7 +164,9 @@ pub fn export_png(
         .with_period(use_period, period)
         .with_interior_color(use_interior_color, interior_color)
         .with_log_scale(use_log_scale)
-        .with_backend(backend);
+        .with_backend(backend)
+        .with_hiprec_bits(hiprec_bits)
+        .with_max_threads(max_threads);
 
     // Render at supersample resolution
     let render_start = std::time::Instant::now();
@@ -355,6 +361,8 @@ pub fn export_png_from_state(
         scale,
         output_dir,
         backend,
+        render_state.hiprec_bits,
+        render_state.max_threads,
         render_state.gpu_renderer.as_mut(),
     );
     
@@ -375,6 +383,8 @@ pub fn export_png_from_state(
         scale,
         output_dir,
         backend,
+        render_state.hiprec_bits,
+        render_state.max_threads,
     );
     
     result
@@ -458,6 +468,8 @@ mod tests {
                 use_period, period, use_interior_color, interior_color, use_log_scale,
                 filter_type, supersample, scale, output_dir,
                 crate::gpu::RenderBackend::Cpu,  // Always use CPU for tests
+                128, // hiprec_bits (unused for Cpu backend)
+                0,   // max_threads (no limit)
                 None,
             )
         }
@@ -468,6 +480,8 @@ mod tests {
                 use_period, period, use_interior_color, interior_color, use_log_scale,
                 filter_type, supersample, scale, output_dir,
                 crate::gpu::RenderBackend::Cpu,
+                128, // hiprec_bits (unused for Cpu backend)
+                0,   // max_threads (no limit)
             )
         }
     }

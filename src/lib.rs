@@ -18,6 +18,7 @@
 pub mod animation;
 pub mod app_state;
 pub mod cli;
+pub mod color_picker;
 pub mod colorschemes_gui;
 pub mod export;
 pub mod filtering;

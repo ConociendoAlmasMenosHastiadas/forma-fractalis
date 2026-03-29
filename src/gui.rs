@@ -14,6 +14,7 @@
 //! All functions take `&mut egui::Ui` for rendering within egui layouts.
 
 use crate::perf_log;
+use rayon;
 use scala_chromatica::ColorMap;
 use scala_chromatica::io as colorschemes_io;
 use crate::app_state::InputState;
@@ -92,26 +93,25 @@ pub fn render_performance_section(
     needs_redraw: &mut bool,
 ) {
     section_header(ui, "Performance");
-    
+
     // Backend selection
     ui.horizontal(|ui| {
         ui.label("Rendering:");
         let previous_backend = render_state.backend;
-        
+
         // Radio buttons for backend selection
         for backend in crate::gpu::RenderBackend::all() {
             if ui.radio_value(&mut render_state.backend, backend, backend.as_str()).clicked() {
-                // Radio button was clicked (optional: can add specific click handling here)
+                // Radio button was clicked (handled below via previous_backend comparison)
             }
         }
-        
+
         // Initialize GPU and trigger redraw when backend changes
         #[cfg(feature = "gpu")]
         if previous_backend != render_state.backend {
             if matches!(render_state.backend, crate::gpu::RenderBackend::Gpu) {
                 if let Err(e) = render_state.ensure_gpu_initialized() {
                     *status_message = format!("GPU initialization failed: {}", e);
-                    // Revert to CPU on failure
                     render_state.backend = crate::gpu::RenderBackend::Cpu;
                 } else {
                     *status_message = "GPU initialized - re-rendering to show f32 precision".to_string();
@@ -119,39 +119,130 @@ pub fn render_performance_section(
                     crate::perf_log!("[BACKEND] Switched to GPU - will re-render");
                 }
             } else {
-                // Switched from GPU to CPU - trigger redraw to show f64 precision
-                *status_message = "Switched to CPU - re-rendering to show f64 precision".to_string();
+                *status_message = format!("Switched to {} - re-rendering", render_state.backend.as_str());
                 *needs_redraw = true;
-                crate::perf_log!("[BACKEND] Switched to CPU - will re-render");
+                crate::perf_log!("[BACKEND] Switched to {} - will re-render", render_state.backend.as_str());
             }
         }
+        #[cfg(not(feature = "gpu"))]
+        if previous_backend != render_state.backend {
+            *status_message = format!("Switched to {} - re-rendering", render_state.backend.as_str());
+            *needs_redraw = true;
+        }
     });
-    
+
+    // Hi-Prec bit-width selector: only shown when CpuHiPrec is the selected backend
+    if matches!(render_state.backend, crate::gpu::RenderBackend::CpuHiPrec) {
+        ui.horizontal(|ui| {
+            ui.label("Precision:");
+            let prev_bits = render_state.hiprec_bits;
+            egui::ComboBox::from_id_source("hiprec_bits")
+                .selected_text(format!("{}-bit", render_state.hiprec_bits))
+                .show_ui(ui, |ui| {
+                    for &bits in crate::gpu::HIPREC_BIT_OPTIONS {
+                        ui.selectable_value(
+                            &mut render_state.hiprec_bits,
+                            bits,
+                            format!("{}-bit", bits),
+                        );
+                    }
+                });
+            if render_state.hiprec_bits != prev_bits {
+                *needs_redraw = true;
+                crate::perf_log!("[BACKEND] Hi-Prec bits changed to {} - will re-render", render_state.hiprec_bits);
+            }
+        });
+    }
+
     // Backend explanation
     let explanation = match render_state.backend {
         crate::gpu::RenderBackend::Cpu => "CPU: f64 precision, compatible with all fractals",
+        crate::gpu::RenderBackend::CpuHiPrec => "CPU Hi-Prec: software bigfloat, slow but enables deep zoom",
         #[cfg(feature = "gpu")]
         crate::gpu::RenderBackend::Gpu => "GPU: f32 precision (faster, shows precision artifacts at deep zoom)",
     };
-    
     ui.label(
         egui::RichText::new(explanation)
             .small()
             .italics()
             .color(egui::Color32::GRAY),
     );
-    
+
+    // Hi-Prec support warning for current fractal
+    if matches!(render_state.backend, crate::gpu::RenderBackend::CpuHiPrec) {
+        // Show auto-downscale notice when saved dimensions exist
+        if render_state.hiprec_preview_saved.is_some() {
+            ui.label(
+                egui::RichText::new("Preview auto-scaled to 1/2 resolution. Export scale doubled to compensate.")
+                    .small()
+                    .color(egui::Color32::from_rgb(200, 160, 0)),
+            );
+        }
+        if !fractal.supports_hiprec() {
+            ui.label(
+                egui::RichText::new(format!(
+                    "WARNING: '{}' does not support CPU Hi-Prec. Rendering will fail. Switch to CPU or GPU.",
+                    fractal.name()
+                ))
+                .small()
+                .color(egui::Color32::from_rgb(220, 60, 60)),
+            );
+        } else {
+            ui.label(
+                egui::RichText::new(format!("Hi-Prec ready for '{}'", fractal.name()))
+                    .small()
+                    .color(egui::Color32::from_rgb(0, 180, 0)),
+            );
+        }
+    }
+
+    // CPU thread limit slider: only meaningful for CPU-side backends
+    if !matches!(render_state.backend, crate::gpu::RenderBackend::Gpu) {
+        ui.add_space(4.0);
+        let max_cores = rayon::current_num_threads();
+        // Map sentinel 0 ("all") to max_cores for slider display
+        let mut slider_val = if render_state.max_threads == 0 {
+            max_cores
+        } else {
+            render_state.max_threads.min(max_cores)
+        };
+        let prev_threads = render_state.max_threads;
+        ui.horizontal(|ui| {
+            ui.label("CPU Threads:");
+            if ui.add(
+                egui::Slider::new(&mut slider_val, 1..=max_cores)
+            ).changed() {
+                // Slider at max means "use all" — store as sentinel 0
+                render_state.max_threads = if slider_val >= max_cores { 0 } else { slider_val };
+                if render_state.max_threads != prev_threads {
+                    *needs_redraw = true;
+                }
+            }
+            let label = if render_state.max_threads == 0 {
+                format!("(All: {})", max_cores)
+            } else {
+                format!("/ {}", max_cores)
+            };
+            ui.label(egui::RichText::new(label).small().weak().color(egui::Color32::GRAY));
+        });
+        ui.label(
+            egui::RichText::new("Limit threads to reduce CPU load — useful when running other tasks alongside hi-prec rendering")
+                .small()
+                .weak()
+                .color(egui::Color32::GRAY)
+        );
+    }
+
     // GPU status
     #[cfg(feature = "gpu")]
     if matches!(render_state.backend, crate::gpu::RenderBackend::Gpu) {
         ui.add_space(5.0);
-        
-        // Check if current fractal is supported on GPU
+
         let fractal_supported = render_state.gpu_renderer.as_ref()
             .map(|renderer| renderer.supports_fractal(fractal.name()))
             .unwrap_or(false);
-        
-        if !render_state.gpu_renderer.is_some() {
+
+        if render_state.gpu_renderer.is_none() {
             ui.label(
                 egui::RichText::new("✗ GPU not initialized")
                     .small()
@@ -161,7 +252,7 @@ pub fn render_performance_section(
             ui.label(
                 egui::RichText::new(format!("⚠ GPU not available for {} - will use CPU", fractal.name()))
                     .small()
-                    .color(egui::Color32::from_rgb(255, 165, 0)), // Orange warning
+                    .color(egui::Color32::from_rgb(255, 165, 0)),
             );
         } else {
             ui.label(
@@ -182,6 +273,8 @@ pub fn render_dimensions_section(
     needs_redraw: &mut bool,
     input_debounce_timer: &mut Option<Instant>,
     pending_redraw: &mut bool,
+    // Display zoom factor for the preview panel ([0.1, 1.0]). 1.0 = fit-to-panel.
+    preview_zoom: &mut f32,
 ) {
     section_header(ui, "Preview Window Dimensions");
 
@@ -296,15 +389,37 @@ pub fn render_dimensions_section(
     });
 
     ui.add_space(5.0);
+
+    // Preview display zoom slider
+    ui.horizontal(|ui| {
+        ui.label("Preview Zoom:");
+        let response = ui.add(
+            egui::Slider::new(preview_zoom, 0.1_f32..=1.0_f32)
+                .step_by(0.05)
+                .fixed_decimals(2),
+        );
+        if response.changed() {
+            // zoom is a display-only property — no re-render needed, just repaint
+        }
+        if ui.small_button("1:1").on_hover_text("Fit preview to panel").clicked() {
+            *preview_zoom = 1.0;
+        }
+    });
     ui.label(
-        egui::RichText::new("These controls will not resize the preview window but they will control the aspect ratio and performance of the preview. See rendering below for high-res output.")
+        egui::RichText::new("Preview Zoom scales how much of the panel the preview occupies (does not affect render resolution or export).")
+            .small()
+            .italics()
+            .color(egui::Color32::GRAY)
+    );
+
+    ui.add_space(5.0);
+    ui.label(
+        egui::RichText::new("Width/height control render resolution and aspect ratio. See Export below for high-res output.")
             .small()
             .italics()
             .color(egui::Color32::GRAY)
     );
 }
-
-/// Render the fractal settings section
 pub fn render_fractal_settings<FT>(
     ui: &mut egui::Ui,
     input_state: &mut InputState,
@@ -468,9 +583,7 @@ pub fn render_colormap_section(
     period_input: &mut String,
     use_interior_color: &mut bool,
     interior_color: &mut [u8; 3],
-    interior_color_r_text: &mut String,
-    interior_color_g_text: &mut String,
-    interior_color_b_text: &mut String,
+    interior_picker: &mut crate::color_picker::ColorPickerState,
     use_log_scale: &mut bool,
     input_debounce_timer: &mut Option<Instant>,
     pending_redraw: &mut bool,
@@ -556,51 +669,14 @@ pub fn render_colormap_section(
     if *use_interior_color {
         ui.add_space(5.0);
 
-        ui.horizontal(|ui| {
-            ui.label("R:");
-            if ui
-                .add(egui::Slider::new(&mut interior_color[0], 0..=255).fixed_decimals(0))
-                .changed()
-            {
-                *interior_color_r_text = interior_color[0].to_string();
-                *needs_redraw = true;
-            }
-        });
-
-        ui.horizontal(|ui| {
-            ui.label("G:");
-            if ui
-                .add(egui::Slider::new(&mut interior_color[1], 0..=255).fixed_decimals(0))
-                .changed()
-            {
-                *interior_color_g_text = interior_color[1].to_string();
-                *needs_redraw = true;
-            }
-        });
-
-        ui.horizontal(|ui| {
-            ui.label("B:");
-            if ui
-                .add(egui::Slider::new(&mut interior_color[2], 0..=255).fixed_decimals(0))
-                .changed()
-            {
-                *interior_color_b_text = interior_color[2].to_string();
-                *needs_redraw = true;
-            }
-        });
-
-        // Color preview
-        ui.horizontal(|ui| {
-            ui.label("Preview:");
-            let color_rect = ui.allocate_space(egui::vec2(60.0, 20.0)).1;
-            ui.painter().rect_filled(
-                color_rect,
-                2.0,
-                egui::Color32::from_rgb(interior_color[0], interior_color[1], interior_color[2]),
-            );
-            ui.painter()
-                .rect_stroke(color_rect, 2.0, egui::Stroke::new(1.0, egui::Color32::GRAY));
-        });
+        if crate::color_picker::show_color_picker(
+            ui,
+            interior_picker,
+            interior_color,
+            "interior",
+        ) {
+            *needs_redraw = true;
+        }
     }
 
     ui.add_space(5.0);
@@ -809,6 +885,8 @@ pub fn render_actions_section(
             scale,
             export_directory.as_ref(),
             render_state.backend,
+            render_state.hiprec_bits,
+            render_state.max_threads,
             render_state.gpu_renderer.as_mut(),
         );
         
@@ -829,6 +907,8 @@ pub fn render_actions_section(
             scale,
             export_directory.as_ref(),
             render_state.backend,
+            render_state.hiprec_bits,
+            render_state.max_threads,
         );
 
         match result {

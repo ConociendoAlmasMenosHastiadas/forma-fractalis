@@ -441,6 +441,7 @@ impl WgpuRenderer {
             "Insideout Dragon" => Some("Insideout Dragon"),
             "Zubieta" => Some("Zubieta"),
             "Sin Julia" => Some("Sin Julia"),
+            "Burning Ship" => Some("Burning Ship"),
             _ => None,
         }
     }
@@ -508,6 +509,7 @@ impl WgpuRenderer {
         renderer.load_shader("Insideout Dragon", include_str!("shaders/insideout_dragon_kernel.wgsl"))?;
         renderer.load_shader("Zubieta", include_str!("shaders/zubieta_kernel.wgsl"))?;
         renderer.load_shader("Sin Julia", include_str!("shaders/sin_julia_kernel.wgsl"))?;
+        renderer.load_shader("Burning Ship", include_str!("shaders/burning_ship_kernel.wgsl"))?;
         
         Ok(renderer)
     }

@@ -40,9 +40,14 @@ pub struct RenderConfig {
 /// Backend selection for rendering
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RenderBackend {
-    /// CPU rendering using rayon parallelization
+    /// CPU rendering using rayon parallelization (f64 precision)
     Cpu,
-    
+
+    /// CPU software floating-point rendering at user-selected bit width.
+    /// Enables deep zooms beyond f64 limits. Much slower than Cpu.
+    /// `bits` must be one of: 64, 128, 256, 512, 1024.
+    CpuHiPrec,
+
     /// GPU rendering using compute shaders
     #[cfg(feature = "gpu")]
     Gpu,
@@ -59,23 +64,30 @@ impl RenderBackend {
     pub fn all() -> Vec<RenderBackend> {
         #[cfg(feature = "gpu")]
         {
-            vec![RenderBackend::Cpu, RenderBackend::Gpu]
+            vec![RenderBackend::Cpu, RenderBackend::CpuHiPrec, RenderBackend::Gpu]
         }
         #[cfg(not(feature = "gpu"))]
         {
-            vec![RenderBackend::Cpu]
+            vec![RenderBackend::Cpu, RenderBackend::CpuHiPrec]
         }
     }
-    
+
     /// Get display name for the backend
     pub fn as_str(&self) -> &'static str {
         match self {
             RenderBackend::Cpu => "CPU",
+            RenderBackend::CpuHiPrec => "CPU Hi-Prec",
             #[cfg(feature = "gpu")]
             RenderBackend::Gpu => "GPU",
         }
     }
 }
+
+/// Valid bit-width options for the CpuHiPrec backend
+pub const HIPREC_BIT_OPTIONS: &[u32] = &[64, 128, 256, 512, 1024];
+
+/// Default bit-width for the CpuHiPrec backend
+pub const HIPREC_DEFAULT_BITS: u32 = 128;
 
 /// Trait for fractal rendering backends
 pub trait FractalRenderer {

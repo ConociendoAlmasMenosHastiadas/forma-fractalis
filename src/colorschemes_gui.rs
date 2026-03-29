@@ -241,6 +241,7 @@ pub fn render_color_picker(
     ui: &mut egui::Ui,
     colormap: &mut ColorMap,
     editor: &mut ColorEditor,
+    picker_state: &mut crate::color_picker::ColorPickerState,
 ) -> bool {
     let mut changed = false;
 
@@ -259,49 +260,16 @@ pub fn render_color_picker(
             }
 
             ui.add_space(5.0);
-            ui.label("Color (RGB):");
 
-            // RGB sliders
-            let mut rgb_changed = false;
-
-            ui.horizontal(|ui| {
-                ui.label("R:");
-                rgb_changed |= ui
-                    .add(egui::Slider::new(&mut editor.temp_rgb[0], 0..=255).fixed_decimals(0))
-                    .changed();
-            });
-
-            ui.horizontal(|ui| {
-                ui.label("G:");
-                rgb_changed |= ui
-                    .add(egui::Slider::new(&mut editor.temp_rgb[1], 0..=255).fixed_decimals(0))
-                    .changed();
-            });
-
-            ui.horizontal(|ui| {
-                ui.label("B:");
-                rgb_changed |= ui
-                    .add(egui::Slider::new(&mut editor.temp_rgb[2], 0..=255).fixed_decimals(0))
-                    .changed();
-            });
-
-            changed |= rgb_changed;
-
-            // Color preview
-            ui.add_space(5.0);
-            ui.label("Preview:");
-            let preview_size = egui::vec2(ui.available_width(), 40.0);
-            let (preview_rect, _) = ui.allocate_exact_size(preview_size, egui::Sense::hover());
-            ui.painter().rect_filled(
-                preview_rect,
-                4.0,
-                egui::Color32::from_rgb(editor.temp_rgb[0], editor.temp_rgb[1], editor.temp_rgb[2]),
-            );
-            ui.painter().rect_stroke(
-                preview_rect,
-                4.0,
-                egui::Stroke::new(1.0, egui::Color32::GRAY),
-            );
+            // HSV color picker
+            if crate::color_picker::show_color_picker(
+                ui,
+                picker_state,
+                &mut editor.temp_rgb,
+                "stop_color",
+            ) {
+                changed = true;
+            }
 
             ui.add_space(10.0);
 
@@ -366,6 +334,7 @@ pub fn render_color_editor_section(
     ui: &mut egui::Ui,
     colormap: &mut ColorMap,
     editor: &mut ColorEditor,
+    stop_picker: &mut crate::color_picker::ColorPickerState,
 ) -> bool {
     let mut changed = false;
 
@@ -441,7 +410,7 @@ pub fn render_color_editor_section(
     ui.add_space(10.0);
 
     // Color picker (if a stop is selected)
-    changed |= render_color_picker(ui, colormap, editor);
+    changed |= render_color_picker(ui, colormap, editor, stop_picker);
 
     changed
 }

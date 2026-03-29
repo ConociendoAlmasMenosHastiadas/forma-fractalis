@@ -2,6 +2,7 @@ use eframe::egui;
 use forma_fractalis::{
     app_state::{ViewState, InputState, FractalState, ColorState, MouseState, ExportState, RenderState, AnimationState, FractalType},
     fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia}, 
+    gpu::RenderBackend,
     gui, cli,
     perf_log, enable_profiling,
     rendering_pipeline::{render_with_config, RenderConfig, RenderTarget},
@@ -171,10 +172,10 @@ impl FractalApp {
         let buffer_size = (self.view_state.view.width * self.view_state.view.height * 4) as usize;
         let mut buffer = vec![0u8; buffer_size];
 
-        // CPU mode: Use iteration cache for fast color-only updates
-        // GPU mode: Always use unified pipeline (fast enough to not need cache)
-        if matches!(self.render.backend, forma_fractalis::gpu::RenderBackend::Cpu) {
-            // Check if we can use the iteration cache for fast color-only updates
+        // CPU / CpuHiPrec mode: Use iteration cache for fast color-only updates.
+        // GPU mode: Always use unified pipeline (fast enough to not need cache).
+        if matches!(self.render.backend, RenderBackend::Cpu | RenderBackend::CpuHiPrec) {
+            // Check if we can reuse cached iteration counts (same view/fractal/backend/bits).
             let use_cache = self.view_state.iteration_cache.as_ref().map_or(false, |cache| {
                 cache.is_valid(
                     self.view_state.view.width,
@@ -183,14 +184,15 @@ impl FractalApp {
                     self.fractal.fractal_type,
                     &self.fractal.parameters,
                     &self.view_state.view,
+                    self.render.backend,
+                    self.render.hiprec_bits,
                 )
             });
 
             if use_cache {
-                // Fast path: Only color settings changed, reuse cached iterations
+                // Fast path: Only color settings changed; reuse cached iterations.
                 perf_log!("[CACHE] Using cached iterations");
                 let cache = self.view_state.iteration_cache.as_ref().unwrap();
-                
                 forma_fractalis::rendering::apply_colors_from_cache(
                     &mut buffer,
                     &cache.data,
@@ -203,18 +205,44 @@ impl FractalApp {
                     self.color.use_log_scale,
                 );
             } else {
-                // Full render: Compute iterations and cache them
-                perf_log!("[CACHE] Computing and caching iterations");
-                perf_log!("[CPU] View: center=({:.10}, {:.10}), zoom={:.10}", 
-                    self.view_state.view.center_x, self.view_state.view.center_y, self.view_state.view.zoom);
-                let iterations = forma_fractalis::rendering::compute_iterations(
-                    &self.view_state.view,
-                    max_iterations,
-                    fractal,
-                    &self.fractal.parameters,
-                );
-                
-                // Store in cache for future color-only updates
+                // Full render: compute iterations, cache them, then apply colors.
+                let iterations: Vec<u32> = match self.render.backend {
+                    RenderBackend::Cpu => {
+                        perf_log!("[CACHE] Computing and caching iterations (CPU f64)");
+                        perf_log!("[CPU] View: center=({:.10}, {:.10}), zoom={:.10}",
+                            self.view_state.view.center_x, self.view_state.view.center_y, self.view_state.view.zoom);
+                        forma_fractalis::rendering::compute_iterations(
+                            &self.view_state.view,
+                            max_iterations,
+                            fractal,
+                            &self.fractal.parameters,
+                        )
+                    }
+                    RenderBackend::CpuHiPrec => {
+                        perf_log!("[CACHE] Computing and caching iterations (CPU HiPrec {}bit)", self.render.hiprec_bits);
+                        perf_log!("[CPU-HIPREC] View: center=({:.10}, {:.10}), zoom={:.10}",
+                            self.view_state.view.center_x, self.view_state.view.center_y, self.view_state.view.zoom);
+                        match forma_fractalis::rendering::compute_iterations_hiprec(
+                            &self.view_state.view,
+                            max_iterations,
+                            fractal,
+                            &self.fractal.parameters,
+                            self.render.hiprec_bits,
+                            self.render.max_threads,
+                        ) {
+                            Ok(iters) => iters,
+                            Err(e) => {
+                                self.status_message = format!("Hi-Prec render error: {}", e);
+                                eprintln!("[ERROR] {}", e);
+                                self.view_state.clear_redraw();
+                                return;
+                            }
+                        }
+                    }
+                    _ => unreachable!("GPU backends are handled in the else branch"),
+                };
+
+                // Store in cache for future color-only updates.
                 self.view_state.iteration_cache = Some(forma_fractalis::app_state::IterationCache {
                     data: iterations.clone(),
                     width: self.view_state.view.width,
@@ -225,9 +253,11 @@ impl FractalApp {
                     center_x: self.view_state.view.center_x,
                     center_y: self.view_state.view.center_y,
                     zoom: self.view_state.view.zoom,
+                    backend: self.render.backend,
+                    hiprec_bits: self.render.hiprec_bits,
                 });
-                
-                // Apply colors to the computed iterations
+
+                // Apply colors to the computed iterations.
                 forma_fractalis::rendering::apply_colors_from_cache(
                     &mut buffer,
                     &iterations,
@@ -254,7 +284,9 @@ impl FractalApp {
             .with_period(self.color.use_period, period)
             .with_interior_color(self.color.use_interior_color, self.color.interior_color)
             .with_log_scale(self.color.use_log_scale)
-            .with_backend(self.render.backend);
+            .with_backend(self.render.backend)
+            .with_hiprec_bits(self.render.hiprec_bits)
+            .with_max_threads(self.render.max_threads);
 
             #[cfg(feature = "gpu")]
             let render_result = render_with_config(
@@ -445,6 +477,7 @@ impl eframe::App for FractalApp {
                                 &mut self.view_state.needs_redraw,
                                 &mut self.input.debounce_timer,
                                 &mut self.input.pending_redraw,
+                                &mut self.view_state.preview_zoom,
                             );
 
                             ui.add_space(15.0);
@@ -481,6 +514,7 @@ impl eframe::App for FractalApp {
                             };
 
                             // Performance / Rendering Backend
+                            let prev_backend = self.render.backend;
                             gui::render_performance_section(
                                 ui,
                                 &mut self.render,
@@ -488,6 +522,48 @@ impl eframe::App for FractalApp {
                                 &mut self.status_message,
                                 &mut self.view_state.needs_redraw,
                             );
+                            // Auto-scale preview ÷2 when entering CpuHiPrec, ×2 when leaving.
+                            // Export scale is doubled/halved to keep final output dimensions constant.
+                            let now_hiprec = matches!(self.render.backend, RenderBackend::CpuHiPrec);
+                            let was_hiprec = matches!(prev_backend, RenderBackend::CpuHiPrec);
+                            if !was_hiprec && now_hiprec {
+                                // Entering hi-prec: save originals, halve preview dims,
+                                // set display zoom to 0.5 so image occupies half the panel,
+                                // and double export scale to keep final output size constant.
+                                let saved_w = self.view_state.view.width;
+                                let saved_h = self.view_state.view.height;
+                                let saved_scale = self.input.export_scale.clone();
+                                let saved_zoom = self.view_state.preview_zoom;
+                                self.render.hiprec_preview_saved = Some((saved_w, saved_h, saved_scale, saved_zoom));
+
+                                let new_w = (saved_w / 2).max(100);
+                                let new_h = (saved_h / 2).max(100);
+                                self.view_state.view.width = new_w;
+                                self.view_state.view.height = new_h;
+                                self.input.width = new_w.to_string();
+                                self.input.height = new_h.to_string();
+
+                                // Display at 0.5x panel fill so the preview physically
+                                // occupies the same screen area as the halved texture —
+                                // avoiding the "chunky upscale" appearance.
+                                self.view_state.preview_zoom = 0.5;
+
+                                let orig_scale = self.input.export_scale.parse::<f64>().unwrap_or(3.0).max(0.1);
+                                self.input.export_scale = format!("{:.4}", orig_scale * 2.0);
+
+                                self.view_state.needs_redraw = true;
+                            } else if was_hiprec && !now_hiprec {
+                                // Leaving hi-prec: restore saved originals
+                                if let Some((saved_w, saved_h, saved_scale, saved_zoom)) = self.render.hiprec_preview_saved.take() {
+                                    self.view_state.view.width = saved_w;
+                                    self.view_state.view.height = saved_h;
+                                    self.input.width = saved_w.to_string();
+                                    self.input.height = saved_h.to_string();
+                                    self.input.export_scale = saved_scale;
+                                    self.view_state.preview_zoom = saved_zoom;
+                                }
+                                self.view_state.needs_redraw = true;
+                            }
 
                             ui.add_space(15.0);
                             ui.separator();
@@ -524,7 +600,6 @@ impl eframe::App for FractalApp {
 
                             // Color Scheme & Stops
                             {
-                                let [r, g, b] = &mut self.color.interior_color_rgb_text;
                                 gui::render_colormap_section(
                                     ui,
                                     &mut self.color.available_colormaps,
@@ -536,9 +611,7 @@ impl eframe::App for FractalApp {
                                     &mut self.input.period,
                                     &mut self.color.use_interior_color,
                                     &mut self.color.interior_color,
-                                    r,
-                                    g,
-                                    b,
+                                    &mut self.color.interior_picker,
                                     &mut self.color.use_log_scale,
                                     &mut self.input.debounce_timer,
                                     &mut self.input.pending_redraw,
@@ -552,6 +625,7 @@ impl eframe::App for FractalApp {
                                 ui,
                                 &mut self.color.colormap,
                                 &mut self.color.color_editor,
+                                &mut self.color.stop_picker,
                             ) {
                                 self.view_state.needs_redraw = true;
                             }
@@ -645,8 +719,12 @@ impl eframe::App for FractalApp {
             if let Some(texture) = &self.view_state.fractal_texture {
                 let available_size = ui.available_size();
                 let texture_size = texture.size_vec2();
-                let scale =
+                // fit_scale fills the panel; multiply by preview_zoom (0.1–1.0) to shrink.
+                // This lets the user (or the HiPrec auto-scale) reduce the display size so
+                // the image is rendered at its native texel density rather than upscaled.
+                let fit_scale =
                     (available_size.x / texture_size.x).min(available_size.y / texture_size.y);
+                let scale = fit_scale * self.view_state.preview_zoom;
                 let display_size = texture_size * scale;
 
                 let (rect, response) =
@@ -773,6 +851,8 @@ impl FractalApp {
         let export_filter = self.export.filter;
         let export_supersample = self.input.parse_export_supersample();
         let render_backend = self.render.backend;
+        let hiprec_bits = self.render.hiprec_bits;
+        let max_threads = self.render.max_threads;
         let output_dir = self.export.directory.as_ref()
             .expect("Output directory should be set").clone();
         
@@ -872,6 +952,8 @@ impl FractalApp {
                 export_filter,
                 export_supersample,
                 render_backend,
+                hiprec_bits,
+                max_threads,
                 Some(cancel_token_thread),
                 Some(|current, total| {
                     let _ = tx.send(AnimationProgress::Progress(current, total));

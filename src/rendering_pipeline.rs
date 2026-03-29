@@ -18,7 +18,7 @@ use scala_chromatica::ColorMap;
 use crate::fractals::{Fractal, FractalView};
 use crate::gpu::RenderBackend;
 use crate::perf_log;
-use crate::rendering::render_fractal;
+use crate::rendering::{render_fractal, render_fractal_hiprec};
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -36,6 +36,11 @@ pub struct RenderConfig<'a> {
     pub fractal: &'a dyn Fractal,
     pub fractal_parameters: HashMap<String, f64>,
     pub backend: RenderBackend,
+    /// Bit width used when backend == CpuHiPrec. One of: 64, 128, 256, 512, 1024.
+    pub hiprec_bits: u32,
+    /// Maximum rayon threads for CPU rendering. 0 = use all available (rayon default).
+    /// Values 1..N limit parallelism to reduce CPU load during background work.
+    pub max_threads: usize,
 }
 
 impl<'a> RenderConfig<'a> {
@@ -58,12 +63,27 @@ impl<'a> RenderConfig<'a> {
             fractal,
             fractal_parameters: HashMap::new(),
             backend: RenderBackend::default(),
+            hiprec_bits: crate::gpu::HIPREC_DEFAULT_BITS,
+            max_threads: 0,
         }
     }
 
     /// Builder pattern: set rendering backend
     pub fn with_backend(mut self, backend: RenderBackend) -> Self {
         self.backend = backend;
+        self
+    }
+
+    /// Builder pattern: set hi-precision bit width (used when backend == CpuHiPrec)
+    pub fn with_hiprec_bits(mut self, bits: u32) -> Self {
+        self.hiprec_bits = bits;
+        self
+    }
+
+    /// Builder pattern: limit rayon thread count for CPU rendering.
+    /// Pass 0 to use all available threads (rayon default).
+    pub fn with_max_threads(mut self, max_threads: usize) -> Self {
+        self.max_threads = max_threads;
         self
     }
 
@@ -138,6 +158,11 @@ pub fn render_with_config(
         && gpu_renderer.is_some()
         && gpu_renderer.as_ref().unwrap().supports_fractal(config.fractal.name());
 
+    // CPU Hi-Prec path: dispatch before GPU/CPU check
+    if matches!(config.backend, gpu::RenderBackend::CpuHiPrec) {
+        return render_with_hiprec(config, &target_view, target, _total_timer);
+    }
+
     if use_gpu {
         match render_with_gpu(config, &target_view, gpu_renderer.unwrap()) {
             Ok(buffer) => {
@@ -193,6 +218,7 @@ fn render_with_cpu(
         config.use_log_scale,
         config.fractal,
         &config.fractal_parameters,
+        config.max_threads,
     );
     let render_time = render_timer.elapsed();
 
@@ -204,6 +230,45 @@ fn render_with_cpu(
     }
 
     buffer
+}
+
+/// CPU hi-precision rendering path
+#[cfg(feature = "gpu")]
+fn render_with_hiprec(
+    config: &RenderConfig,
+    target_view: &FractalView,
+    target: RenderTarget,
+    total_timer: Instant,
+) -> Result<Vec<u8>, String> {
+    let buffer_size = (target_view.width * target_view.height * 4) as usize;
+    let mut buffer = vec![0u8; buffer_size];
+
+    render_fractal_hiprec(
+        &mut buffer,
+        target_view,
+        config.colormap,
+        config.max_iterations,
+        config.use_period,
+        config.period,
+        config.use_interior_color,
+        config.interior_color,
+        config.use_log_scale,
+        config.fractal,
+        &config.fractal_parameters,
+        config.hiprec_bits,
+        config.max_threads,
+    )?;
+
+    if matches!(target, RenderTarget::Preview) {
+        let total_time = total_timer.elapsed();
+        perf_log!(
+            "[PERF] Hi-Prec CPU Render {}bit {}x{} @ {} iter: total={:.2?}",
+            config.hiprec_bits, target_view.width, target_view.height,
+            config.max_iterations, total_time
+        );
+    }
+
+    Ok(buffer)
 }
 
 /// GPU rendering path
@@ -275,7 +340,7 @@ pub fn render_with_config(
     target: RenderTarget,
 ) -> Result<Vec<u8>, String> {
     let _total_timer = Instant::now();
-    
+
     // Determine output dimensions based on target
     let (width, height) = match target {
         RenderTarget::Preview => (config.view.width, config.view.height),
@@ -286,6 +351,35 @@ pub fn render_with_config(
     let mut target_view = config.view.clone();
     target_view.width = width;
     target_view.height = height;
+
+    // CPU Hi-Prec path
+    if matches!(config.backend, RenderBackend::CpuHiPrec) {
+        let buffer_size = (width * height * 4) as usize;
+        let mut buffer = vec![0u8; buffer_size];
+        render_fractal_hiprec(
+            &mut buffer,
+            &target_view,
+            config.colormap,
+            config.max_iterations,
+            config.use_period,
+            config.period,
+            config.use_interior_color,
+            config.interior_color,
+            config.use_log_scale,
+            config.fractal,
+            &config.fractal_parameters,
+            config.hiprec_bits,
+            config.max_threads,
+        )?;
+        if matches!(target, RenderTarget::Preview) {
+            let total_time = _total_timer.elapsed();
+            perf_log!(
+                "[PERF] Hi-Prec CPU Render {}bit {}x{} @ {} iter: total={:.2?}",
+                config.hiprec_bits, width, height, config.max_iterations, total_time
+            );
+        }
+        return Ok(buffer);
+    }
 
     // Allocate buffer
     let alloc_timer = Instant::now();
@@ -307,6 +401,7 @@ pub fn render_with_config(
         config.use_log_scale,
         config.fractal,
         &config.fractal_parameters,
+        config.max_threads,
     );
     let render_time = render_timer.elapsed();
 

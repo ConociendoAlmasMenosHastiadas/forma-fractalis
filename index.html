@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forma Fractalis - Free GPU-Accelerated Fractal Explorer in Rust</title>
+    <meta name="description" content="Free, open-source fractal explorer built in Rust. GPU-accelerated rendering of Mandelbrot, Julia, Burning Ship, and 9 more fractal types. High-precision deep zoom, custom colormaps, and 8K PNG export. Download for Windows or build from source.">
+    <meta name="keywords" content="fractal explorer, fractal generator, mandelbrot set, julia set, burning ship fractal, gpu fractal rendering, rust fractal software, wgpu, high resolution fractal, 8K fractal wallpaper, deep zoom fractal, open source fractal, forma fractalis">
+    <link rel="canonical" href="https://conociendoalmasmenoshastiadas.github.io/forma-fractalis/">
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="Forma Fractalis - Free GPU-Accelerated Fractal Explorer">
+    <meta property="og:description" content="Open-source Rust fractal explorer with GPU acceleration. 12 fractal types, high-precision deep zoom, custom colormaps, and 8K export.">
+    <meta property="og:image" content="https://raw.githubusercontent.com/ConociendoAlmasMenosHastiadas/forma-fractalis/main/img_resources/showcase/v0.2.2_insideout_dragon.png">
+    <meta property="og:url" content="https://conociendoalmasmenoshastiadas.github.io/forma-fractalis/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Forma Fractalis">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Forma Fractalis - Free GPU-Accelerated Fractal Explorer">
+    <meta name="twitter:description" content="Open-source fractal explorer in Rust. 12 fractal types, GPU rendering, deep zoom, 8K export.">
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/ConociendoAlmasMenosHastiadas/forma-fractalis/main/img_resources/showcase/v0.2.2_insideout_dragon.png">
+
+    <style>
+        :root {
+            /* Derived from scala-chromatica "Twilight Garden" palette */
+            /* #FFE2D1  #E1F0C4  #6BAB90  #55917F  #5E4C5A */
+            --bg: #100d0f;
+            --bg-card: #1a1519;
+            --bg-code: #15111a;
+            --text: #ffe2d1;
+            --text-muted: #a0b09a;
+            --accent: #6bab90;
+            --accent-hover: #88c4a8;
+            --border: #302530;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { color: var(--accent-hover); }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+        /* Hero */
+        .hero {
+            text-align: center;
+            padding: 60px 0 40px;
+        }
+        .hero h1 {
+            font-size: 2.8rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 12px;
+        }
+        .hero .tagline {
+            font-size: 1.15rem;
+            color: var(--text-muted);
+            max-width: 640px;
+            margin: 0 auto 28px;
+        }
+        .hero-actions {
+            display: flex;
+            gap: 14px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 28px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+        }
+        .btn-primary:hover { background: var(--accent-hover); color: #fff; }
+        .btn-outline {
+            background: transparent;
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+        .btn-sponsor {
+            background: transparent;
+            color: #db61a2;
+            border: 1px solid #db61a2;
+        }
+        .btn-sponsor:hover { background: #db61a2; color: #fff; }
+
+        /* Showcase */
+        .showcase { padding: 0 0 48px; }
+        .showcase img {
+            width: 100%;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+        }
+        .showcase .caption {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-top: 10px;
+        }
+
+        /* Banner images */
+        .banner {
+            width: 100%;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            margin: 32px 0;
+        }
+
+        /* Section */
+        section { padding: 48px 0; }
+        section h2 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 28px;
+            text-align: center;
+        }
+
+        /* Feature grid */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 20px;
+        }
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 24px;
+        }
+        .feature-card h3 {
+            font-size: 1.1rem;
+            margin-bottom: 8px;
+        }
+        .feature-card p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        /* Gallery */
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 16px;
+        }
+        .gallery-grid img {
+            width: 100%;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            transition: transform 0.2s;
+        }
+        .gallery-grid img:hover { transform: scale(1.02); }
+
+        /* Code block */
+        .code-block {
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px 24px;
+            overflow-x: auto;
+            font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+            font-size: 0.9rem;
+            line-height: 1.7;
+            color: var(--text-muted);
+            max-width: 700px;
+            margin: 0 auto;
+        }
+        .code-block .comment { color: #5c6370; }
+        .code-block .cmd { color: var(--text); }
+
+        /* Tech list */
+        .tech-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+        .tech-tag {
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 16px;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 32px 0;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+        footer .links {
+            display: flex;
+            gap: 24px;
+            justify-content: center;
+            margin-bottom: 16px;
+        }
+
+        /* Responsive */
+        @media (max-width: 640px) {
+            .hero h1 { font-size: 2rem; }
+            .features { grid-template-columns: 1fr; }
+            .gallery-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Hero -->
+<div class="container">
+    <div class="hero">
+        <h1>Forma Fractalis</h1>
+        <p class="tagline">
+            A free, open-source fractal explorer built in Rust.
+            GPU-accelerated rendering, 12 fractal types, high-precision deep zoom, and professional 8K export.
+        </p>
+        <div class="hero-actions">
+            <a href="https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/releases" class="btn btn-primary">Download (Windows)</a>
+            <a href="https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis" class="btn btn-outline">View on GitHub</a>
+            <a href="https://github.com/sponsors/ConociendoAlmasMenosHastiadas" class="btn btn-sponsor">Sponsor</a>
+        </div>
+    </div>
+</div>
+
+<!-- Showcase -->
+<div class="container">
+    <div class="showcase">
+        <img src="img_resources/showcase/v0.2.2_insideout_dragon.png"
+             alt="Insideout Dragon fractal rendered at high resolution in Forma Fractalis v0.2.2 with GPU acceleration">
+        <p class="caption">v0.2.2 Showcase -- Insideout Dragon fractal, GPU-rendered with custom colormap</p>
+    </div>
+</div>
+
+<!-- Features -->
+<div class="container">
+    <section>
+        <h2>Features</h2>
+        <div class="features">
+            <div class="feature-card">
+                <h3>12 Fractal Types</h3>
+                <p>Mandelbrot, Julia, Burning Ship, Tippets, Multifractal-Julia, Cactus, Marek Dragon, Tetration, Lemon, Zubieta, Sin Julia, Insideout Dragon.</p>
+            </div>
+            <div class="feature-card">
+                <h3>GPU-Accelerated Rendering</h3>
+                <p>Real-time fractal rendering via WGPU compute shaders for 7 fractal types. Tiled GPU rendering handles large exports without running out of video memory.</p>
+            </div>
+            <div class="feature-card">
+                <h3>High-Precision Deep Zoom</h3>
+                <p>CPU high-precision mode using arbitrary-precision BigFloat arithmetic at 64 to 1024 bits. Zoom past 10^15 magnification without banding artifacts.</p>
+            </div>
+            <div class="feature-card">
+                <h3>HSV Color Picker</h3>
+                <p>Interactive saturation-value plane and hue bar. Hex and RGB entry. Custom gradient editor with draggable stops.</p>
+            </div>
+            <div class="feature-card">
+                <h3>8K Export and Animation</h3>
+                <p>Export fractal renders up to 8K resolution as PNG with Lanczos3 downscaling. Create animated zoom GIFs. Every exported file embeds full rendering parameters as metadata.</p>
+            </div>
+            <div class="feature-card">
+                <h3>CLI and Batch Rendering</h3>
+                <p>Render fractals from the command line without a GUI. Batch process export jobs, override parameters, and save or load settings as JSON for reproducible workflows.</p>
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- Banner -->
+<div class="container">
+    <img class="banner"
+         src="img_resources/banners/julia_set_4320x1080_4xLanczos31771181678.png"
+         alt="Julia Set fractal panoramic banner rendered at 4320x1080 with Lanczos3 filtering">
+</div>
+
+<!-- Quick Start -->
+<div class="container">
+    <section>
+        <h2>Quick Start</h2>
+        <div class="code-block">
+            <span class="comment"># Option 1: Pre-built binary (Windows)</span><br>
+            <span class="comment"># Download from Releases page, extract, and run forma-fractalis.exe</span><br>
+            <br>
+            <span class="comment"># Option 2: Build from source</span><br>
+            <span class="cmd">git clone https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis.git</span><br>
+            <span class="cmd">cd forma-fractalis</span><br>
+            <span class="cmd">cargo run --release</span><br>
+            <br>
+            <span class="comment"># CLI rendering</span><br>
+            <span class="cmd">forma-fractalis render -i settings.json -o output.png --width 3840 --height 2160</span>
+        </div>
+    </section>
+</div>
+
+<!-- Gallery -->
+<div class="container">
+    <section>
+        <h2>Gallery</h2>
+        <div class="gallery-grid">
+            <img src="img_resources/gallery/v0.2.0_zubieta.png"
+                 alt="Zubieta fractal rendered with custom colormap in Forma Fractalis">
+            <img src="img_resources/gallery/julia_set_3840_4xLanczos31768634818.png"
+                 alt="Julia Set fractal at 4K resolution with Lanczos3 filtering">
+            <img src="img_resources/gallery/tetration_3840x2160_4xLanczos31771201252.png"
+                 alt="Tetration fractal 3840x2160 rendered in Forma Fractalis">
+            <img src="img_resources/gallery/mandelbrot_3840x2160_4xLanczos31768802455.png"
+                 alt="Mandelbrot Powerbrot variation at high iteration count">
+            <img src="img_resources/gallery_expanded/v0.2.1_sin_julia.png"
+                 alt="Sin Julia fractal with smooth coloring and gradient stops">
+            <img src="img_resources/gallery_expanded/mandelbrot_3840x2160_4xLanczos31768887944.png"
+                 alt="Mandelbrot set variation with spiral structures">
+        </div>
+
+        <details style="margin-top: 24px;">
+            <summary style="cursor: pointer; color: var(--accent); font-weight: 600; text-align: center; list-style: none;">
+                View more renders...
+            </summary>
+            <div class="gallery-grid" style="margin-top: 16px;">
+                <img src="img_resources/gallery_expanded/multifractal-julia_3840x2160_4xLanczos31769398723.png"
+                     alt="Multifractal-Julia set at 3840x2160 with custom palette">
+                <img src="img_resources/gallery_expanded/mandelbrot_3840x2160_4xLanczos31768372087.png"
+                     alt="Mandelbrot deep zoom revealing fractal self-similarity">
+                <img src="img_resources/gallery_expanded/mandelbrot_3840x2160_4xLanczos31769238284.png"
+                     alt="Mandelbrot spiral arm at high zoom level">
+                <img src="img_resources/gallery_expanded/cactus_1080x2400_4xLanczos31772175230.png"
+                     alt="Cactus fractal portrait render at 1080x2400">
+            </div>
+        </details>
+    </section>
+</div>
+
+<!-- More banners -->
+<div class="container">
+    <img class="banner"
+         src="img_resources/banners/burning_ship_4320x1080_4xLanczos31771182212.png"
+         alt="Burning Ship fractal panoramic banner with custom gradient coloring">
+</div>
+
+<!-- Built With -->
+<div class="container">
+    <section>
+        <h2>Built With</h2>
+        <div class="tech-list">
+            <span class="tech-tag">Rust</span>
+            <span class="tech-tag">egui / eframe</span>
+            <span class="tech-tag">wgpu (WebGPU)</span>
+            <span class="tech-tag">Rayon</span>
+            <span class="tech-tag">astro-float</span>
+            <span class="tech-tag">scala-chromatica</span>
+            <span class="tech-tag">clap</span>
+        </div>
+    </section>
+</div>
+
+<!-- Footer -->
+<footer>
+    <div class="container">
+        <div class="links">
+            <a href="https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis">GitHub</a>
+            <a href="https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/releases">Releases</a>
+            <a href="https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/blob/main/CHANGELOG.md">Changelog</a>
+            <a href="https://github.com/sponsors/ConociendoAlmasMenosHastiadas">Sponsor</a>
+        </div>
+        <p>Dual-licensed under Apache-2.0 or MIT. &copy; 2026 ConociendoAlmasMenosHastiadas</p>
+    </div>
+</footer>
+
+</body>
+</html>

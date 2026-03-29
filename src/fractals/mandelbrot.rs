@@ -14,6 +14,7 @@ use num_complex::Complex64;
 use std::collections::HashMap;
 use crate::number_utils::ABSOLUTE_EPSILON;
 use eframe::egui;
+use astro_float::{BigFloat, Consts, RoundingMode};
 
 /// Mandelbrot set fractal with configurable power
 pub struct Mandelbrot;
@@ -110,9 +111,156 @@ impl Fractal for Mandelbrot {
             },
         ]
     }
+
+    fn supports_hiprec(&self) -> bool {
+        true
+    }
+
+    /// High-precision Mandelbrot iteration using software floating-point arithmetic.
+    ///
+    /// Supports all power values using BigFloat arithmetic:
+    /// - power=2: optimized direct complex multiplication
+    /// - other powers: polar form z^p = r^p * (cos(p*theta) + i*sin(p*theta))
+    ///
+    /// Receives coordinates as `BigFloat` so that per-pixel precision is preserved
+    /// even at extreme zoom levels (>1e15).
+    ///
+    /// `bits` is one of: 64, 128, 256, 512, 1024.
+    fn iterate_hiprec(
+        &self,
+        c_real: &BigFloat,
+        c_imag: &BigFloat,
+        parameters: &HashMap<String, f64>,
+        max_iter: u32,
+        bits: u32,
+    ) -> u32 {
+        let power = parameters.get("power").copied().unwrap_or(2.0);
+
+        let p = bits as usize;
+        let rm = RoundingMode::ToEven;
+
+        let cr = c_real.clone();
+        let ci = c_imag.clone();
+
+        // Start z at c (same convention as f64 path: z_1 = c)
+        let mut zr = cr.clone();
+        let mut zi = ci.clone();
+
+        let four = BigFloat::from_f64(4.0, p);
+        let two  = BigFloat::from_f64(2.0, p);
+        let is_negative_power = power < 0.0;
+        let epsilon_bf = BigFloat::from_f64(ABSOLUTE_EPSILON, p);
+
+        // Consts cache needed for transcendental functions (non-power-2)
+        let mut cc = if power != 2.0 {
+            Some(Consts::new().expect("BigFloat constants cache"))
+        } else {
+            None
+        };
+
+        for iter in 0..max_iter {
+            let zr2 = zr.mul(&zr, p, rm);
+            let zi2 = zi.mul(&zi, p, rm);
+
+            // Escape check: |z|^2 > 4, plus convergence check for negative powers
+            let norm_sq = zr2.add(&zi2, p, rm);
+            if is_negative_power {
+                let converged = norm_sq.cmp(&epsilon_bf).map_or(false, |v| v < 0);
+                let escaped = norm_sq.cmp(&four).map_or(false, |v| v > 0);
+                if converged || escaped {
+                    return iter;
+                }
+            } else if norm_sq.cmp(&four).map_or(false, |v| v > 0) {
+                return iter;
+            }
+
+            // z = z^power + c
+            let (new_zr, new_zi) = if power == 2.0 {
+                // Optimized: z^2 = zr^2 - zi^2 + cr, 2*zr*zi + ci
+                let nr = zr2.sub(&zi2, p, rm).add(&cr, p, rm);
+                let ni = two.mul(&zr, p, rm).mul(&zi, p, rm).add(&ci, p, rm);
+                (nr, ni)
+            } else {
+                // General power via polar form
+                let (pzr, pzi) = Self::complex_powf_bf(
+                    &zr, &zi, power, p, rm, cc.as_mut().unwrap(),
+                );
+                (pzr.add(&cr, p, rm), pzi.add(&ci, p, rm))
+            };
+
+            // Safety: bail out on NaN/Inf
+            if new_zr.is_nan() || new_zr.is_inf() || new_zi.is_nan() || new_zi.is_inf() {
+                return iter;
+            }
+
+            zr = new_zr;
+            zi = new_zi;
+        }
+
+        max_iter
+    }
 }
 
 impl Mandelbrot {
+    /// BigFloat atan2(y, x) — full four-quadrant arctangent.
+    fn bf_atan2(
+        y: &BigFloat, x: &BigFloat,
+        p: usize, rm: RoundingMode, cc: &mut Consts,
+    ) -> BigFloat {
+        if x.is_zero() && y.is_zero() {
+            return BigFloat::new(p); // 0
+        }
+        // pi = acos(-1)
+        let pi = BigFloat::from_f64(-1.0, p).acos(p, rm, cc);
+
+        if x.is_zero() {
+            let half_pi = pi.div(&BigFloat::from_f64(2.0, p), p, rm);
+            return if y.is_negative() { half_pi.neg() } else { half_pi };
+        }
+
+        let ratio = y.div(x, p, rm);
+        let atan_val = ratio.atan(p, rm, cc);
+
+        if x.is_negative() {
+            if y.is_negative() {
+                atan_val.sub(&pi, p, rm)
+            } else {
+                atan_val.add(&pi, p, rm)
+            }
+        } else {
+            atan_val
+        }
+    }
+
+    /// Complex z^power via polar form using BigFloat transcendental functions.
+    ///
+    /// z = r * e^(i*theta)  =>  z^p = r^p * (cos(p*theta) + i*sin(p*theta))
+    fn complex_powf_bf(
+        zr: &BigFloat, zi: &BigFloat,
+        power: f64,
+        p: usize, rm: RoundingMode, cc: &mut Consts,
+    ) -> (BigFloat, BigFloat) {
+        let zr2 = zr.mul(zr, p, rm);
+        let zi2 = zi.mul(zi, p, rm);
+        let r_sq = zr2.add(&zi2, p, rm);
+
+        if r_sq.is_zero() || r_sq.is_nan() {
+            return (BigFloat::new(p), BigFloat::new(p));
+        }
+
+        let r = r_sq.sqrt(p, rm);
+        let theta = Self::bf_atan2(zi, zr, p, rm, cc);
+
+        let power_bf = BigFloat::from_f64(power, p);
+        let r_p = r.pow(&power_bf, p, rm, cc);
+
+        let p_theta = power_bf.mul(&theta, p, rm);
+        let cos_pt = p_theta.cos(p, rm, cc);
+        let sin_pt = p_theta.sin(p, rm, cc);
+
+        (r_p.mul(&cos_pt, p, rm), r_p.mul(&sin_pt, p, rm))
+    }
+
     /// Returns the sequence of all complex numbers generated during iteration
     /// 
     /// This function performs the same iteration as `iterate()` but instead of
@@ -231,5 +379,87 @@ impl super::fractal_gui::FractalGUI for Mandelbrot {
         });
         
         ui.add_space(10.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn default_params(power: f64) -> HashMap<String, f64> {
+        let mut p = HashMap::new();
+        p.insert("power".to_string(), power);
+        p
+    }
+
+    /// Helper: convert f64 pair to BigFloat pair at given precision.
+    fn to_bf(re: f64, im: f64, bits: u32) -> (BigFloat, BigFloat) {
+        let p = bits as usize;
+        (BigFloat::from_f64(re, p), BigFloat::from_f64(im, p))
+    }
+
+    /// Origin (0+0i) is in the set — should reach max_iter.
+    #[test]
+    fn hiprec_origin_in_set() {
+        let m = Mandelbrot::new();
+        let params = default_params(2.0);
+        let (cr, ci) = to_bf(0.0, 0.0, 128);
+        let result = m.iterate_hiprec(&cr, &ci, &params, 100, 128);
+        assert_eq!(result, 100, "origin should not escape");
+    }
+
+    /// A clearly-escaping point (2+2i) should return well below max_iter.
+    #[test]
+    fn hiprec_far_point_escapes() {
+        let m = Mandelbrot::new();
+        let params = default_params(2.0);
+        let (cr, ci) = to_bf(2.0, 2.0, 128);
+        let result = m.iterate_hiprec(&cr, &ci, &params, 100, 128);
+        assert!(result < 100, "2+2i should escape immediately");
+    }
+
+    /// Hi-prec and f64 should agree on escape counts for points far from the boundary.
+    #[test]
+    fn hiprec_matches_f64_for_robust_points() {
+        let m = Mandelbrot::new();
+        let cases: &[(f64, f64)] = &[
+            (2.0, 0.0),   // outside set
+            (0.0, 2.0),   // outside set
+            (-2.0, 0.0),  // boundary
+            (0.5, 0.5),   // inside set
+        ];
+        let params = default_params(2.0);
+        for &(re, im) in cases {
+            let f64_iters = m.iterate(re, im, &params, 100);
+            let (cr, ci) = to_bf(re, im, 128);
+            let hp_iters  = m.iterate_hiprec(&cr, &ci, &params, 100, 128);
+            assert_eq!(
+                f64_iters, hp_iters,
+                "f64 and hiprec disagree at ({re},{im}): f64={f64_iters} hiprec={hp_iters}"
+            );
+        }
+    }
+
+    /// Non-power-2 now uses full BigFloat polar form — result should match f64 for robust points.
+    #[test]
+    fn hiprec_non_power2_fallback() {
+        let m = Mandelbrot::new();
+        let params = default_params(3.0);
+        let f64_result = m.iterate(0.5, 0.3, &params, 100);
+        let (cr, ci) = to_bf(0.5, 0.3, 128);
+        let hp_result  = m.iterate_hiprec(&cr, &ci, &params, 100, 128);
+        assert_eq!(f64_result, hp_result, "power=3 hiprec should agree with f64 for robust point");
+    }
+
+    /// Higher bit widths should not panic and should still agree on robust points.
+    #[test]
+    fn hiprec_bit_widths_smoke() {
+        let m = Mandelbrot::new();
+        let params = default_params(2.0);
+        for &bits in &[64u32, 128, 256, 512, 1024] {
+            let (cr, ci) = to_bf(2.0, 0.0, bits);
+            let result = m.iterate_hiprec(&cr, &ci, &params, 50, bits);
+            assert!(result < 50, "2+0i should escape at {bits} bits");
+        }
     }
 }

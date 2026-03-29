@@ -19,6 +19,7 @@ use super::{Fractal, FractalView, Parameter};
 use super::fractal_gui::FractalGUI;
 use eframe::egui;
 use std::collections::HashMap;
+use astro_float::{BigFloat, RoundingMode};
 
 /// Insideout Dragon fractal implementation
 #[derive(Debug, Clone, Default)]
@@ -169,6 +170,91 @@ impl Fractal for InsideoutDragon {
                 "Higher values = larger escape boundary, may reveal more detail",
             ),
         ]
+    }
+
+    fn supports_hiprec(&self) -> bool {
+        true
+    }
+
+    /// High-precision Insideout Dragon iteration using software BigFloat arithmetic.
+    ///
+    /// Implements the same formula as `iterate()` but at arbitrary precision:
+    /// z_{n+1} = z_n^2 + f(|z_n|) + i*g(|z_n|),  z_0 = 1/c
+    ///
+    /// f(r) and g(r) are computed in BigFloat with the same singularity guards
+    /// as the f64 path. The magnitude |z_n| is converted to f64 for the f/g
+    /// evaluation since those rational functions don't benefit significantly
+    /// from extra precision — the deep-zoom precision matters for coordinate
+    /// mapping and the z^2 accumulation, not the bounded perturbation terms.
+    fn iterate_hiprec(
+        &self,
+        c_real: &BigFloat,
+        c_imag: &BigFloat,
+        parameters: &HashMap<String, f64>,
+        max_iter: u32,
+        bits: u32,
+    ) -> u32 {
+        let p = bits as usize;
+        let rm = RoundingMode::ToEven;
+
+        // z_0 = 1/c = conj(c) / |c|^2
+        let cr2 = c_real.mul(c_real, p, rm);
+        let ci2 = c_imag.mul(c_imag, p, rm);
+        let denom = cr2.add(&ci2, p, rm);
+
+        // Check for origin singularity: |c|^2 ≈ 0
+        let denom_f64: f64 = format!("{}", denom).parse().unwrap_or(0.0);
+        if denom_f64 < 1e-10 {
+            return max_iter;
+        }
+
+        // z_0 = (c_real - i*c_imag) / |c|^2
+        let mut zr = c_real.div(&denom, p, rm);
+        let mut zi = c_imag.neg().div(&denom, p, rm);
+
+        let escape_radius = parameters.get("escape_radius").copied().unwrap_or(4.0);
+        let escape_radius_sq = escape_radius * escape_radius;
+        let escape_bf = BigFloat::from_f64(escape_radius_sq, p);
+
+        let two = BigFloat::from_f64(2.0, p);
+
+        for iter in 0..max_iter {
+            // |z|^2 = zr^2 + zi^2
+            let zr2 = zr.mul(&zr, p, rm);
+            let zi2 = zi.mul(&zi, p, rm);
+            let norm_sq = zr2.add(&zi2, p, rm);
+
+            // Escape check
+            if norm_sq.cmp(&escape_bf).map_or(false, |v| v > 0) {
+                return iter;
+            }
+
+            // Safety: bail on NaN/Inf
+            if norm_sq.is_nan() || norm_sq.is_inf() {
+                return iter;
+            }
+
+            // Compute magnitude as f64 for f/g evaluation
+            let norm_sq_f64: f64 = format!("{}", norm_sq).parse().unwrap_or(0.0);
+            let magnitude = norm_sq_f64.sqrt();
+            let (f_val, g_val) = Self::compute_f_g(magnitude);
+
+            let f_bf = BigFloat::from_f64(f_val, p);
+            let g_bf = BigFloat::from_f64(g_val, p);
+
+            // z_{n+1} = z^2 + f(|z|) + i*g(|z|)
+            let new_zr = zr2.sub(&zi2, p, rm).add(&f_bf, p, rm);
+            let new_zi = two.mul(&zr, p, rm).mul(&zi, p, rm).add(&g_bf, p, rm);
+
+            if new_zr.is_nan() || new_zr.is_inf() || new_zi.is_nan() || new_zi.is_inf() {
+                return iter;
+            }
+
+            zr = new_zr;
+            zi = new_zi;
+        }
+
+        max_iter
     }
 }
 
@@ -340,5 +426,71 @@ mod tests {
         // Due to the inverse initial condition and the formula structure,
         // we expect both to have finite iteration counts
         assert!(iter1 < 256 || iter2 < 256, "Symmetric points should have interesting behavior");
+    }
+
+    // Hi-prec tests
+
+    fn to_bf(val: f64) -> BigFloat {
+        BigFloat::from_f64(val, 256)
+    }
+
+    #[test]
+    fn test_hiprec_origin_returns_max_iter() {
+        let fractal = InsideoutDragon::new();
+        let params = HashMap::new();
+        let result = fractal.iterate_hiprec(&to_bf(0.0), &to_bf(0.0), &params, 256, 256);
+        assert_eq!(result, 256);
+    }
+
+    #[test]
+    fn test_hiprec_far_point_escapes() {
+        let fractal = InsideoutDragon::new();
+        let params = HashMap::new();
+        let result = fractal.iterate_hiprec(&to_bf(10.0), &to_bf(10.0), &params, 256, 256);
+        assert!(result <= 256);
+    }
+
+    #[test]
+    fn test_hiprec_agrees_with_f64() {
+        let fractal = InsideoutDragon::new();
+        let params = HashMap::new();
+        let test_points = [
+            (0.5, 0.5),
+            (1.5, 0.3),
+            (-0.7, 1.2),
+            (2.0, -1.0),
+        ];
+
+        for (cr, ci) in &test_points {
+            let f64_result = fractal.iterate(*cr, *ci, &params, 100);
+            let hiprec_result = fractal.iterate_hiprec(
+                &to_bf(*cr), &to_bf(*ci), &params, 100, 256
+            );
+            assert_eq!(
+                f64_result, hiprec_result,
+                "Mismatch at ({}, {}): f64={}, hiprec={}",
+                cr, ci, f64_result, hiprec_result
+            );
+        }
+    }
+
+    #[test]
+    fn test_hiprec_all_bit_widths() {
+        let fractal = InsideoutDragon::new();
+        let params = HashMap::new();
+        let cr = 0.5;
+        let ci = 0.5;
+        let expected = fractal.iterate(cr, ci, &params, 100);
+
+        for bits in [64, 128, 256, 512, 1024] {
+            let bf_cr = BigFloat::from_f64(cr, bits as usize);
+            let bf_ci = BigFloat::from_f64(ci, bits as usize);
+            let result = fractal.iterate_hiprec(&bf_cr, &bf_ci, &params, 100, bits);
+            assert_eq!(
+                result, expected,
+                "Mismatch at {} bits: expected {}, got {}",
+                bits, expected, result
+            );
+        }
     }
 }

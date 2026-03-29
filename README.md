@@ -16,14 +16,15 @@
 ![Mandelbrot Set](img_resources/banners/mandelbrot_4320x1080_4xLanczos31771181432.png)
 
 ### Interactive Exploration
-- **11 Fractal Types**: Mandelbrot, Julia, Burning Ship, Tippets Mandelbrot, Multifractal-Julia, Cactus, Marek Dragon, Tetration, Lemon, Zubieta, Sin Julia
+- **12 Fractal Types**: Mandelbrot, Julia, Burning Ship, Tippets Mandelbrot, Multifractal-Julia, Cactus, Marek Dragon, Tetration, Lemon, Zubieta, Sin Julia, Insideout Dragon
 - **Real-time Rendering**: Smooth 60 FPS with multi-threaded computation
 - **Click-to-Zoom**: Intuitive mouse controls for navigation
 - **Fractal Parameters**: Adjust Julia constants, powers, rotation angles with live sliders
 
 ### Advanced Coloring
 - **14 Built-in Colormaps** powered by [scala-chromatica](https://github.com/ConociendoAlmasMenosHastiadas/scala-chromatica)
-- **Custom Gradient Editor**: Drag-and-drop color stops with RGB precision
+- **HSV Color Picker**: Interactive saturation-value plane, hue bar, hex and RGB inputs
+- **Custom Gradient Editor**: Drag-and-drop color stops with HSV picker
 - **Save/Load Colormaps**: Share your custom palettes as JSON
 - **Color Modulation**: Period cycles, custom interior colors, logarithmic scaling
 
@@ -184,6 +185,7 @@ Forma Fractalis includes GPU compute shader support for significantly faster ren
 Open the **Performance** section in the GUI sidebar to choose your rendering backend:
 
 - **CPU Mode**: Uses f64 precision, supports all fractals, guaranteed compatibility
+- **CPU Hi-Prec Mode**: Arbitrary-precision BigFloat (64-1024 bit) for deep zoom beyond f64 limits
 - **GPU Mode**: Uses f32 precision via WGPU compute shaders, faster for large exports
 
 The active backend is displayed in the status bar. GPU mode initializes when you first select it (takes ~100-200ms).
@@ -196,6 +198,8 @@ GPU acceleration currently supports:
 - Zubieta
 - Julia Set
 - Sin Julia
+- Burning Ship
+- Insideout Dragon
 
 Other fractals automatically use CPU rendering. GPU support will expand in future releases.
 
@@ -209,7 +213,7 @@ Other fractals automatically use CPU rendering. GPU support will expand in futur
 
 - **Precision**: GPU uses f32 (single precision) vs CPU f64 (double precision)
   - Visible precision loss at very deep zoom levels (>10^10)
-  - For extreme zooms, use CPU mode
+  - For extreme zooms, use CPU mode or CPU Hi-Prec mode
 - **Iteration Cap**: GPU rendering limited to 500,000 iterations for safety
   - Higher iteration counts automatically fall back to CPU
 - **Memory**: Large exports automatically use tiled rendering
@@ -259,14 +263,26 @@ Other fractals automatically use CPU rendering. GPU support will expand in futur
 
 ## Releases
 
-**Latest: v0.2.1** (March 9, 2026)
+**Latest: v0.2.2** (March 28, 2026)
 
-Sin Julia fractal, animated GIF export (zoom sequences, iteration-fade, GPU-accelerated frames, cancel support), logarithmic zoom interpolation, load from JSON, colorstop endpoint fix (scala-chromatica v0.1.4), 82 tests passing.
+Insideout Dragon fractal, CPU high-precision rendering pipeline (arbitrary bit-width BigFloat), HSV color picker replacing RGB sliders, Burning Ship GPU shader, configurable CPU thread limit, preview zoom control.
 
-![v0.2.1 Release - Sin Julia](img_resources/showcase/v0.2.1_sin_julia.png)
+![v0.2.2 Release - Insideout Dragon](img_resources/showcase/v0.2.2_insideout_dragon.png)
 
 <details>
 <summary><b>View release history...</b></summary>
+
+### v0.2.2 (March 28, 2026)
+- Insideout Dragon fractal: z_{n+1} = z_n^2 + f(|z_n|) + i*g(|z_n|), z_0 = 1/c
+- CPU Hi-Prec pipeline: arbitrary-precision rendering via astro-float BigFloat (64-1024 bit)
+- BigFloat coordinate pipeline for clean rendering at extreme zoom (>1e15)
+- HSV color picker: interactive SV plane, hue bar, hex and RGB text inputs
+- Burning Ship GPU shader
+- Insideout Dragon hi-precision support (BigFloat z^2, f64 perturbation)
+- Mandelbrot hi-prec general power support (polar form complex exponentiation)
+- Configurable CPU thread limit for CPU/CpuHiPrec backends
+- Preview zoom control (0.1x-1.0x, auto-halved for CpuHiPrec)
+- Hi-prec bits/max_threads propagated to export pipeline
 
 ### v0.2.1 (March 9, 2026)
 - Sin Julia fractal: z_{n+1} = c·sin(z_n) with GPU acceleration (param_2 infrastructure)
@@ -280,7 +296,6 @@ Sin Julia fractal, animated GIF export (zoom sequences, iteration-fade, GPU-acce
 - Colorstop endpoint fix via scala-chromatica v0.1.4 (inclusive period sampling)
 - GPU/CPU selector changed to radio buttons
 - GIF filename convention aligned with PNG (timestamp-based, filter suffix)
-- 82 tests passing
 
 ### v0.2.0 (February 27, 2026)
 - GPU acceleration via WGPU (Mandelbrot/Powerbrot support)
@@ -291,7 +306,7 @@ Sin Julia fractal, animated GIF export (zoom sequences, iteration-fade, GPU-acce
 - GPU safety: 500k iteration cap, explicit error handling
 - Backend selection UI (CPU/GPU modes, no silent fallback)
 - Unified rendering pipeline for preview and export
-- 73 tests passing, 37% reduction in wgpu_backend.rs
+- 37% reduction in wgpu_backend.rs
 
 ### v0.1.9 (February 16, 2026)
 - Lemon fractal: z_{n+1} = z_0 * z_n^2 * (z_n^2 + 1) / (z_n^2 - 1)^k
@@ -315,7 +330,6 @@ Sin Julia fractal, animated GIF export (zoom sequences, iteration-fade, GPU-acce
 - Marek Dragon fractal (z_{n+1} = exp(jφ)z_n + z_n²)
 - State conversion refactoring (70% line reduction)
 - scala-chromatica migration complete
-- 44 tests passing
 
 ### v0.1.61 (February 5, 2026)
 - Colormap library extracted to scala-chromatica

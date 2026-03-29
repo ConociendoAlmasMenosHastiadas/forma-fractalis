@@ -129,6 +129,8 @@ pub fn generate_animation<F>(
     export_filter: crate::filtering::FilterType,
     export_supersample: u32,
     render_backend: crate::gpu::RenderBackend,
+    hiprec_bits: u32,
+    max_threads: usize,
     cancel_token: Option<Arc<AtomicBool>>,
     progress_callback: Option<F>,
 ) -> Result<PathBuf, String>
@@ -227,10 +229,12 @@ where
             export_filter,
             export_supersample,
             render_backend,
+            hiprec_bits,
+            max_threads,
             #[cfg(feature = "gpu")]
             gpu_renderer.as_mut(),
         )?;
-        
+
         // Convert to ImageBuffer
         let img_buffer: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::from_raw(
             config.width,
@@ -362,6 +366,8 @@ fn render_frame(
     export_filter: crate::filtering::FilterType,
     export_supersample: u32,
     render_backend: crate::gpu::RenderBackend,
+    hiprec_bits: u32,
+    max_threads: usize,
     #[cfg(feature = "gpu")]
     gpu_renderer: Option<&mut crate::gpu::WgpuRenderer>,
 ) -> Result<Vec<u8>, String> {
@@ -391,7 +397,9 @@ fn render_frame(
         .with_period(use_period, period)
         .with_interior_color(use_interior_color, interior_color)
         .with_log_scale(use_log_scale)
-        .with_backend(render_backend);
+        .with_backend(render_backend)
+        .with_hiprec_bits(hiprec_bits)
+        .with_max_threads(max_threads);
     
     // Render at supersample resolution
     let target = RenderTarget::Export {
@@ -487,7 +495,7 @@ mod tests {
             false,           // use_log_scale
             &fractal, &params,
             1.0, crate::filtering::FilterType::None, 1,
-            crate::gpu::RenderBackend::Cpu, None,
+            crate::gpu::RenderBackend::Cpu, 64, 0, None,
         ).expect("render with default color settings");
 
         #[cfg(not(feature = "gpu"))]
@@ -498,7 +506,7 @@ mod tests {
             false,
             &fractal, &params,
             1.0, crate::filtering::FilterType::None, 1,
-            crate::gpu::RenderBackend::Cpu,
+            crate::gpu::RenderBackend::Cpu, 64, 0,
         ).expect("render with default color settings");
 
         // Render same frame with a bright interior color (should change pixels in
@@ -511,7 +519,7 @@ mod tests {
             false,
             &fractal, &params,
             1.0, crate::filtering::FilterType::None, 1,
-            crate::gpu::RenderBackend::Cpu, None,
+            crate::gpu::RenderBackend::Cpu, 64, 0, None,
         ).expect("render with interior color");
 
         #[cfg(not(feature = "gpu"))]
@@ -522,7 +530,7 @@ mod tests {
             false,
             &fractal, &params,
             1.0, crate::filtering::FilterType::None, 1,
-            crate::gpu::RenderBackend::Cpu,
+            crate::gpu::RenderBackend::Cpu, 64, 0,
         ).expect("render with interior color");
 
         assert_eq!(frame_default.len(), frame_interior.len(),
