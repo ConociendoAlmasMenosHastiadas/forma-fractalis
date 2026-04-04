@@ -332,6 +332,7 @@ impl eframe::App for MandelPathApp {
                             &mut self.color.interior_color,
                             &mut self.color.interior_picker,
                             &mut self.color.use_log_scale,
+                            &mut self.color.color_offset,
                             &mut self.input.debounce_timer,
                             &mut self.input.pending_redraw,
                         );

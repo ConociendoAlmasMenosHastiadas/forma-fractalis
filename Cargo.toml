@@ -1,46 +1,23 @@
-[package]
-name = "forma-fractalis"
-version = "0.2.2"
-edition = "2021"
+[workspace]
+resolver = "2"
+members = ["core", "gui"]
 
-[dependencies]
+[workspace.package]
+version = "0.2.3"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis"
+
+[workspace.dependencies]
 scala-chromatica = "0.1.4"
 rayon = "1.11"
-astro-float = "0.9"  # Arbitrary-precision floating point for deep zoom (CPU hi-prec pipeline)
+astro-float = "0.9"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-once_cell = "1.21"
-eframe = "0.25"  # egui framework
-image = "0.24"  # Image encoding/decoding for PNG export
-png = "0.17"  # PNG encoder with metadata support
-rfd = "0.17"  # Cross-platform file dialogs
-num-complex = "0.4"  # Complex number arithmetic for fractals
-clap = { version = "4.5", features = ["derive"] }  # Command-line argument parsing
-indicatif = "0.18"  # Progress bars for CLI rendering
-
-# GPU acceleration dependencies (optional, enabled by default)
-wgpu = { version = "0.19", optional = true }  # WebGPU implementation for Rust
-pollster = { version = "0.3", optional = true }  # Block on async GPU operations
-bytemuck = { version = "1.14", optional = true, features = ["derive"] }  # Safe buffer casting
-
-# Windows-specific dependencies
-[target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["winuser", "windef"] }
-
-[dev-dependencies]
-tempfile = "3.25"  # Temporary files for integration tests
-
-[features]
-default = ["gpu"]  # GPU acceleration enabled by default
-gpu = ["wgpu", "pollster", "bytemuck"]  # GPU compute shader support
-
-[[bench]]
-name = "fractal_bench"
-harness = false
-
-[[bench]]
-name = "gpu_bench"
-harness = false
+num-complex = "0.4"
+image = "0.24"
+png = "0.17"
+tempfile = "3.25"
 
 [profile.release]
 strip = true  # Remove symbol/debug info from binary

@@ -62,7 +62,123 @@ Each benchmark tests all 4 fractal types (Mandelbrot, Julia, BurningShip, Tippet
 
 ---
 
-## Version 0.1.3 Baseline (December 2024)
+## Version 0.2.3 (April 2026)
+
+### Changes Affecting Performance
+- Cargo workspace split (core + gui crates) — no algorithmic changes
+- Benchmarks now target `-p forma-fractalis-core`
+- FractalConfig API benchmark added to test the new public rendering path
+- TippetsMandelbrot added as benchmark target (already present from v0.2.2)
+
+### HD (1280x720) @ 1024 Iterations Comparison
+| Fractal | v0.1.3 Baseline | v0.2.3 | Delta |
+|---------|-----------------|--------|-------|
+| Mandelbrot | 19.03ms | 18.21ms | -4% |
+| Julia | 8.94ms | 8.55ms | -4% |
+| BurningShip | 20.43ms | 19.93ms | -2% |
+| Tippets | 42.33ms | 41.94ms | -1% |
+
+### SD (640x480) Results
+
+#### 256 Iterations
+| Fractal | Avg | Min | Max |
+|---------|-----|-----|-----|
+| Mandelbrot | 3.13ms | 2.92ms | 3.46ms |
+| Julia | 2.65ms | 2.54ms | 2.85ms |
+| BurningShip | 3.33ms | 3.19ms | 3.40ms |
+| Tippets | 5.56ms | 5.32ms | 6.13ms |
+
+#### 1024 Iterations
+| Fractal | Avg | Min | Max |
+|---------|-----|-----|-----|
+| Mandelbrot | 8.42ms | 7.75ms | 9.37ms |
+| Julia | 3.97ms | 3.59ms | 4.36ms |
+| BurningShip | 9.11ms | 8.63ms | 10.11ms |
+| Tippets | 19.01ms | 17.50ms | 21.15ms |
+
+#### 4096 Iterations
+| Fractal | Avg | Min | Max |
+|---------|-----|-----|-----|
+| Mandelbrot | 25.84ms | 24.09ms | 32.55ms |
+| Julia | 3.24ms | 3.04ms | 3.45ms |
+| BurningShip | 29.05ms | 26.94ms | 33.36ms |
+| Tippets | 67.74ms | 64.39ms | 82.24ms |
+
+### HD (1280x720) Results
+
+#### 256 Iterations (UI Target)
+| Fractal | Avg | Min | Max | Target |
+|---------|-----|-----|-----|--------|
+| Mandelbrot | 8.71ms | 7.88ms | 9.49ms | ✓ <20ms |
+| Julia | 7.62ms | 6.55ms | 8.31ms | ✓ <20ms |
+| BurningShip | 9.10ms | 8.46ms | 10.05ms | ✓ <20ms |
+| Tippets | 14.16ms | 13.15ms | 14.79ms | ✓ <20ms |
+
+#### 1024 Iterations (Common Use)
+| Fractal | Avg | Min | Max | Target |
+|---------|-----|-----|-----|--------|
+| Mandelbrot | 18.21ms | 17.35ms | 19.06ms | ✓ <50ms |
+| Julia | 8.55ms | 7.47ms | 9.27ms | ✓ <50ms |
+| BurningShip | 19.93ms | 18.52ms | 21.50ms | ✓ <50ms |
+| Tippets | 41.94ms | 39.02ms | 46.29ms | ✓ <50ms |
+
+#### 4096 Iterations (High Detail)
+| Fractal | Avg | Min | Max | Target |
+|---------|-----|-----|-----|--------|
+| Mandelbrot | 64.18ms | 59.47ms | 70.48ms | ✓ <150ms |
+| Julia | 9.28ms | 8.49ms | 9.82ms | ✓ <150ms |
+| BurningShip | 66.73ms | 62.54ms | 76.39ms | ✓ <150ms |
+| Tippets | 154.35ms | 146.36ms | 169.84ms | ⚠ >150ms |
+
+### FHD (1920x1080) Results
+
+#### 256 Iterations
+| Fractal | Avg | Min | Max |
+|---------|-----|-----|-----|
+| Mandelbrot | 19.44ms | 18.49ms | 21.25ms |
+| Julia | 16.30ms | 14.89ms | 17.42ms |
+| BurningShip | 21.63ms | 20.02ms | 23.05ms |
+| Tippets | 33.75ms | 31.89ms | 35.82ms |
+
+#### 1024 Iterations
+| Fractal | Avg | Min | Max |
+|---------|-----|-----|-----|
+| Mandelbrot | 43.72ms | 41.22ms | 46.45ms |
+| Julia | 19.42ms | 17.85ms | 21.35ms |
+| BurningShip | 47.41ms | 45.42ms | 51.72ms |
+| Tippets | 96.23ms | 90.36ms | 119.18ms |
+
+#### 4096 Iterations
+| Fractal | Avg | Min | Max |
+|---------|-----|-----|-----|
+| Mandelbrot | 140.41ms | 131.73ms | 162.49ms |
+| Julia | 20.72ms | 19.75ms | 23.05ms |
+| BurningShip | 150.50ms | 141.25ms | 156.77ms |
+| Tippets | 339.16ms | 326.96ms | 368.71ms |
+
+### FractalConfig API Benchmark (HD 1280x720, 256 iter)
+| Fractal | Avg | Notes |
+|---------|-----|-------|
+| Mandelbrot | 8.94ms | via render_fractal_to_buffer() |
+| Julia | 7.78ms | via render_fractal_to_buffer() |
+| BurningShip | 9.56ms | via render_fractal_to_buffer() |
+| Tippets | 15.39ms | via render_fractal_to_buffer() |
+
+FractalConfig API overhead vs direct: ~0.2-1.2ms — negligible.
+
+### Performance Analysis
+
+**Status: STABLE — no regression from v0.1.x**
+- HD @ 256 iter: 7–14ms (all targets met)
+- HD @ 1024 iter: 8–42ms (all targets met)
+- HD @ 4096 iter: 9–154ms (Tippets marginally over at max; expected)
+- FractalConfig API adds no meaningful overhead over direct calls
+
+**FHD note:** Mandelbrot and BurningShip at 4096 iter approach the 150ms boundary; this is normal for the default view (high-density region).
+
+---
+
+
 
 ### Test Environment
 - CPU: (Your CPU - update this)

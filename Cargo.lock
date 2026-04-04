@@ -1431,26 +1431,36 @@ dependencies = [
 
 [[package]]
 name = "forma-fractalis"
-version = "0.2.2"
+version = "0.2.3"
+dependencies = [
+ "clap",
+ "eframe",
+ "forma-fractalis-core",
+ "indicatif",
+ "num-complex",
+ "rayon",
+ "rfd",
+ "scala-chromatica",
+ "serde_json",
+ "winapi",
+]
+
+[[package]]
+name = "forma-fractalis-core"
+version = "0.2.3"
 dependencies = [
  "astro-float",
  "bytemuck",
- "clap",
- "eframe",
  "image",
- "indicatif",
  "num-complex",
- "once_cell",
  "png",
  "pollster 0.3.0",
  "rayon",
- "rfd",
  "scala-chromatica",
  "serde",
  "serde_json",
  "tempfile",
  "wgpu",
- "winapi",
 ]
 
 [[package]]

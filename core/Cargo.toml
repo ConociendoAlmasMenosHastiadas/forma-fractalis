@@ -1,0 +1,39 @@
+[package]
+name = "forma-fractalis-core"
+description = "High-performance fractal computation and rendering library"
+keywords = ["fractals", "mandelbrot", "julia", "visualization", "rendering"]
+categories = ["graphics", "mathematics", "rendering"]
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+scala-chromatica.workspace = true
+rayon.workspace = true
+astro-float.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+num-complex.workspace = true
+image.workspace = true
+png.workspace = true
+
+# GPU acceleration dependencies (optional, enabled by default)
+wgpu = { version = "0.19", optional = true }
+pollster = { version = "0.3", optional = true }
+bytemuck = { version = "1.14", features = ["derive"], optional = true }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[features]
+default = ["gpu"]
+gpu = ["wgpu", "pollster", "bytemuck"]
+
+[[bench]]
+name = "fractal_bench"
+harness = false
+
+[[bench]]
+name = "gpu_bench"
+harness = false

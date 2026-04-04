@@ -241,6 +241,17 @@ Other fractals automatically use CPU rendering. GPU support will expand in futur
 
 ## Technical Details
 
+**Project Structure (Cargo Workspace):**
+
+Since v0.2.3, the project is split into two crates:
+
+| Crate | Package | Purpose |
+|-------|---------|---------|
+| `core/` | `forma-fractalis-core` | Pure computation and rendering library (no GUI) |
+| `gui/` | `forma-fractalis` | Interactive GUI application and CLI |
+
+The core library can be used independently. See [core/README.md](core/README.md) for API documentation and usage.
+
 **Built with:**
 - [egui](https://github.com/emilk/egui) - Immediate mode GUI
 - [wgpu](https://github.com/gfx-rs/wgpu) - GPU compute shaders (WebGPU)
@@ -255,6 +266,7 @@ Other fractals automatically use CPU rendering. GPU support will expand in futur
 - Optimized complex number calculations
 
 **Documentation:**
+- [core/README.md](core/README.md) - Core library API and usage
 - [COLORMAP_SAVELOAD.md](COLORMAP_SAVELOAD.md) - ColorMap system details
 - [METADATA_FORMAT.md](METADATA_FORMAT.md) - PNG metadata specification
 - [CHANGELOG.md](CHANGELOG.md) - Version history
@@ -263,14 +275,29 @@ Other fractals automatically use CPU rendering. GPU support will expand in futur
 
 ## Releases
 
-**Latest: v0.2.2** (March 28, 2026)
+**Latest: v0.2.3** (April 3, 2026)
 
-Insideout Dragon fractal, CPU high-precision rendering pipeline (arbitrary bit-width BigFloat), HSV color picker replacing RGB sliders, Burning Ship GPU shader, configurable CPU thread limit, preview zoom control.
+Cargo workspace split (core library + GUI binary), two-phase public API (`compute_fractal_iterations` / `colorize_iterations`), PowerJulia exponent parameter with hi-precision BigFloat support on all three backends (CPU, GPU, hi-prec), TippetsMandelbrot GPU shader, color offset animation parameter, automated GPU test infrastructure.
 
-![v0.2.2 Release - Insideout Dragon](img_resources/showcase/v0.2.2_insideout_dragon.png)
+![v0.2.3 Release - Julia Power](img_resources/showcase/v0.2.3_julia_power.png)
 
 <details>
 <summary><b>View release history...</b></summary>
+
+### v0.2.3 (April 3, 2026)
+- Cargo workspace refactor: `forma-fractalis-core` (pure library) + `forma-fractalis` (GUI binary)
+- Public API: `render_fractal_to_buffer()`, `compute_fractal_iterations()`, `colorize_iterations()`
+- `FractalConfig` / `ColorConfig` / `ExportConfig` builder types for headless use
+- `FractalIterations` cache type with `is_valid_for()` validity check
+- `ColorConfig::with_color_offset()` builder for color animation loops
+- GUI migrated from hand-rolled `IterationCache` to shared `FractalIterations`
+- `color_offset` slider in GUI for live color phase shifting
+- TippetsMandelbrot GPU shader (`tippets_mandelbrot_kernel.wgsl`)
+- Julia Set `power` parameter (z_n^k + c) on all three backends: CPU f64, GPU f32, CPU hi-prec BigFloat
+- Julia hi-prec: power=2 optimised path, general polar form for arbitrary exponents
+- GPU test CLI subcommand (`gpu-test`) for automated GPU/CPU parity validation
+- API documentation: module-level Quick Start, batch rendering guide, FractalConfig workflow docs
+- 106 tests (core) + 9 tests (GUI), all passing
 
 ### v0.2.2 (March 28, 2026)
 - Insideout Dragon fractal: z_{n+1} = z_n^2 + f(|z_n|) + i*g(|z_n|), z_0 = 1/c

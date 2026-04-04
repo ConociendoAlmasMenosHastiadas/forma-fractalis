@@ -7,6 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-04-03
+
+### Added
+- **Cargo Workspace Architecture**: Project split into two crates
+  - `forma-fractalis-core` — pure Rust library with no GUI dependencies (fractals, rendering, GPU, hi-prec, export)
+  - `forma-fractalis` — GUI application that depends on core
+  - Core library intended for headless rendering, CLI tools, and future crates.io publication
+- **Public Core Library API**: High-level, ergonomic API for library consumers
+  - `render_fractal_to_buffer(fractal, config)` — single-call rendering
+  - `compute_fractal_iterations(fractal, config)` — phase 1: iteration counts only
+  - `colorize_iterations(iterations, color_config)` — phase 2: apply colormap without re-rendering
+  - `FractalConfig`, `ColorConfig`, `ExportConfig` builder types in `core/src/config.rs`
+  - `FractalView` builder methods: `with_center()`, `with_zoom()`, `with_view_parameter()`
+  - `FractalIterations` struct: pre-computed iteration cache with `is_valid_for()` cache check
+- **Two-Phase Rendering Pipeline**: Compute iterations once, recolor cheaply
+  - GUI uses `FractalIterations` cache — color-only changes (colormap drag, period, log scale) skip re-render
+  - Replaces hand-rolled `IterationCache` struct with library type
+  - Enables color animation loops without re-running fractal math
+- **Color Offset**: `color_offset: u32` in `ColorConfig`
+  - Shifts colormap lookup by a fixed number of period steps
+  - GUI slider visible when period modulation is enabled
+  - `with_color_offset()` builder for animation loops
+- **PowerJulia Fractal** (release fractal): exponent parameter `k` added to Julia Set
+  - Iteration: z_{n+1} = z_n^k + c
+  - GUI slider (range 1–8) and advanced text input for k
+  - Default k=2 preserves classic Julia behaviour; existing saves load with k=2
+- **Julia Set: CPU Hi-Precision**: Full BigFloat support for all power values
+  - Power=2 path uses direct BigFloat multiplication (no transcendentals)
+  - General power uses polar form: `r^k * (cos(k*theta) + i*sin(k*theta))`
+  - Private `bf_atan2()` and `complex_powf_bf()` helpers
+  - 5 hi-prec tests added (unit-disk interior, escape, f64 agreement, power=3, bit-width smoke)
+- **Julia Set: GPU power parameter**: `param_2 = power` in `julia_kernel.wgsl`
+  - Fast path for power=2 (direct `complex_mul`), general path via `complex_pow`
+- **TippetsMandelbrot GPU Shader**: GPU acceleration for Tippets Mandelbrot
+  - Implements the sequential scalar update algorithm: x_new = x²-y²+a, y = 2*x_new*y+b
+  - Fixed a pre-existing incorrect shader formula (was using z²+cz+c, wrong algorithm)
+- **GPU Test Automation**: `cargo run --release -- gpu-test` CLI subcommand
+  - Renders each GPU-supported fractal with both GPU and CPU backends
+  - Compares raw iteration counts (±1 tolerance for f32/f64 boundary pixels, <5% mismatch allowed)
+  - Saves PNG images to `temp/gpu_test/` for visual inspection on failure, cleaned on success
+  - 7 fractals validated: Mandelbrot, Julia Set, Burning Ship, Insideout Dragon, Zubieta, Sin Julia, Tippets Mandelbrot
+  - `--fractal NAME` flag for testing a single fractal
+- **Core Library Examples**: `core/examples/simple_render.rs`, `core/examples/batch_export.rs`
+- **Core Library Documentation**: `core/README.md` with quick start, API overview, fractal table
+
+### Changed
+- **GUI Cache**: `IterationCache` replaced by `FractalIterations` from core library
+- **Tippets Mandelbrot equation string**: corrected to accurately describe the sequential update algorithm
+- **GPU test comparison**: switched from mean-luminance RGBA comparison to raw iteration count comparison — eliminates colormap-amplification false negatives on dark fractals (Zubieta)
+
+### Fixed
+- **Tippets Mandelbrot GPU shader**: was computing z²+cz+c instead of the correct sequential scalar algorithm; GPU and CPU renders now match
+- **Julia GUI**: removed spurious separator before the Exponent section
+
+### Technical
+- **AGENTS.md**: mandatory three-backends rule for new fractals (CPU f64 + CPU Hi-Prec + GPU); applies to parameter additions on existing fractals
+- **AGENTS.md**: index.html 4-step release checklist for showcase image updates
+- **Capability table**: Julia hi-prec=yes; TippetsMandelbrot GPU=yes; hi-prec rollout schedule v0.2.4–v0.3.2
+- **Testing**: 115 tests passing (106 core + 9 GUI, up from 95+9)
+  - 5 Julia hi-prec tests (unit-disk, escape, f64 agreement, power=3, bit-width smoke)
+  - GPU test suite covers 7 fractals automatically
+
+### Migration (v0.2.2 → v0.2.3)
+The GUI application (`forma-fractalis`) has the same public interface and all imports remain compatible via re-exports in `gui/src/lib.rs`. No changes required for GUI users.
+
+Library users (direct rendering code): use `forma-fractalis-core` for headless rendering:
+```rust
+use forma_fractalis_core::{fractals::Mandelbrot, config::FractalConfig,
+    fractals::FractalView, render_fractal_to_buffer};
+let fractal = Mandelbrot::new();
+let config = FractalConfig::new(FractalView::new(1920, 1080), 256);
+let buffer = render_fractal_to_buffer(&fractal, &config)?;
+```
+
 ## [0.2.2] - 2026-03-28
 
 ### Added

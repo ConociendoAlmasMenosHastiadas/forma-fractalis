@@ -442,6 +442,7 @@ impl WgpuRenderer {
             "Zubieta" => Some("Zubieta"),
             "Sin Julia" => Some("Sin Julia"),
             "Burning Ship" => Some("Burning Ship"),
+            "Tippets Mandelbrot" => Some("Tippets Mandelbrot"),
             _ => None,
         }
     }
@@ -510,6 +511,7 @@ impl WgpuRenderer {
         renderer.load_shader("Zubieta", include_str!("shaders/zubieta_kernel.wgsl"))?;
         renderer.load_shader("Sin Julia", include_str!("shaders/sin_julia_kernel.wgsl"))?;
         renderer.load_shader("Burning Ship", include_str!("shaders/burning_ship_kernel.wgsl"))?;
+        renderer.load_shader("Tippets Mandelbrot", include_str!("shaders/tippets_mandelbrot_kernel.wgsl"))?;
         
         Ok(renderer)
     }

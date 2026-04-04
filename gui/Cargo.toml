@@ -1,0 +1,25 @@
+[package]
+name = "forma-fractalis"
+description = "Interactive fractal explorer with real-time rendering"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+forma-fractalis-core = { path = "../core", version = "0.2.3", features = ["gpu"] }
+scala-chromatica.workspace = true
+eframe = "0.25"
+rfd = "0.17"
+clap = { version = "4.5", features = ["derive"] }
+indicatif = "0.18"
+rayon.workspace = true
+serde_json.workspace = true
+num-complex.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["winuser", "windef"] }
+
+[features]
+default = ["gpu"]
+gpu = ["forma-fractalis-core/gpu"]
