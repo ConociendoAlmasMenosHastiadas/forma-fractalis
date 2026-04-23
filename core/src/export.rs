@@ -491,6 +491,14 @@ mod tests {
             ("Burning Ship", crate::fractals::FractalType::BurningShip),
             ("Tippets Mandelbrot", crate::fractals::FractalType::TippetsMandelbrot),
             ("Multifractal-Julia", crate::fractals::FractalType::MultifractalJulia),
+            ("Cactus", crate::fractals::FractalType::Cactus),
+            ("Marek Dragon", crate::fractals::FractalType::MarekDragon),
+            ("Tetration", crate::fractals::FractalType::Tetration),
+            ("Lemon", crate::fractals::FractalType::Lemon),
+            ("Insideout Dragon", crate::fractals::FractalType::InsideoutDragon),
+            ("Zubieta", crate::fractals::FractalType::Zubieta),
+            ("Sin Julia", crate::fractals::FractalType::SinJulia),
+            ("Multi-Julia IFS", crate::fractals::FractalType::MultiJuliaIFS),
         ];
         
         for (name, expected_type) in test_cases {
@@ -547,6 +555,47 @@ mod tests {
         };
         
         assert!(invalid_metadata.parse_fractal_type().is_err());
+    }
+
+    /// Every FractalType variant must round-trip through as_str → parse_fractal_type.
+    /// If a new variant is added without updating parse_fractal_type, this test fails.
+    #[test]
+    fn test_all_fractal_types_roundtrip_parse() {
+        use crate::fractals::FractalType;
+
+        for ft in FractalType::all() {
+            let name = ft.as_str();
+            let metadata = FractalMetadata {
+                fractal_type: name.to_string(),
+                fractal_parameters: HashMap::new(),
+                center_x: 0.0,
+                center_y: 0.0,
+                zoom: 1.0,
+                width: 800,
+                height: 600,
+                max_iterations: 100,
+                colormap_name: "Default".to_string(),
+                colormap_data: ColorMap::default_scheme(),
+                use_period: false,
+                period: 256,
+                use_interior_color: false,
+                interior_color: [0, 0, 0],
+                use_log_scale: false,
+                export_filter: "None".to_string(),
+                export_supersample: 1,
+                export_scale: 1.0,
+                version: None,
+                metadata_version: None,
+                created_timestamp: None,
+            };
+            assert_eq!(
+                metadata.parse_fractal_type().unwrap_or_else(|e| panic!(
+                    "parse_fractal_type failed for '{}': {}", name, e
+                )),
+                *ft,
+                "round-trip mismatch for '{}'", name
+            );
+        }
     }
     
     #[test]
@@ -1182,6 +1231,7 @@ impl FractalMetadata {
             "Insideout Dragon" => Ok(FractalType::InsideoutDragon),
             "Zubieta" => Ok(FractalType::Zubieta),
             "Sin Julia" => Ok(FractalType::SinJulia),
+            "Multi-Julia IFS" => Ok(FractalType::MultiJuliaIFS),
             other => Err(format!("Unknown fractal type: {}", other)),
         }
     }

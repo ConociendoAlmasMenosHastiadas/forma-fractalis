@@ -13,7 +13,7 @@ use std::time::Instant;
 use crate::app_state::{InputState, CoordinateMode};
 use crate::fractals::{
     Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia,
-    Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia,
+    Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS,
 };
 use crate::fractals::parameter_types::EscapeMode;
 
@@ -628,6 +628,423 @@ impl FractalGUI for SinJulia {
         });
 
         ui.add_space(10.0);
+    }
+}
+
+// ── Multi-Julia IFS ────────────────────────────────────────────────────────
+
+impl FractalGUI for MultiJuliaIFS {
+    fn render_parameters_gui(
+        &self,
+        ui: &mut egui::Ui,
+        params: &mut HashMap<String, f64>,
+        input_state: &mut InputState,
+        needs_redraw: &mut bool,
+    ) {
+        use crate::app_state::AttractorEntry;
+
+        // Sync GUI attractor list from params when the count differs
+        // (e.g. after FractalType reset which writes default params directly).
+        {
+            let n_params = params
+                .get("num_attractors")
+                .copied()
+                .unwrap_or(2.0) as usize;
+            let n_gui = input_state.multi_julia_ifs.attractors.len();
+            if n_params != n_gui && (1..=8).contains(&n_params) {
+                input_state.multi_julia_ifs.attractors = (0..n_params)
+                    .map(|i| {
+                        AttractorEntry::new(
+                            params.get(&format!("c{}_real", i)).copied().unwrap_or(0.0),
+                            params.get(&format!("c{}_imag", i)).copied().unwrap_or(0.0),
+                            params
+                                .get(&format!("prob{}", i))
+                                .copied()
+                                .unwrap_or(1.0 / n_params as f64),
+                        )
+                    })
+                    .collect();
+                input_state.multi_julia_ifs.seed = format!(
+                    "{}",
+                    params.get("seed").copied().unwrap_or(0.0) as i64
+                );
+                input_state.multi_julia_ifs.samples = format!(
+                    "{:.0}",
+                    params.get("samples").copied().unwrap_or(5_000_000.0)
+                );
+                input_state.multi_julia_ifs.burn_in = format!(
+                    "{:.0}",
+                    params.get("burn_in").copied().unwrap_or(50.0)
+                );
+                input_state.multi_julia_ifs.use_log_density =
+                    params.get("use_log_density").copied().unwrap_or(1.0) > 0.5;
+            }
+        }
+
+        ui.label(egui::RichText::new("Multi-Julia IFS Parameters").strong());
+        ui.label(
+            egui::RichText::new("g_i(z) = +/-sqrt(z - c_i), chaos game orbit density")
+                .small()
+                .weak(),
+        );
+        ui.add_space(6.0);
+
+        // Collect deferred mutations so we don't conflict borrows mid-loop.
+        let mut remove_idx: Option<usize> = None;
+        let mut prob_changes: Vec<(usize, f64)> = Vec::new();
+
+        let n = input_state.multi_julia_ifs.attractors.len();
+
+        for i in 0..n {
+            ui.group(|ui| {
+                // ── Header: label, coord-mode toggle, optional remove ──
+                let old_mode = input_state.multi_julia_ifs.attractors[i].coord_mode;
+
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new(format!("C{}", i))
+                            .strong()
+                            .monospace(),
+                    );
+                    ui.add_space(4.0);
+                    ui.radio_value(
+                        &mut input_state.multi_julia_ifs.attractors[i].coord_mode,
+                        CoordinateMode::Rectangular,
+                        "Re/Im",
+                    );
+                    ui.radio_value(
+                        &mut input_state.multi_julia_ifs.attractors[i].coord_mode,
+                        CoordinateMode::Polar,
+                        "Mag/Ang",
+                    );
+                    if n > 2 {
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                if ui.small_button("Remove").clicked() {
+                                    remove_idx = Some(i);
+                                    *needs_redraw = true;
+                                }
+                            },
+                        );
+                    }
+                });
+
+                // If coord mode switched, sync the text fields.
+                let new_mode = input_state.multi_julia_ifs.attractors[i].coord_mode;
+                if old_mode != new_mode {
+                    let entry = &mut input_state.multi_julia_ifs.attractors[i];
+                    if new_mode == CoordinateMode::Rectangular {
+                        let mag = entry.parse_magnitude();
+                        let ang = entry.parse_angle();
+                        entry.real = format!("{:.6}", mag * ang.cos());
+                        entry.imag = format!("{:.6}", mag * ang.sin());
+                    } else {
+                        let re = entry.parse_real();
+                        let im = entry.parse_imag();
+                        let mag = (re * re + im * im).sqrt();
+                        let ang = {
+                            let a = im.atan2(re);
+                            if a < 0.0 { a + std::f64::consts::TAU } else { a }
+                        };
+                        entry.magnitude = format!("{:.6}", mag);
+                        entry.angle = format!("{:.6}", ang);
+                    }
+                    *needs_redraw = true;
+                }
+
+                // ── c value controls ──
+                match input_state.multi_julia_ifs.attractors[i].coord_mode {
+                    CoordinateMode::Rectangular => {
+                        let mut real =
+                            input_state.multi_julia_ifs.attractors[i].parse_real();
+                        ui.horizontal(|ui| {
+                            ui.label("Re:");
+                            if ui
+                                .add(
+                                    egui::Slider::new(&mut real, -3.0..=3.0)
+                                        .text("")
+                                        .step_by(0.001)
+                                        .fixed_decimals(3)
+                                        .clamp_to_range(false),
+                                )
+                                .changed()
+                            {
+                                input_state.multi_julia_ifs.attractors[i].real =
+                                    format!("{:.6}", real);
+                                *needs_redraw = true;
+                            }
+                        });
+
+                        let mut imag =
+                            input_state.multi_julia_ifs.attractors[i].parse_imag();
+                        ui.horizontal(|ui| {
+                            ui.label("Im:");
+                            if ui
+                                .add(
+                                    egui::Slider::new(&mut imag, -3.0..=3.0)
+                                        .text("")
+                                        .step_by(0.001)
+                                        .fixed_decimals(3)
+                                        .clamp_to_range(false),
+                                )
+                                .changed()
+                            {
+                                input_state.multi_julia_ifs.attractors[i].imag =
+                                    format!("{:.6}", imag);
+                                *needs_redraw = true;
+                            }
+                        });
+
+                        ui.collapsing("Precise value", |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label("Re:");
+                                if ui
+                                    .add(
+                                        egui::TextEdit::singleline(
+                                            &mut input_state
+                                                .multi_julia_ifs
+                                                .attractors[i]
+                                                .real,
+                                        )
+                                        .desired_width(120.0),
+                                    )
+                                    .changed()
+                                {
+                                    trigger_debounced_redraw(
+                                        &mut input_state.debounce_timer,
+                                        &mut input_state.pending_redraw,
+                                    );
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Im:");
+                                if ui
+                                    .add(
+                                        egui::TextEdit::singleline(
+                                            &mut input_state
+                                                .multi_julia_ifs
+                                                .attractors[i]
+                                                .imag,
+                                        )
+                                        .desired_width(120.0),
+                                    )
+                                    .changed()
+                                {
+                                    trigger_debounced_redraw(
+                                        &mut input_state.debounce_timer,
+                                        &mut input_state.pending_redraw,
+                                    );
+                                }
+                            });
+                        });
+                    }
+                    CoordinateMode::Polar => {
+                        let mut mag =
+                            input_state.multi_julia_ifs.attractors[i].parse_magnitude();
+                        ui.horizontal(|ui| {
+                            ui.label("|c|:");
+                            if ui
+                                .add(
+                                    egui::Slider::new(&mut mag, 0.0..=4.0)
+                                        .text("")
+                                        .step_by(0.001)
+                                        .fixed_decimals(3)
+                                        .clamp_to_range(false),
+                                )
+                                .changed()
+                            {
+                                input_state.multi_julia_ifs.attractors[i].magnitude =
+                                    format!("{:.6}", mag);
+                                *needs_redraw = true;
+                            }
+                        });
+
+                        let mut ang =
+                            input_state.multi_julia_ifs.attractors[i].parse_angle();
+                        ui.horizontal(|ui| {
+                            ui.label("ang:");
+                            if ui
+                                .add(
+                                    egui::Slider::new(
+                                        &mut ang,
+                                        0.0..=std::f64::consts::TAU,
+                                    )
+                                    .text("")
+                                    .step_by(0.001)
+                                    .fixed_decimals(3)
+                                    .clamp_to_range(false),
+                                )
+                                .changed()
+                            {
+                                input_state.multi_julia_ifs.attractors[i].angle =
+                                    format!("{:.6}", ang);
+                                *needs_redraw = true;
+                            }
+                        });
+                    }
+                }
+
+                // ── Probability slider ──
+                let mut prob = input_state.multi_julia_ifs.attractors[i].prob;
+                ui.horizontal(|ui| {
+                    ui.label("Prob:");
+                    if ui
+                        .add(
+                            egui::Slider::new(&mut prob, 0.0..=1.0)
+                                .text("")
+                                .step_by(0.001)
+                                .fixed_decimals(3),
+                        )
+                        .changed()
+                    {
+                        prob_changes.push((i, prob));
+                        *needs_redraw = true;
+                    }
+                });
+                ui.label(
+                    egui::RichText::new(format!(
+                        "  = {:.1}%",
+                        input_state.multi_julia_ifs.attractors[i].prob * 100.0
+                    ))
+                    .small()
+                    .weak(),
+                );
+            });
+            ui.add_space(3.0);
+        }
+
+        // Apply deferred probability changes (linked sliders).
+        for (idx, new_prob) in prob_changes {
+            input_state.multi_julia_ifs.set_prob_linked(idx, new_prob);
+        }
+
+        // Apply deferred remove.
+        if let Some(idx) = remove_idx {
+            input_state.multi_julia_ifs.remove_attractor(idx);
+        }
+
+        // Add-map button.
+        if n < 8 {
+            if ui.button("+ Add IFS Map").clicked() {
+                input_state.multi_julia_ifs.add_attractor();
+                *needs_redraw = true;
+            }
+        }
+
+        ui.add_space(6.0);
+        ui.separator();
+        ui.add_space(4.0);
+
+        // Seed.
+        ui.horizontal(|ui| {
+            ui.label("Seed:");
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut input_state.multi_julia_ifs.seed)
+                        .desired_width(100.0),
+                )
+                .changed()
+            {
+                trigger_debounced_redraw(
+                    &mut input_state.debounce_timer,
+                    &mut input_state.pending_redraw,
+                );
+            }
+        });
+        ui.label(
+            egui::RichText::new(
+                "Changing seed produces a different random variant of the same shape.",
+            )
+            .small()
+            .weak(),
+        );
+
+        ui.add_space(6.0);
+        ui.separator();
+        ui.add_space(4.0);
+
+        // Orbit samples (log-scale slider for wide range).
+        let mut samples = input_state.multi_julia_ifs.parse_samples();
+        let mut log_samples = samples.log10();
+        ui.horizontal(|ui| {
+            ui.label("Samples:");
+            if ui
+                .add(
+                    egui::Slider::new(&mut log_samples, 5.0..=7.7) // 100K to ~50M
+                        .text("")
+                        .step_by(0.01)
+                        .fixed_decimals(2)
+                        .custom_formatter(|v, _| {
+                            let s = 10.0_f64.powf(v);
+                            if s >= 1_000_000.0 {
+                                format!("{:.1}M", s / 1_000_000.0)
+                            } else {
+                                format!("{:.0}K", s / 1_000.0)
+                            }
+                        }),
+                )
+                .changed()
+            {
+                samples = 10.0_f64.powf(log_samples);
+                input_state.multi_julia_ifs.samples = format!("{:.0}", samples);
+                *needs_redraw = true;
+            }
+        });
+        ui.label(
+            egui::RichText::new("More samples = smoother image, slower render")
+                .small()
+                .weak(),
+        );
+
+        ui.add_space(4.0);
+
+        // Burn-in.
+        let mut burn_in = input_state.multi_julia_ifs.parse_burn_in();
+        ui.horizontal(|ui| {
+            ui.label("Burn-in:");
+            if ui
+                .add(
+                    egui::Slider::new(&mut burn_in, 0.0..=1000.0)
+                        .text("")
+                        .step_by(1.0)
+                        .fixed_decimals(0),
+                )
+                .changed()
+            {
+                input_state.multi_julia_ifs.burn_in = format!("{:.0}", burn_in);
+                *needs_redraw = true;
+            }
+        });
+        ui.label(
+            egui::RichText::new("Initial steps discarded before recording density")
+                .small()
+                .weak(),
+        );
+
+        ui.add_space(4.0);
+
+        // Log density checkbox.
+        if ui
+            .checkbox(
+                &mut input_state.multi_julia_ifs.use_log_density,
+                "Log density normalization",
+            )
+            .changed()
+        {
+            *needs_redraw = true;
+        }
+        ui.label(
+            egui::RichText::new("Compresses dynamic range for visible structure (recommended)")
+                .small()
+                .weak(),
+        );
+
+        ui.add_space(6.0);
+
+        // Always keep params in sync with the GUI state so that any change
+        // is immediately available to the rendering pipeline.
+        input_state.multi_julia_ifs.apply_to_params(params);
     }
 }
 

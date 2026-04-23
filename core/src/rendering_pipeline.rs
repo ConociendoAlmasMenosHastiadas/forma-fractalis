@@ -18,7 +18,7 @@ use scala_chromatica::ColorMap;
 use crate::fractals::{Fractal, FractalView};
 use crate::gpu::RenderBackend;
 use crate::perf_log;
-use crate::rendering::{render_fractal, render_fractal_hiprec};
+use crate::rendering::{render_fractal, render_fractal_hiprec, apply_colors_from_cache};
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -153,6 +153,32 @@ pub fn render_with_config(
     target_view.width = width;
     target_view.height = height;
 
+    // Orbit-accumulation fractals: CpuHiPrec path first, then GPU orbit, then CPU density.
+    if config.fractal.uses_orbit_accumulation() {
+        if matches!(config.backend, gpu::RenderBackend::CpuHiPrec) {
+            if config.fractal.supports_hiprec() {
+                return render_orbit_accumulation_hiprec(config, &target_view, target, _total_timer);
+            } else {
+                return Err(format!(
+                    "Hi-precision not supported for fractal '{}'. Switch to CPU mode.",
+                    config.fractal.name()
+                ));
+            }
+        }
+        // GPU orbit accumulation path
+        if matches!(config.backend, gpu::RenderBackend::Gpu) {
+            if let Some(ref gpu) = gpu_renderer {
+                if gpu.supports_orbit_density(config.fractal.name()) {
+                    return render_orbit_accumulation_gpu(
+                        config, &target_view, target, _total_timer, *gpu,
+                    );
+                }
+            }
+            // GPU requested but no orbit shader — fall through to CPU
+        }
+        return Ok(render_orbit_accumulation(config, &target_view, target, _total_timer));
+    }
+
     // Use the backend the user explicitly selected - no heuristics
     let use_gpu = matches!(config.backend, gpu::RenderBackend::Gpu) 
         && gpu_renderer.is_some()
@@ -192,6 +218,184 @@ pub fn render_with_config(
     Ok(render_with_cpu(config, &target_view, target, _total_timer))
 }
 
+/// Orbit-accumulation rendering path (CPU only, used for all backends).
+/// This is dispatched from `render_with_config` before any backend check.
+fn render_orbit_accumulation(
+    config: &RenderConfig,
+    target_view: &FractalView,
+    target: RenderTarget,
+    total_timer: Instant,
+) -> Vec<u8> {
+    let buffer_size = (target_view.width * target_view.height * 4) as usize;
+    let mut buffer = vec![0u8; buffer_size];
+
+    let render_timer = Instant::now();
+
+    // Scale samples proportionally to pixel count so that exports at higher
+    // resolution have the same density-per-pixel as the preview.
+    let mut params = config.fractal_parameters.clone();
+    let preview_pixels = (config.view.width as f64) * (config.view.height as f64);
+    let target_pixels = (target_view.width as f64) * (target_view.height as f64);
+    if target_pixels > preview_pixels && preview_pixels > 0.0 {
+        let scale = target_pixels / preview_pixels;
+        let base_samples = params.get("samples").copied().unwrap_or(5_000_000.0);
+        params.insert("samples".to_string(), (base_samples * scale).round());
+    }
+
+    let iterations = crate::orbit_accumulation::compute_orbit_density(
+        target_view,
+        config.fractal,
+        &params,
+        config.max_iterations,
+        config.max_threads,
+    );
+    apply_colors_from_cache(
+        &mut buffer,
+        &iterations,
+        config.colormap,
+        config.max_iterations,
+        config.use_period,
+        config.period,
+        config.use_interior_color,
+        config.interior_color,
+        config.use_log_scale,
+        0, // color_offset handled by GUI cache path
+    );
+
+    let render_time = render_timer.elapsed();
+    if matches!(target, RenderTarget::Preview) {
+        let total_time = total_timer.elapsed();
+        perf_log!("[PERF] Orbit Accumulation Render {}x{} @ {} iter: total={:.2?} (render={:.2?})",
+            target_view.width, target_view.height, config.max_iterations,
+            total_time, render_time);
+    }
+
+    buffer
+}
+
+/// Hi-precision orbit accumulation rendering path.
+fn render_orbit_accumulation_hiprec(
+    config: &RenderConfig,
+    target_view: &FractalView,
+    target: RenderTarget,
+    total_timer: Instant,
+) -> Result<Vec<u8>, String> {
+    let buffer_size = (target_view.width * target_view.height * 4) as usize;
+    let mut buffer = vec![0u8; buffer_size];
+
+    let render_timer = Instant::now();
+
+    // Scale samples proportionally to pixel count for exports
+    let mut params = config.fractal_parameters.clone();
+    let preview_pixels = (config.view.width as f64) * (config.view.height as f64);
+    let target_pixels = (target_view.width as f64) * (target_view.height as f64);
+    if target_pixels > preview_pixels && preview_pixels > 0.0 {
+        let scale = target_pixels / preview_pixels;
+        let base_samples = params.get("samples").copied().unwrap_or(5_000_000.0);
+        params.insert("samples".to_string(), (base_samples * scale).round());
+    }
+
+    let iterations = crate::orbit_accumulation::compute_orbit_density_hiprec(
+        target_view,
+        config.fractal,
+        &params,
+        config.max_iterations,
+        config.max_threads,
+        config.hiprec_bits,
+    )?;
+
+    let render_time = render_timer.elapsed();
+
+    // Color the iteration buffer
+    apply_colors_from_cache(
+        &mut buffer,
+        &iterations,
+        config.colormap,
+        config.max_iterations,
+        config.use_period,
+        config.period,
+        config.use_interior_color,
+        config.interior_color,
+        config.use_log_scale,
+        0,
+    );
+
+    if matches!(target, RenderTarget::Preview) {
+        let total_time = total_timer.elapsed();
+        perf_log!("[PERF] HiPrec Orbit Accumulation {}x{} @ {} iter ({} bits): total={:.2?} (render={:.2?})",
+            target_view.width, target_view.height, config.max_iterations,
+            config.hiprec_bits, total_time, render_time);
+    }
+
+    Ok(buffer)
+}
+
+/// GPU orbit accumulation rendering path.
+#[cfg(feature = "gpu")]
+fn render_orbit_accumulation_gpu(
+    config: &RenderConfig,
+    target_view: &FractalView,
+    target: RenderTarget,
+    total_timer: Instant,
+    gpu: &crate::gpu::WgpuRenderer,
+) -> Result<Vec<u8>, String> {
+    let buffer_size = (target_view.width * target_view.height * 4) as usize;
+    let mut buffer = vec![0u8; buffer_size];
+
+    let render_timer = Instant::now();
+
+    // Scale samples for export resolution
+    let mut params = config.fractal_parameters.clone();
+    let preview_pixels = (config.view.width as f64) * (config.view.height as f64);
+    let target_pixels = (target_view.width as f64) * (target_view.height as f64);
+    if target_pixels > preview_pixels && preview_pixels > 0.0 {
+        let scale = target_pixels / preview_pixels;
+        let base_samples = params.get("samples").copied().unwrap_or(5_000_000.0);
+        params.insert("samples".to_string(), (base_samples * scale).round());
+    }
+
+    let raw_density = crate::gpu::FractalRenderer::render_orbit_density(
+        gpu,
+        target_view.width,
+        target_view.height,
+        &params,
+        config.fractal.name(),
+        target_view.center_x as f32,
+        target_view.center_y as f32,
+        target_view.zoom as f32,
+    )?;
+
+    // Normalize the raw density counts (reuse CPU normalization logic)
+    let use_log = params.get("use_log_density").copied().unwrap_or(1.0) > 0.5;
+    let iterations = crate::orbit_accumulation::DensityBuffer::from_raw(
+        target_view.width, target_view.height, raw_density,
+    ).normalize(config.max_iterations, use_log);
+
+    let render_time = render_timer.elapsed();
+
+    apply_colors_from_cache(
+        &mut buffer,
+        &iterations,
+        config.colormap,
+        config.max_iterations,
+        config.use_period,
+        config.period,
+        config.use_interior_color,
+        config.interior_color,
+        config.use_log_scale,
+        0,
+    );
+
+    if matches!(target, RenderTarget::Preview) {
+        let total_time = total_timer.elapsed();
+        perf_log!("[PERF] GPU Orbit Accumulation {}x{} @ {} iter: total={:.2?} (render={:.2?})",
+            target_view.width, target_view.height, config.max_iterations,
+            total_time, render_time);
+    }
+
+    Ok(buffer)
+}
+
 /// CPU rendering path
 #[cfg(feature = "gpu")]
 fn render_with_cpu(
@@ -206,6 +410,7 @@ fn render_with_cpu(
     let alloc_time = alloc_timer.elapsed();
 
     let render_timer = Instant::now();
+
     render_fractal(
         &mut buffer,
         target_view,
@@ -220,6 +425,7 @@ fn render_with_cpu(
         &config.fractal_parameters,
         config.max_threads,
     );
+
     let render_time = render_timer.elapsed();
 
     if matches!(target, RenderTarget::Preview) {
@@ -351,6 +557,21 @@ pub fn render_with_config(
     let mut target_view = config.view.clone();
     target_view.width = width;
     target_view.height = height;
+
+    // Orbit-accumulation fractals: CpuHiPrec path first, then standard CPU density.
+    if config.fractal.uses_orbit_accumulation() {
+        if matches!(config.backend, RenderBackend::CpuHiPrec) {
+            if config.fractal.supports_hiprec() {
+                return render_orbit_accumulation_hiprec(config, &target_view, target, _total_timer);
+            } else {
+                return Err(format!(
+                    "Hi-precision not supported for fractal '{}'. Switch to CPU mode.",
+                    config.fractal.name()
+                ));
+            }
+        }
+        return Ok(render_orbit_accumulation(config, &target_view, target, _total_timer));
+    }
 
     // CPU Hi-Prec path
     if matches!(config.backend, RenderBackend::CpuHiPrec) {

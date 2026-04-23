@@ -102,4 +102,26 @@ pub trait FractalRenderer {
     
     /// Check if this renderer supports the given fractal type
     fn supports_fractal(&self, fractal_name: &str) -> bool;
+
+    /// Render orbit density on GPU, returning raw u32 counts (NOT normalized).
+    ///
+    /// Only supported for orbit-accumulation fractals that have a GPU orbit shader.
+    /// Returns Err by default — only WgpuRenderer overrides this.
+    fn render_orbit_density(
+        &self,
+        _width: u32,
+        _height: u32,
+        _fractal_params: &std::collections::HashMap<String, f64>,
+        _fractal_name: &str,
+        _center_x: f32,
+        _center_y: f32,
+        _zoom: f32,
+    ) -> Result<Vec<u32>, String> {
+        Err("GPU orbit density rendering not supported by this backend".to_string())
+    }
+
+    /// Check if this renderer supports GPU orbit accumulation for the given fractal
+    fn supports_orbit_density(&self, _fractal_name: &str) -> bool {
+        false
+    }
 }

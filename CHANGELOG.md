@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-04-22
+
+### Added
+- **Multi-Julia IFS Fractal**: inverse-iteration chaos game via orbit accumulation
+  - Algorithm: z = +/-sqrt(z - c_i), map chosen randomly by probability weight each step
+  - 2-8 configurable IFS maps with per-map Re/Im and Mag/Angle coordinate modes
+  - Linked probability sliders (sum stays 1.0 automatically)
+  - Add/remove maps with buttons; seed parameter for reproducible renders
+  - `samples`, `burn_in`, and `use_log_density` parameters
+- **Orbit Accumulation Infrastructure** (`core/src/orbit_accumulation.rs`):
+  - `DensityBuffer` and `AtomicDensityBuffer` for parallel histogram accumulation
+  - `OrbitTarget` trait abstracting over both buffer types
+  - Deterministic K=64 sub-orbit decomposition seeded via golden-ratio mixing
+  - Bit-identical output regardless of thread count
+  - Automatic switch to atomic shared buffer above 500 MB threshold (OOM prevention)
+- **GPU Orbit Accumulation**: `orbit_common.wgsl` shader template with 1D dispatch
+  - Each thread runs one sub-orbit; writes to shared `atomic<u32>` density histogram
+  - `multi_julia_ifs_orbit_kernel.wgsl` for Multi-Julia IFS chaos game on GPU
+  - CPU-side normalization and coloring after GPU density readback
+- **CPU Hi-Precision Orbit Path**: BigFloat complex sqrt + BigFloat coordinate mapping
+  - `accumulate_orbits_hiprec()` in Multi-Julia IFS uses astro-float at 64-1024 bits
+- **Burning Ship Hi-Precision**: full BigFloat support for all bit widths (64-1024)
+- **GPU Status Fix**: GPU indicator now correctly shows "ready" for orbit-accumulation fractals
+- **GitHub Sponsors**: FUNDING.yml, support section in README.md and index.html
+- **SEO**: repository topics, updated descriptions, og:image and twitter:image updated
+
+### Fixed
+- **GPU shader validation panic**: `OrbitParams` uniform buffer used `array<f32, N>` with 4-byte
+  stride, violating WGSL uniform alignment rules; switched to `var<storage, read>` binding
+- **GPU "not available" false warning**: `supports_fractal()` only checked escape-time pipelines;
+  now also checks orbit pipelines via `orbit_pipeline_name_for()`
+
+### Technical
+- `Fractal` trait: `uses_orbit_accumulation()`, `accumulate_orbits()`, `accumulate_orbits_hiprec()` methods
+- `FractalRenderer` trait: `render_orbit_density()` and `supports_orbit_density()` methods
+- Rendering pipeline routes orbit-accumulation fractals before backend dispatch
+- 162 tests passing (150 core + 12 GUI, up from 115+9)
+- capability_table.md: Multi-Julia IFS CPU=yes, hi-prec=yes, GPU=yes; Burning Ship hi-prec=yes
+
 ## [0.2.3] - 2026-04-03
 
 ### Added

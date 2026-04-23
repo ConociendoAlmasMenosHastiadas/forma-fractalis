@@ -32,6 +32,7 @@ pub mod lemon;
 pub mod insideout_dragon;
 pub mod zubieta;
 pub mod sin_julia;
+pub mod multi_julia_ifs;
 
 // Parameter system extensions
 pub mod parameter_types;
@@ -49,6 +50,7 @@ pub use lemon::Lemon;
 pub use insideout_dragon::InsideoutDragon;
 pub use zubieta::Zubieta;
 pub use sin_julia::SinJulia;
+pub use multi_julia_ifs::MultiJuliaIFS;
 pub use parameter_types::EscapeMode;
 
 /// Represents the view parameters for rendering any fractal
@@ -315,6 +317,60 @@ pub trait Fractal: Sync {
             self.name()
         )
     }
+
+    /// Returns whether this fractal uses orbit accumulation (density-based rendering)
+    /// instead of per-pixel escape-time iteration.
+    ///
+    /// Fractals that return `true` must also implement `accumulate_orbits`.
+    /// The rendering pipeline will call `compute_orbit_density()` instead of
+    /// `compute_iterations()` for these fractals.
+    fn uses_orbit_accumulation(&self) -> bool {
+        false
+    }
+
+    /// Accumulate orbit visits into a density target.
+    ///
+    /// Only called when `uses_orbit_accumulation()` returns `true`.
+    /// The fractal implements its own orbit-stepping logic (chaos game, Buddhabrot, etc.)
+    /// and calls `target.increment(z, view)` for each orbit point that should be recorded.
+    ///
+    /// `target` is either a `LocalDensityTarget` (fold/reduce path, small buffers)
+    /// or an `AtomicDensityBuffer` (shared path, large buffers).
+    ///
+    /// `params` contains fractal-specific parameters plus `seed` and `samples` which
+    /// specify the PRNG seed and number of orbit steps for this sub-orbit.
+    fn accumulate_orbits(
+        &self,
+        _target: &dyn crate::orbit_accumulation::OrbitTarget,
+        _view: &FractalView,
+        _params: &HashMap<String, f64>,
+    ) {
+        panic!(
+            "accumulate_orbits called on fractal '{}' but uses_orbit_accumulation() was not overridden",
+            self.name()
+        )
+    }
+
+    /// Hi-precision orbit accumulation using BigFloat arithmetic.
+    ///
+    /// Only called when `uses_orbit_accumulation()` and `supports_hiprec()` both return `true`
+    /// and the backend is `CpuHiPrec`. Uses `DensityBuffer::increment_at()` for pixel writes
+    /// because the coordinate mapping is done in BigFloat externally.
+    ///
+    /// The default implementation panics — fractals that support hi-prec orbit accumulation
+    /// MUST override this method.
+    fn accumulate_orbits_hiprec(
+        &self,
+        _density: &mut crate::orbit_accumulation::DensityBuffer,
+        _view: &FractalView,
+        _params: &HashMap<String, f64>,
+        _bits: u32,
+    ) {
+        panic!(
+            "accumulate_orbits_hiprec called on fractal '{}' but not implemented",
+            self.name()
+        )
+    }
 }
 
 /// Fractal type enumeration — defined in core so export/metadata can reference it without GUI deps.
@@ -332,6 +388,7 @@ pub enum FractalType {
     InsideoutDragon,
     Zubieta,
     SinJulia,
+    MultiJuliaIFS,
 }
 
 impl FractalType {
@@ -349,6 +406,7 @@ impl FractalType {
             FractalType::InsideoutDragon => "Insideout Dragon",
             FractalType::Zubieta => "Zubieta",
             FractalType::SinJulia => "Sin Julia",
+            FractalType::MultiJuliaIFS => "Multi-Julia IFS",
         }
     }
 
@@ -370,6 +428,7 @@ impl FractalType {
             FractalType::InsideoutDragon => "z_{n+1} = z_n^2 + f(|z_n|) + i*g(|z_n|), z_0 = 1/c",
             FractalType::Zubieta => "z_{n+1} = z_n^2 + c/z_n",
             FractalType::SinJulia => "z_{n+1} = c * sin(z_n)",
+            FractalType::MultiJuliaIFS => "z_{n+1} = sqrt(z_n - c_i), i chosen by probability",
         }
     }
 
@@ -387,6 +446,7 @@ impl FractalType {
             FractalType::Zubieta,
             FractalType::SinJulia,
             FractalType::InsideoutDragon,
+            FractalType::MultiJuliaIFS,
         ]
     }
 
@@ -405,6 +465,7 @@ impl FractalType {
             FractalType::InsideoutDragon => Box::new(InsideoutDragon::new()),
             FractalType::Zubieta => Box::new(Zubieta::new()),
             FractalType::SinJulia => Box::new(SinJulia::new()),
+            FractalType::MultiJuliaIFS => Box::new(MultiJuliaIFS::new()),
         }
     }
 

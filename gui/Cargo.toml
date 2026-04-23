@@ -23,3 +23,10 @@ winapi = { version = "0.3", features = ["winuser", "windef"] }
 [features]
 default = ["gpu"]
 gpu = ["forma-fractalis-core/gpu"]
+# Opt-in feature for the mandelpath example — excluded from normal builds.
+# To run: cargo run --example mandelpath --features mandelpath-example
+mandelpath-example = []
+
+[[example]]
+name = "mandelpath"
+required-features = ["mandelpath-example"]

@@ -27,6 +27,199 @@ impl Default for CoordinateMode {
     }
 }
 
+// ── Multi-Julia IFS GUI state ──────────────────────────────────────────────
+
+/// Per-attractor state for the Multi-Julia IFS fractal GUI.
+/// Stores both rectangular and polar text representations so they can be
+/// displayed and edited without re-computing on every frame.
+pub struct AttractorEntry {
+    pub real: String,
+    pub imag: String,
+    pub magnitude: String,
+    pub angle: String,
+    pub coord_mode: CoordinateMode,
+    /// Probability weight in [0, 1].  All weights in a MultiJuliaIFSState
+    /// are kept summing to 1 via `set_prob_linked`.
+    pub prob: f64,
+}
+
+impl AttractorEntry {
+    pub fn new(real: f64, imag: f64, prob: f64) -> Self {
+        let magnitude = (real * real + imag * imag).sqrt();
+        let angle = {
+            let a = imag.atan2(real);
+            if a < 0.0 { a + std::f64::consts::TAU } else { a }
+        };
+        Self {
+            real: format!("{:.6}", real),
+            imag: format!("{:.6}", imag),
+            magnitude: format!("{:.6}", magnitude),
+            angle: format!("{:.6}", angle),
+            coord_mode: CoordinateMode::Rectangular,
+            prob,
+        }
+    }
+
+    pub fn parse_real(&self) -> f64 {
+        self.real.parse::<f64>().unwrap_or(0.0)
+    }
+    pub fn parse_imag(&self) -> f64 {
+        self.imag.parse::<f64>().unwrap_or(0.0)
+    }
+    pub fn parse_magnitude(&self) -> f64 {
+        self.magnitude.parse::<f64>().unwrap_or(0.0)
+    }
+    pub fn parse_angle(&self) -> f64 {
+        self.angle.parse::<f64>().unwrap_or(0.0)
+    }
+}
+
+/// GUI state for the Multi-Julia IFS fractal: a dynamic list of attractors
+/// plus a PRNG seed.
+pub struct MultiJuliaIFSState {
+    pub attractors: Vec<AttractorEntry>,
+    pub seed: String,
+    pub samples: String,
+    pub burn_in: String,
+    pub use_log_density: bool,
+}
+
+impl Default for MultiJuliaIFSState {
+    fn default() -> Self {
+        Self {
+            attractors: vec![
+                AttractorEntry::new(-0.5,  0.5, 0.5),
+                AttractorEntry::new(-0.5, -0.5, 0.5),
+            ],
+            seed: String::from("0"),
+            samples: String::from("5000000"),
+            burn_in: String::from("50"),
+            use_log_density: true,
+        }
+    }
+}
+
+impl MultiJuliaIFSState {
+    pub fn parse_seed(&self) -> f64 {
+        self.seed.parse::<f64>().unwrap_or(0.0).abs()
+    }
+
+    pub fn parse_samples(&self) -> f64 {
+        self.samples.parse::<f64>().unwrap_or(5_000_000.0).max(100_000.0)
+    }
+
+    pub fn parse_burn_in(&self) -> f64 {
+        self.burn_in.parse::<f64>().unwrap_or(50.0).max(0.0)
+    }
+
+    /// Reconstruct state from a fractal_parameters HashMap (used for JSON restore).
+    pub fn from_params(params: &HashMap<String, f64>) -> Self {
+        let n = params.get("num_attractors").copied().unwrap_or(2.0) as usize;
+        let n = n.max(2).min(8);
+
+        let mut attractors = Vec::with_capacity(n);
+        for i in 0..n {
+            let real = params.get(&format!("c{}_real", i)).copied().unwrap_or(0.0);
+            let imag = params.get(&format!("c{}_imag", i)).copied().unwrap_or(0.0);
+            let prob = params.get(&format!("prob{}", i)).copied().unwrap_or(1.0 / n as f64);
+            attractors.push(AttractorEntry::new(real, imag, prob));
+        }
+
+        let seed = params.get("seed").copied().unwrap_or(0.0);
+        let samples = params.get("samples").copied().unwrap_or(5_000_000.0);
+        let burn_in = params.get("burn_in").copied().unwrap_or(50.0);
+        let use_log_density = params.get("use_log_density").copied().unwrap_or(1.0) > 0.5;
+
+        Self {
+            attractors,
+            seed: format!("{}", seed as u64),
+            samples: format!("{}", samples as u64),
+            burn_in: format!("{}", burn_in as u64),
+            use_log_density,
+        }
+    }
+
+    /// Change the probability of attractor `idx` to `new_val`, rescaling
+    /// all other attractors proportionally so that the sum stays at 1.
+    pub fn set_prob_linked(&mut self, idx: usize, new_val: f64) {
+        let new_val = new_val.clamp(0.0, 1.0);
+        let n = self.attractors.len();
+        if n <= 1 {
+            if let Some(e) = self.attractors.first_mut() { e.prob = 1.0; }
+            return;
+        }
+        let old_val = self.attractors[idx].prob;
+        let remaining_old: f64 = 1.0 - old_val;
+        let remaining_new: f64 = 1.0 - new_val;
+        self.attractors[idx].prob = new_val;
+        if remaining_old < 1e-12 {
+            // All other probabilities were 0: distribute evenly.
+            let per = remaining_new / (n - 1) as f64;
+            for (i, e) in self.attractors.iter_mut().enumerate() {
+                if i != idx { e.prob = per; }
+            }
+        } else {
+            let scale = remaining_new / remaining_old;
+            for (i, e) in self.attractors.iter_mut().enumerate() {
+                if i != idx { e.prob = (e.prob * scale).clamp(0.0, 1.0); }
+            }
+        }
+    }
+
+    /// Write the current attractor list into the fractal parameters HashMap.
+    pub fn apply_to_params(&self, params: &mut HashMap<String, f64>) {
+        params.insert("num_attractors".to_string(), self.attractors.len() as f64);
+        for (i, entry) in self.attractors.iter().enumerate() {
+            let (real, imag) = match entry.coord_mode {
+                CoordinateMode::Rectangular => (entry.parse_real(), entry.parse_imag()),
+                CoordinateMode::Polar => {
+                    let mag = entry.parse_magnitude();
+                    let ang = entry.parse_angle();
+                    (mag * ang.cos(), mag * ang.sin())
+                }
+            };
+            params.insert(format!("c{}_real", i), real);
+            params.insert(format!("c{}_imag", i), imag);
+            params.insert(format!("prob{}", i), entry.prob);
+        }
+        params.insert("seed".to_string(), self.parse_seed());
+        params.insert("samples".to_string(), self.parse_samples());
+        params.insert("burn_in".to_string(), self.parse_burn_in());
+        params.insert("use_log_density".to_string(), if self.use_log_density { 1.0 } else { 0.0 });
+    }
+
+    /// Add a new attractor at the origin, rescaling existing probabilities.
+    pub fn add_attractor(&mut self) {
+        if self.attractors.len() >= 8 {
+            return;
+        }
+        let n = self.attractors.len();
+        let scale = n as f64 / (n + 1) as f64;
+        for e in &mut self.attractors { e.prob *= scale; }
+        let new_prob = 1.0 / (n + 1) as f64;
+        self.attractors.push(AttractorEntry::new(0.0, 0.0, new_prob));
+    }
+
+    /// Remove attractor at `idx`, redistributing its probability to the others.
+    pub fn remove_attractor(&mut self, idx: usize) {
+        if self.attractors.len() <= 2 {
+            return; // Minimum 2 attractors enforced.
+        }
+        let removed_prob = self.attractors[idx].prob;
+        self.attractors.remove(idx);
+        let total: f64 = self.attractors.iter().map(|e| e.prob).sum();
+        if total < 1e-12 {
+            let n = self.attractors.len() as f64;
+            for e in &mut self.attractors { e.prob = 1.0 / n; }
+        } else {
+            let scale = (total + removed_prob) / total;
+            for e in &mut self.attractors { e.prob *= scale; }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /// View and rendering state
 #[derive(Clone)]
 pub struct ViewState {
@@ -124,6 +317,7 @@ pub struct InputState {
     pub sin_julia_angle: String,
     pub sin_julia_coord_mode: CoordinateMode,
     pub sin_julia_escape_radius: String,
+    pub multi_julia_ifs: MultiJuliaIFSState,
     pub period: String,
     pub export_scale: String,
     pub export_supersample: String,
@@ -163,6 +357,7 @@ impl Default for InputState {
             sin_julia_angle: String::from("0.09966865249116204"),
             sin_julia_coord_mode: CoordinateMode::default(),
             sin_julia_escape_radius: String::from("50.0"),
+            multi_julia_ifs: MultiJuliaIFSState::default(),
             period: String::from("128"),
             export_scale: String::from("3.0"),
             export_supersample: String::from("4"),
@@ -396,6 +591,26 @@ impl crate::gui::FractalTypeOps for FractalType {
                 params.insert("c_imag".to_string(), input.parse_sin_julia_c_imag());
                 params.insert("escape_radius".to_string(), input.parse_sin_julia_escape_radius());
             }
+            FractalType::MultiJuliaIFS => {
+                view.center_x = 0.0;
+                view.center_y = 0.0;
+                view.zoom = 0.8;
+                params.clear();
+                // Insert default 2-attractor configuration.
+                // The GUI (render_parameters_gui) syncs its state from params
+                // on the next frame when it detects the attractor count differs.
+                params.insert("num_attractors".to_string(), 2.0);
+                params.insert("c0_real".to_string(), -0.5);
+                params.insert("c0_imag".to_string(),  0.5);
+                params.insert("prob0".to_string(),    0.5);
+                params.insert("c1_real".to_string(), -0.5);
+                params.insert("c1_imag".to_string(), -0.5);
+                params.insert("prob1".to_string(),    0.5);
+                params.insert("seed".to_string(),     0.0);
+                params.insert("samples".to_string(), 5_000_000.0);
+                params.insert("burn_in".to_string(), 50.0);
+                params.insert("use_log_density".to_string(), 1.0);
+            }
         }
     }
 
@@ -406,7 +621,7 @@ impl crate::gui::FractalTypeOps for FractalType {
         input_state: &mut InputState,
         needs_redraw: &mut bool,
     ) {
-        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia};
+        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS};
         use crate::fractal_gui::FractalGUI;
 
         match self {
@@ -422,6 +637,7 @@ impl crate::gui::FractalTypeOps for FractalType {
             FractalType::InsideoutDragon => InsideoutDragon::new().render_parameters_gui(ui, params, input_state, needs_redraw),
             FractalType::Zubieta => Zubieta::new().render_parameters_gui(ui, params, input_state, needs_redraw),
             FractalType::SinJulia => SinJulia::new().render_parameters_gui(ui, params, input_state, needs_redraw),
+            FractalType::MultiJuliaIFS => MultiJuliaIFS::new().render_parameters_gui(ui, params, input_state, needs_redraw),
         }
     }
 }
@@ -939,6 +1155,7 @@ impl From<&crate::export::FractalMetadata> for InputState {
             sin_julia_angle: sin_julia_c_imag.atan2(sin_julia_c_real).to_string(),
             sin_julia_coord_mode: crate::app_state::CoordinateMode::default(),
             sin_julia_escape_radius: sin_julia_escape_radius.to_string(),
+            multi_julia_ifs: MultiJuliaIFSState::from_params(&meta.fractal_parameters),
             period: meta.period.to_string(),
             export_scale: meta.export_scale.to_string(),
             export_supersample: meta.export_supersample.to_string(),
@@ -1150,5 +1367,121 @@ mod tests {
         assert!(color_state2.use_period);
         assert_eq!(input_state2.iterations, "512");
         assert_eq!(export_state2.filter, FilterType::Lanczos3);
+    }
+
+    #[test]
+    fn test_multi_julia_ifs_from_params_roundtrip() {
+        // Build a non-default MultiJuliaIFS configuration
+        let mut state = MultiJuliaIFSState::default();
+        state.attractors = vec![
+            super::AttractorEntry::new(0.3, -0.4, 0.6),
+            super::AttractorEntry::new(-0.8, 0.1, 0.15),
+            super::AttractorEntry::new(0.0, 0.7, 0.25),
+        ];
+        state.seed = "42".to_string();
+        state.samples = "10000000".to_string();
+        state.burn_in = "200".to_string();
+        state.use_log_density = false;
+
+        // Write state to params
+        let mut params = HashMap::new();
+        state.apply_to_params(&mut params);
+
+        // Reconstruct from params
+        let restored = MultiJuliaIFSState::from_params(&params);
+
+        // Verify round-trip
+        assert_eq!(restored.attractors.len(), 3);
+        assert!((restored.attractors[0].parse_real() - 0.3).abs() < 1e-5);
+        assert!((restored.attractors[0].parse_imag() - (-0.4)).abs() < 1e-5);
+        assert!((restored.attractors[0].prob - 0.6).abs() < 1e-5);
+        assert!((restored.attractors[1].parse_real() - (-0.8)).abs() < 1e-5);
+        assert!((restored.attractors[1].parse_imag() - 0.1).abs() < 1e-5);
+        assert!((restored.attractors[1].prob - 0.15).abs() < 1e-5);
+        assert!((restored.attractors[2].parse_real() - 0.0).abs() < 1e-5);
+        assert!((restored.attractors[2].parse_imag() - 0.7).abs() < 1e-5);
+        assert!((restored.attractors[2].prob - 0.25).abs() < 1e-5);
+        assert_eq!(restored.parse_seed(), 42.0);
+        assert_eq!(restored.parse_samples(), 10_000_000.0);
+        assert_eq!(restored.parse_burn_in(), 200.0);
+        assert!(!restored.use_log_density);
+    }
+
+    #[test]
+    fn test_multi_julia_ifs_metadata_roundtrip() {
+        use crate::filtering::FilterType;
+
+        // Create Multi-Julia IFS state with custom attractors
+        let mut fractal_state = FractalState {
+            fractal_type: FractalType::MultiJuliaIFS,
+            parameters: HashMap::new(),
+        };
+
+        let mut input_state = InputState::default();
+        input_state.multi_julia_ifs = MultiJuliaIFSState {
+            attractors: vec![
+                super::AttractorEntry::new(0.3, -0.4, 0.6),
+                super::AttractorEntry::new(-0.8, 0.1, 0.4),
+            ],
+            seed: "99".to_string(),
+            samples: "8000000".to_string(),
+            burn_in: "100".to_string(),
+            use_log_density: false,
+        };
+        // Write IFS state into fractal parameters
+        input_state.multi_julia_ifs.apply_to_params(&mut fractal_state.parameters);
+
+        let view_state = ViewState::new(1280, 720);
+        let color_state = ColorState::default();
+        let export_state = ExportState::default();
+
+        // Convert to metadata
+        let metadata = crate::export_helpers::metadata_from_app_state(
+            &fractal_state,
+            &view_state,
+            &color_state,
+            &input_state,
+            &export_state,
+        );
+
+        // Verify metadata saved the fractal type
+        assert_eq!(metadata.fractal_type, "Multi-Julia IFS");
+        assert_eq!(metadata.fractal_parameters.get("num_attractors"), Some(&2.0));
+        assert!((metadata.fractal_parameters["c0_real"] - 0.3).abs() < 1e-5);
+        assert!((metadata.fractal_parameters["c0_imag"] - (-0.4)).abs() < 1e-5);
+        assert!((metadata.fractal_parameters["samples"] - 8_000_000.0).abs() < 1e-5);
+
+        // Convert back and verify
+        let ft = metadata.parse_fractal_type().expect("parse_fractal_type should succeed for Multi-Julia IFS");
+        assert_eq!(ft, FractalType::MultiJuliaIFS);
+
+        let fractal2 = FractalState::from(&metadata);
+        assert_eq!(fractal2.fractal_type, FractalType::MultiJuliaIFS);
+        assert_eq!(fractal2.parameters.get("num_attractors"), Some(&2.0));
+
+        let input2 = InputState::from(&metadata);
+        assert_eq!(input2.multi_julia_ifs.attractors.len(), 2);
+        assert!((input2.multi_julia_ifs.attractors[0].parse_real() - 0.3).abs() < 1e-5);
+        assert!((input2.multi_julia_ifs.attractors[0].parse_imag() - (-0.4)).abs() < 1e-5);
+        assert!((input2.multi_julia_ifs.attractors[0].prob - 0.6).abs() < 1e-5);
+        assert!((input2.multi_julia_ifs.attractors[1].parse_real() - (-0.8)).abs() < 1e-5);
+        assert!((input2.multi_julia_ifs.attractors[1].parse_imag() - 0.1).abs() < 1e-5);
+        assert!((input2.multi_julia_ifs.attractors[1].prob - 0.4).abs() < 1e-5);
+        assert_eq!(input2.multi_julia_ifs.parse_seed(), 99.0);
+        assert_eq!(input2.multi_julia_ifs.parse_samples(), 8_000_000.0);
+        assert_eq!(input2.multi_julia_ifs.parse_burn_in(), 100.0);
+        assert!(!input2.multi_julia_ifs.use_log_density);
+    }
+
+    #[test]
+    fn test_multi_julia_ifs_from_params_empty_gives_defaults() {
+        // When restoring a non-IFS fractal, params won't have IFS keys.
+        // from_params should produce a sensible default (2 attractors at origin).
+        let params = HashMap::new();
+        let restored = MultiJuliaIFSState::from_params(&params);
+        assert_eq!(restored.attractors.len(), 2);
+        assert_eq!(restored.parse_samples(), 5_000_000.0);
+        assert_eq!(restored.parse_burn_in(), 50.0);
+        assert!(restored.use_log_density);
     }
 }

@@ -124,7 +124,10 @@ forma-fractalis --profiling
 | ![Mandelbrot 1](img_resources/gallery_expanded/mandelbrot_3840x2160_4xLanczos31768372087.png) |
 | ![Mandelbrot 3](img_resources/gallery_expanded/mandelbrot_3840x2160_4xLanczos31768887944.png) |
 | ![Mandelbrot 4](img_resources/gallery_expanded/mandelbrot_3840x2160_4xLanczos31769238284.png) |
+| ![Mandelbrot 5 - Iconic Mandelbrot set seahorse valley detail](img_resources/gallery_expanded/mandelbrot_3840x2160_4xLanczos31776913704.png) |
 | ![Cactus Vertical](img_resources/gallery_expanded/cactus_1080x2400_4xLanczos31772175230.png) |
+| ![Multi-Julia IFS orbit accumulation](img_resources/gallery_expanded/multi-julia_ifs_2560x1440_4xGaussian1776566332.png) |
+| ![Multi-Julia IFS v0.2.3 Julia Power showcase](img_resources/gallery_expanded/v0.2.3_julia_power.png) |
 
 </details>
 
@@ -275,14 +278,26 @@ The core library can be used independently. See [core/README.md](core/README.md)
 
 ## Releases
 
-**Latest: v0.2.3** (April 3, 2026)
+**Latest: v0.2.4** (April 22, 2026)
 
-Cargo workspace split (core library + GUI binary), two-phase public API (`compute_fractal_iterations` / `colorize_iterations`), PowerJulia exponent parameter with hi-precision BigFloat support on all three backends (CPU, GPU, hi-prec), TippetsMandelbrot GPU shader, color offset animation parameter, automated GPU test infrastructure.
+Multi-Julia IFS fractal via inverse-iteration orbit accumulation (chaos game), GPU orbit accumulation compute shader (1D dispatch, atomic density histogram), CPU hi-precision orbit path with BigFloat, Burning Ship hi-precision support, GitHub Sponsors integration.
 
-![v0.2.3 Release - Julia Power](img_resources/showcase/v0.2.3_julia_power.png)
+![v0.2.4 Release - Multi-Julia IFS](img_resources/showcase/v0.2.4_multi_julia_ifs.png)
 
 <details>
 <summary><b>View release history...</b></summary>
+
+### v0.2.4 (April 22, 2026)
+- Multi-Julia IFS fractal: inverse-iteration chaos game (orbit accumulation, not escape-time)
+- `orbit_accumulation.rs`: shared infrastructure — `DensityBuffer`, `AtomicDensityBuffer`, `OrbitTarget` trait, deterministic K=64 parallel sub-orbits
+- GPU orbit accumulation: `orbit_common.wgsl` template + `multi_julia_ifs_orbit_kernel.wgsl`, 1D workgroup dispatch with `atomic<u32>` density histogram
+- CPU hi-precision orbit path: BigFloat complex sqrt + BigFloat coordinate mapping
+- Burning Ship hi-precision support (all bit widths 64–1024)
+- OOM fix for supersampled orbit exports: automatic switch to `AtomicDensityBuffer` above 500 MB threshold
+- GPU status indicator in GUI now correctly reports orbit-accumulation fractals as GPU-ready
+- GitHub Sponsors integration (FUNDING.yml, README and index.html support section)
+- Repository discoverability improvements (topics, description)
+- 161 tests passing (core + GUI)
 
 ### v0.2.3 (April 3, 2026)
 - Cargo workspace refactor: `forma-fractalis-core` (pure library) + `forma-fractalis` (GUI binary)
@@ -383,6 +398,14 @@ Cargo workspace split (core library + GUI binary), two-phase public API (`comput
 </details>
 
 See [CHANGELOG.md](CHANGELOG.md) for complete version history.
+
+---
+
+## Support
+
+Forma Fractalis is maintained by one person in their spare time. It is free, always will be, and has no premium tier, no ads, and no telemetry. If you have found it useful and want to help keep development moving, a small donation goes a long way.
+
+[Sponsor on GitHub](https://github.com/sponsors/ConociendoAlmasMenosHastiadas)
 
 ---
 

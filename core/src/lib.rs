@@ -111,6 +111,7 @@ pub mod fractals;
 pub mod gpu;
 pub mod gpu_test;
 pub mod number_utils;
+pub mod orbit_accumulation;
 pub mod rendering;
 pub mod rendering_pipeline;
 

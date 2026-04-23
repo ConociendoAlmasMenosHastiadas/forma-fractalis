@@ -1,7 +1,7 @@
 use eframe::egui;
 use forma_fractalis::{
     app_state::{ViewState, InputState, FractalState, ColorState, MouseState, ExportState, RenderState, AnimationState, FractalType, FractalIterations},
-    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia}, 
+    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS}, 
     gpu::RenderBackend,
     gui, cli,
     perf_log, enable_profiling,
@@ -153,6 +153,7 @@ impl FractalApp {
         let insideout_dragon = InsideoutDragon::new();
         let zubieta = Zubieta::new();
         let sin_julia = SinJulia::new();
+        let multi_julia_ifs = MultiJuliaIFS::new();
         
         let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
             FractalType::Mandelbrot => &mandelbrot,
@@ -167,6 +168,7 @@ impl FractalApp {
             FractalType::InsideoutDragon => &insideout_dragon,
             FractalType::Zubieta => &zubieta,
             FractalType::SinJulia => &sin_julia,
+            FractalType::MultiJuliaIFS => &multi_julia_ifs,
         };
 
         let buffer_size = (self.view_state.view.width * self.view_state.view.height * 4) as usize;
@@ -206,40 +208,51 @@ impl FractalApp {
                 );
             } else {
                 // Full render: compute iterations, cache them, then apply colors.
-                let iterations: Vec<u32> = match self.render.backend {
-                    RenderBackend::Cpu => {
-                        perf_log!("[CACHE] Computing and caching iterations (CPU f64)");
-                        perf_log!("[CPU] View: center=({:.10}, {:.10}), zoom={:.10}",
-                            self.view_state.view.center_x, self.view_state.view.center_y, self.view_state.view.zoom);
-                        forma_fractalis::rendering::compute_iterations(
-                            &self.view_state.view,
-                            max_iterations,
-                            fractal,
-                            &self.fractal.parameters,
-                        )
-                    }
-                    RenderBackend::CpuHiPrec => {
-                        perf_log!("[CACHE] Computing and caching iterations (CPU HiPrec {}bit)", self.render.hiprec_bits);
-                        perf_log!("[CPU-HIPREC] View: center=({:.10}, {:.10}), zoom={:.10}",
-                            self.view_state.view.center_x, self.view_state.view.center_y, self.view_state.view.zoom);
-                        match forma_fractalis::rendering::compute_iterations_hiprec(
-                            &self.view_state.view,
-                            max_iterations,
-                            fractal,
-                            &self.fractal.parameters,
-                            self.render.hiprec_bits,
-                            self.render.max_threads,
-                        ) {
-                            Ok(iters) => iters,
-                            Err(e) => {
-                                self.status_message = format!("Hi-Prec render error: {}", e);
-                                eprintln!("[ERROR] {}", e);
-                                self.view_state.clear_redraw();
-                                return;
+                let iterations: Vec<u32> = if fractal.uses_orbit_accumulation() {
+                    perf_log!("[CACHE] Computing orbit density (orbit accumulation)");
+                    forma_fractalis::orbit_accumulation::compute_orbit_density(
+                        &self.view_state.view,
+                        fractal,
+                        &self.fractal.parameters,
+                        max_iterations,
+                        self.render.max_threads,
+                    )
+                } else {
+                    match self.render.backend {
+                        RenderBackend::Cpu => {
+                            perf_log!("[CACHE] Computing and caching iterations (CPU f64)");
+                            perf_log!("[CPU] View: center=({:.10}, {:.10}), zoom={:.10}",
+                                self.view_state.view.center_x, self.view_state.view.center_y, self.view_state.view.zoom);
+                            forma_fractalis::rendering::compute_iterations(
+                                &self.view_state.view,
+                                max_iterations,
+                                fractal,
+                                &self.fractal.parameters,
+                            )
+                        }
+                        RenderBackend::CpuHiPrec => {
+                            perf_log!("[CACHE] Computing and caching iterations (CPU HiPrec {}bit)", self.render.hiprec_bits);
+                            perf_log!("[CPU-HIPREC] View: center=({:.10}, {:.10}), zoom={:.10}",
+                                self.view_state.view.center_x, self.view_state.view.center_y, self.view_state.view.zoom);
+                            match forma_fractalis::rendering::compute_iterations_hiprec(
+                                &self.view_state.view,
+                                max_iterations,
+                                fractal,
+                                &self.fractal.parameters,
+                                self.render.hiprec_bits,
+                                self.render.max_threads,
+                            ) {
+                                Ok(iters) => iters,
+                                Err(e) => {
+                                    self.status_message = format!("Hi-Prec render error: {}", e);
+                                    eprintln!("[ERROR] {}", e);
+                                    self.view_state.clear_redraw();
+                                    return;
+                                }
                             }
                         }
+                        _ => unreachable!("GPU backends are handled in the else branch"),
                     }
-                    _ => unreachable!("GPU backends are handled in the else branch"),
                 };
 
                 // Store in cache for future color-only updates.
@@ -495,6 +508,7 @@ impl eframe::App for FractalApp {
                             let insideout_dragon = InsideoutDragon::new();
                             let zubieta = Zubieta::new();
                             let sin_julia = SinJulia::new();
+                            let multi_julia_ifs = MultiJuliaIFS::new();
                             
                             let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
                                 FractalType::Mandelbrot => &mandelbrot,
@@ -509,6 +523,7 @@ impl eframe::App for FractalApp {
                                 FractalType::InsideoutDragon => &insideout_dragon,
                                 FractalType::Zubieta => &zubieta,
                                 FractalType::SinJulia => &sin_julia,
+                                FractalType::MultiJuliaIFS => &multi_julia_ifs,
                             };
 
                             // Performance / Rendering Backend
@@ -931,6 +946,7 @@ impl FractalApp {
                 "Insideout Dragon" => Box::new(InsideoutDragon::new()),
                 "Zubieta" => Box::new(Zubieta::new()),
                 "Sin Julia" => Box::new(SinJulia::new()),
+                "Multi-Julia IFS" => Box::new(MultiJuliaIFS::new()),
                 _ => Box::new(Mandelbrot::new()), // Fallback
             };
             
