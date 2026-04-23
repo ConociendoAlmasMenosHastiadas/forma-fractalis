@@ -297,7 +297,6 @@ Multi-Julia IFS fractal via inverse-iteration orbit accumulation (chaos game), G
 - GPU status indicator in GUI now correctly reports orbit-accumulation fractals as GPU-ready
 - GitHub Sponsors integration (FUNDING.yml, README and index.html support section)
 - Repository discoverability improvements (topics, description)
-- 161 tests passing (core + GUI)
 
 ### v0.2.3 (April 3, 2026)
 - Cargo workspace refactor: `forma-fractalis-core` (pure library) + `forma-fractalis` (GUI binary)
@@ -312,7 +311,6 @@ Multi-Julia IFS fractal via inverse-iteration orbit accumulation (chaos game), G
 - Julia hi-prec: power=2 optimised path, general polar form for arbitrary exponents
 - GPU test CLI subcommand (`gpu-test`) for automated GPU/CPU parity validation
 - API documentation: module-level Quick Start, batch rendering guide, FractalConfig workflow docs
-- 106 tests (core) + 9 tests (GUI), all passing
 
 ### v0.2.2 (March 28, 2026)
 - Insideout Dragon fractal: z_{n+1} = z_n^2 + f(|z_n|) + i*g(|z_n|), z_0 = 1/c

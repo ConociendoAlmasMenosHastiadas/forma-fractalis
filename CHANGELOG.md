@@ -43,7 +43,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Fractal` trait: `uses_orbit_accumulation()`, `accumulate_orbits()`, `accumulate_orbits_hiprec()` methods
 - `FractalRenderer` trait: `render_orbit_density()` and `supports_orbit_density()` methods
 - Rendering pipeline routes orbit-accumulation fractals before backend dispatch
-- 162 tests passing (150 core + 12 GUI, up from 115+9)
 - capability_table.md: Multi-Julia IFS CPU=yes, hi-prec=yes, GPU=yes; Burning Ship hi-prec=yes
 
 ## [0.2.3] - 2026-04-03
