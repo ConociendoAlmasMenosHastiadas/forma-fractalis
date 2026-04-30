@@ -18,7 +18,7 @@
 //! This creates a different fractal structure due to the dependency on the
 //! already-updated x value when calculating y.
 
-use super::{Fractal, FractalView};
+use super::{Fractal, FractalView, Parameter};
 use std::collections::HashMap;
 
 /// Tippets Mandelbrot set fractal
@@ -38,16 +38,18 @@ impl Default for TippetsMandelbrot {
 }
 
 impl Fractal for TippetsMandelbrot {
-    fn iterate(&self, c_real: f64, c_imag: f64, _parameters: &HashMap<String, f64>, max_iter: u32) -> u32 {
+    fn iterate(&self, c_real: f64, c_imag: f64, parameters: &HashMap<String, f64>, max_iter: u32) -> u32 {
         let a = c_real;
         let b = c_imag;
         let mut x = 0.0;
         let mut y = 0.0;
         let mut iter = 0;
+        let escape_r = parameters.get("escape_radius").copied().unwrap_or(2.0);
+        let escape_sq = escape_r * escape_r;
 
         while iter < max_iter {
-            // Check escape condition: |z|² > 4
-            if x * x + y * y > 4.0 {
+            // Check escape condition
+            if x * x + y * y > escape_sq {
                 break;
             }
 
@@ -82,6 +84,18 @@ impl Fractal for TippetsMandelbrot {
         "x = x^2 - y^2 + a,  y = 2*x_new*y + b"
     }
 
-    // Tippets Mandelbrot has no parameters, so we use the default empty Vec
+    // Tippets Mandelbrot parameters
+    fn parameters(&self) -> Vec<Parameter> {
+        vec![
+            Parameter {
+                name: "escape_radius".to_string(),
+                label: "Escape Radius".to_string(),
+                default: 2.0,
+                min: 0.5,
+                max: 100.0,
+                description: "Escape radius: iterate escapes when |z| > escape_radius.".to_string(),
+            },
+        ]
+    }
 }
 

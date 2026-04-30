@@ -46,7 +46,8 @@ impl Fractal for MarekDragon {
         let rotation = Complex64::new(phi.cos(), phi.sin());
         
         let mut z = Complex64::new(c_real, c_imag);
-        let escape_radius_sq = 4.0; // Standard escape radius squared
+        let escape_r = parameters.get("escape_radius").copied().unwrap_or(2.0);
+        let escape_radius_sq = escape_r * escape_r;
         
         for i in 0..max_iter {
             // Check escape condition
@@ -86,7 +87,15 @@ impl Fractal for MarekDragon {
                 min: 0.0,
                 max: TWO_PI,
                 description: "Rotation parameter (0 to 2π)".to_string(),
-            }
+            },
+            crate::fractals::Parameter {
+                name: "escape_radius".to_string(),
+                label: "Escape Radius".to_string(),
+                default: 2.0,
+                min: 0.5,
+                max: 100.0,
+                description: "Escape radius: iterate escapes when |z| > escape_radius.".to_string(),
+            },
         ]
     }
 }
@@ -105,11 +114,13 @@ mod tests {
     fn test_marek_dragon_parameters() {
         let fractal = MarekDragon::new();
         let params = fractal.parameters();
-        assert_eq!(params.len(), 1);
+        assert_eq!(params.len(), 2);
         assert_eq!(params[0].name, "phi");
         assert_eq!(params[0].default, 0.0);
         assert_eq!(params[0].min, 0.0);
         assert!(params[0].max > 6.0); // Should be TWO_PI ≈ 6.28
+        assert_eq!(params[1].name, "escape_radius");
+        assert_eq!(params[1].default, 2.0);
     }
 
     #[test]

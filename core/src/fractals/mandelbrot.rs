@@ -44,7 +44,8 @@ impl Fractal for Mandelbrot {
         let mut iter = 0;
         
         let is_negative_power = power < 0.0;
-        let escape_radius_sqr = 4.0;
+        let escape_r = parameters.get("escape_radius").copied().unwrap_or(2.0);
+        let escape_radius_sqr = escape_r * escape_r;
         let convergence_threshold_sqr = ABSOLUTE_EPSILON; // For detecting convergence to 0
 
         while iter < max_iter {
@@ -108,6 +109,14 @@ impl Fractal for Mandelbrot {
                 max: 10.0,
                 description: "Exponent in z^power + c formula. 2 = classic Mandelbrot. Negative powers create inverted sets.".to_string(),
             },
+            Parameter {
+                name: "escape_radius".to_string(),
+                label: "Escape Radius".to_string(),
+                default: 2.0,
+                min: 0.5,
+                max: 100.0,
+                description: "Escape radius: iterate escapes when |z| > escape_radius.".to_string(),
+            },
         ]
     }
 
@@ -145,7 +154,8 @@ impl Fractal for Mandelbrot {
         let mut zr = cr.clone();
         let mut zi = ci.clone();
 
-        let four = BigFloat::from_f64(4.0, p);
+        let escape_r = parameters.get("escape_radius").copied().unwrap_or(2.0);
+        let four = BigFloat::from_f64(escape_r * escape_r, p);
         let two  = BigFloat::from_f64(2.0, p);
         let is_negative_power = power < 0.0;
         let epsilon_bf = BigFloat::from_f64(ABSOLUTE_EPSILON, p);

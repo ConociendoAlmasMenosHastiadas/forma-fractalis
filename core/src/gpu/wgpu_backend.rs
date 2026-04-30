@@ -33,11 +33,15 @@ use wgpu::util::DeviceExt;
 /// Unified GPU parameters for all fractal shaders (must match WGSL FractalParams layout)
 ///
 /// Per-fractal data is passed through param_0/param_1/param_2 slots (order matches parameters()):
-/// - Mandelbrot/Powerbrot: param_0 = power (default 2.0)
+/// - Mandelbrot/Powerbrot: param_0 = power (default 2.0), param_1 = escape_radius (default 2.0)
 /// - Insideout Dragon: param_0 = escape_radius (default 4.0)
 /// - Julia Set: param_0 = c_real, param_1 = c_imag, param_2 = power (default 2.0)
-/// - Zubieta: param_0 = c_real, param_1 = c_imag
+/// - Zubieta: param_0 = c_real, param_1 = c_imag, param_2 = escape_radius (default 2.0)
 /// - Sin Julia: param_0 = c_real, param_1 = c_imag, param_2 = escape_radius (default 50.0)
+/// - Marek Dragon: param_0 = phi (rotation angle, 0 to 2*pi), param_1 = escape_radius (default 2.0)
+/// - Burning Ship: param_0 = escape_radius (default 2.0)
+/// - Tippets Mandelbrot: param_0 = escape_radius (default 2.0)
+/// - Lace Julia: param_0 = c_real, param_1 = c_imag, param_2 = escape_radius (default 2.0)
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct GpuFractalParams {
@@ -665,6 +669,8 @@ impl WgpuRenderer {
             "Tippets Mandelbrot" => Some("Tippets Mandelbrot"),
             "Multifractal-Julia" => Some("Multifractal-Julia"),
             "Cactus" => Some("Cactus"),
+            "Marek Dragon" => Some("Marek Dragon"),
+            "Lace Julia" => Some("Lace Julia"),
             _ => None,
         }
     }
@@ -758,6 +764,8 @@ impl WgpuRenderer {
         load_timed!(renderer, "Tippets Mandelbrot",   include_str!("shaders/tippets_mandelbrot_kernel.wgsl"));
         load_timed!(renderer, "Multifractal-Julia",   include_str!("shaders/multifractal_julia_kernel.wgsl"));
         load_timed!(renderer, "Cactus",               include_str!("shaders/cactus_kernel.wgsl"));
+        load_timed!(renderer, "Marek Dragon",          include_str!("shaders/marek_dragon_kernel.wgsl"));
+        load_timed!(renderer, "Lace Julia",             include_str!("shaders/lace_julia_kernel.wgsl"));
 
         // Orbit accumulation shaders (different composition template)
         {

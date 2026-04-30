@@ -16,7 +16,7 @@
 ![Mandelbrot Set](img_resources/banners/mandelbrot_4320x1080_4xLanczos31771181432.png)
 
 ### Interactive Exploration
-- **12 Fractal Types**: Mandelbrot, Julia, Burning Ship, Tippets Mandelbrot, Multifractal-Julia, Cactus, Marek Dragon, Tetration, Lemon, Zubieta, Sin Julia, Insideout Dragon
+- **13 Fractal Types**: Mandelbrot, Julia, Burning Ship, Tippets Mandelbrot, Multifractal-Julia, Cactus, Marek Dragon, Tetration, Lemon, Zubieta, Sin Julia, Insideout Dragon, Lace Julia
 - **Real-time Rendering**: Smooth 60 FPS with multi-threaded computation
 - **Click-to-Zoom**: Intuitive mouse controls for navigation
 - **Fractal Parameters**: Adjust Julia constants, powers, rotation angles with live sliders
@@ -131,6 +131,7 @@ forma-fractalis --profiling
 | ![Multi-Julia IFS orbit accumulation](img_resources/gallery_expanded/multi-julia_ifs_2560x1440_4xGaussian1776566332.png) |
 | ![Multi-Julia IFS v0.2.3 Julia Power showcase](img_resources/gallery_expanded/v0.2.3_julia_power.png) |
 | ![Multi-Julia IFS v0.2.4 showcase](img_resources/gallery_expanded/v0.2.4_multi_julia_ifs.png) |
+| ![ChaosSymmetry1 v0.2.5 showcase](img_resources/gallery_expanded/v0.2.5_chaos_symmetry1.png) |
 
 </details>
 
@@ -281,14 +282,23 @@ The core library can be used independently. See [core/README.md](core/README.md)
 
 ## Releases
 
-**Latest: v0.2.5** (April 29, 2026)
+**Latest: v0.2.6** (April 30, 2026)
 
-ChaosSymmetry1 attractor fractal (orbit accumulation, GPU f32, CPU hi-prec), Cactus GPU shader, Sin Julia hi-precision CPU support, image/png crate upgrade (0.25/0.18).
+Lace Julia fractal (rational map, CPU f64/hi-prec/GPU f32), Marek Dragon GPU shader, escape radius slider on 6 fractals, "Open last exported image" button.
 
-![v0.2.5 Release - ChaosSymmetry1 attractor](img_resources/showcase/chaossymmetry1_1280x720_2xGaussian1777355263.png)
+![v0.2.6 Release - Lace Julia fractal](img_resources/showcase/lace_julia_3840x2160_4xLanczos31777585168.png)
 
 <details>
 <summary><b>View release history...</b></summary>
+
+### v0.2.6 (April 30, 2026)
+- Lace Julia fractal: z_{n+1} = (i·z_n^3 + 1010·z_n^6) / (c·i + 3301·z_n^7), colored by escape velocity
+- Lace Julia on all three backends: CPU f64, CPU hi-prec BigFloat (64–1024 bits), GPU f32 compute shader
+- Lace Julia complex parameter c with rectangular and polar coordinate input modes
+- Marek Dragon GPU compute shader (`marek_dragon_kernel.wgsl`)
+- Escape radius slider added to Mandelbrot, Julia, Burning Ship, Tippets Mandelbrot, Zubieta, Marek Dragon
+- "Open last exported image" button in export section
+- rand 0.8.5 → 0.8.6 (dependabot)
 
 ### v0.2.5 (April 29, 2026)
 - ChaosSymmetry1 attractor fractal: orbit accumulation via z_{n+1} = (a0 + a1|z|² + a2·Re(z^m) + a3·i)·z + a4·conj(z)^{m-1}

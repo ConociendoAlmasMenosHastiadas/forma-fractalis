@@ -1402,6 +1402,7 @@ impl FractalMetadata {
             "Multi-Julia IFS" => Ok(FractalType::MultiJuliaIFS),
             "Adj Prob Julia" => Ok(FractalType::AdjProbJulia),
             "ChaosSymmetry1" => Ok(FractalType::ChaosSymmetry1),
+            "Lace Julia" => Ok(FractalType::LaceJulia),
             other => Err(format!("Unknown fractal type: {}", other)),
         }
     }

@@ -6,7 +6,7 @@
 //! The absolute value operation on components creates the distinctive
 //! "ship" shape with a prominent bow structure.
 
-use super::{Fractal, FractalView};
+use super::{Fractal, FractalView, Parameter};
 use num_complex::Complex64;
 use std::collections::HashMap;
 use astro_float::{BigFloat, RoundingMode};
@@ -28,13 +28,15 @@ impl Default for BurningShip {
 }
 
 impl Fractal for BurningShip {
-    fn iterate(&self, c_real: f64, c_imag: f64, _parameters: &HashMap<String, f64>, max_iter: u32) -> u32 {
+    fn iterate(&self, c_real: f64, c_imag: f64, parameters: &HashMap<String, f64>, max_iter: u32) -> u32 {
         let c = Complex64::new(c_real, c_imag);
         let mut z = Complex64::new(0.0, 0.0);
         let mut iter = 0;
+        let escape_r = parameters.get("escape_radius").copied().unwrap_or(2.0);
+        let escape_sq = escape_r * escape_r;
 
         while iter < max_iter {
-            if z.norm_sqr() > 4.0 {
+            if z.norm_sqr() > escape_sq {
                 break;
             }
 
@@ -82,7 +84,7 @@ impl Fractal for BurningShip {
         &self,
         c_real: &BigFloat,
         c_imag: &BigFloat,
-        _parameters: &HashMap<String, f64>,
+        parameters: &HashMap<String, f64>,
         max_iter: u32,
         bits: u32,
     ) -> u32 {
@@ -96,7 +98,8 @@ impl Fractal for BurningShip {
         let mut zr = BigFloat::from_f64(0.0, p);
         let mut zi = BigFloat::from_f64(0.0, p);
 
-        let four = BigFloat::from_f64(4.0, p);
+        let escape_r = parameters.get("escape_radius").copied().unwrap_or(2.0);
+        let four = BigFloat::from_f64(escape_r * escape_r, p);
         let two  = BigFloat::from_f64(2.0, p);
         let zero = BigFloat::from_f64(0.0, p);
 
@@ -135,7 +138,19 @@ impl Fractal for BurningShip {
         max_iter
     }
 
-    // Burning Ship has no parameters, so we use the default empty Vec
+    // Burning Ship parameters
+    fn parameters(&self) -> Vec<Parameter> {
+        vec![
+            Parameter {
+                name: "escape_radius".to_string(),
+                label: "Escape Radius".to_string(),
+                default: 2.0,
+                min: 0.5,
+                max: 100.0,
+                description: "Escape radius: iterate escapes when |z| > escape_radius.".to_string(),
+            },
+        ]
+    }
 }
 
 #[cfg(test)]

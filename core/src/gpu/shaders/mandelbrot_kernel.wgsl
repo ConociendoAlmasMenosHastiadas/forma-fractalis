@@ -1,13 +1,15 @@
 // Mandelbrot / Powerbrot iteration kernel
 //
 // param_0 = power (typically 2.0 for standard Mandelbrot)
+// param_1 = escape_radius (default 2.0)
 //
 // z_{n+1} = z_n^power + c,  z_0 = 0
-// Escapes when |z| > 2
+// Escapes when |z| > escape_radius
 
 fn iterate_fractal(c: vec2<f32>) -> u32 {
     var z = vec2<f32>(0.0, 0.0);
-    let escape_radius_sq = 4.0;  // |z| > 2 means z^2 > 4
+    let escape_r = params.param_1;
+    let escape_radius_sq = escape_r * escape_r;
 
     for (var i = 0u; i < params.max_iter; i = i + 1u) {
         let z_mag_sq = z.x * z.x + z.y * z.y;
