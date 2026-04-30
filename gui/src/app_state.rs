@@ -299,9 +299,12 @@ pub struct InputState {
     pub julia_coord_mode: CoordinateMode,
     /// Exponent k in z^k + c for the Julia set (default 2.0 = classic).
     pub julia_power: String,
+    pub julia_escape_radius: String,
     pub mandelbrot_power: String,
+    pub mandelbrot_escape_radius: String,
     pub multifractal_julia_power: String,
     pub marek_dragon_phi: String,
+    pub marek_dragon_escape_radius: String,
     pub tetration_threshold: String,
     pub lemon_convergence_exp: String,
     pub lemon_denom_power: String,
@@ -311,6 +314,9 @@ pub struct InputState {
     pub zubieta_magnitude: String,
     pub zubieta_angle: String,
     pub zubieta_coord_mode: CoordinateMode,
+    pub zubieta_escape_radius: String,
+    pub burning_ship_escape_radius: String,
+    pub tippets_escape_radius: String,
     pub sin_julia_c_real: String,
     pub sin_julia_c_imag: String,
     pub sin_julia_magnitude: String,
@@ -332,6 +338,12 @@ pub struct InputState {
     pub chaos_symmetry1_a2: String,
     pub chaos_symmetry1_a3: String,
     pub chaos_symmetry1_a4: String,
+    pub lace_julia_c_real: String,
+    pub lace_julia_c_imag: String,
+    pub lace_julia_magnitude: String,
+    pub lace_julia_angle: String,
+    pub lace_julia_coord_mode: CoordinateMode,
+    pub lace_julia_escape_radius: String,
     pub period: String,
     pub export_scale: String,
     pub export_supersample: String,
@@ -353,9 +365,12 @@ impl Default for InputState {
             julia_angle: String::from("0.0"),
             julia_coord_mode: CoordinateMode::default(),
             julia_power: String::from("2.0"),
+            julia_escape_radius: String::from("2.0"),
             mandelbrot_power: String::from("2.0"),
+            mandelbrot_escape_radius: String::from("2.0"),
             multifractal_julia_power: String::from("1.0"),
             marek_dragon_phi: String::from("0.0"),
+            marek_dragon_escape_radius: String::from("2.0"),
             tetration_threshold: String::from("1e7"),
             lemon_convergence_exp: String::from("6"),
             lemon_denom_power: String::from("2.0"),
@@ -365,6 +380,9 @@ impl Default for InputState {
             zubieta_magnitude: String::from("0.8"),
             zubieta_angle: String::from("1.5707963267949"),
             zubieta_coord_mode: CoordinateMode::default(),
+            zubieta_escape_radius: String::from("2.0"),
+            burning_ship_escape_radius: String::from("2.0"),
+            tippets_escape_radius: String::from("2.0"),
             sin_julia_c_real: String::from("1.0"),
             sin_julia_c_imag: String::from("0.1"),
             sin_julia_magnitude: String::from("1.0049875621120890"),
@@ -386,6 +404,12 @@ impl Default for InputState {
             chaos_symmetry1_a2: String::from("0"),
             chaos_symmetry1_a3: String::from("0"),
             chaos_symmetry1_a4: String::from("0.5"),
+            lace_julia_c_real: String::from("0.0"),
+            lace_julia_c_imag: String::from("0.5"),
+            lace_julia_magnitude: String::from("0.5"),
+            lace_julia_angle: String::from("1.5707963267948966"),
+            lace_julia_coord_mode: CoordinateMode::default(),
+            lace_julia_escape_radius: String::from("2.0"),
             period: String::from("128"),
             export_scale: String::from("3.0"),
             export_supersample: String::from("4"),
@@ -434,6 +458,51 @@ impl InputState {
     /// Parse Mandelbrot power parameter
     pub fn parse_mandelbrot_power(&self) -> f64 {
         self.mandelbrot_power.parse::<f64>().unwrap_or(2.0)
+    }
+
+    /// Parse Mandelbrot escape radius parameter
+    pub fn parse_mandelbrot_escape_radius(&self) -> f64 {
+        self.mandelbrot_escape_radius.parse::<f64>().unwrap_or(2.0).max(0.01)
+    }
+
+    /// Parse Julia escape radius parameter
+    pub fn parse_julia_escape_radius(&self) -> f64 {
+        self.julia_escape_radius.parse::<f64>().unwrap_or(2.0).max(0.01)
+    }
+
+    /// Parse Burning Ship escape radius parameter
+    pub fn parse_burning_ship_escape_radius(&self) -> f64 {
+        self.burning_ship_escape_radius.parse::<f64>().unwrap_or(2.0).max(0.01)
+    }
+
+    /// Parse Tippets Mandelbrot escape radius parameter
+    pub fn parse_tippets_escape_radius(&self) -> f64 {
+        self.tippets_escape_radius.parse::<f64>().unwrap_or(2.0).max(0.01)
+    }
+
+    /// Parse Zubieta escape radius parameter
+    pub fn parse_zubieta_escape_radius(&self) -> f64 {
+        self.zubieta_escape_radius.parse::<f64>().unwrap_or(2.0).max(0.01)
+    }
+
+    /// Parse Marek Dragon escape radius parameter
+    pub fn parse_marek_dragon_escape_radius(&self) -> f64 {
+        self.marek_dragon_escape_radius.parse::<f64>().unwrap_or(2.0).max(0.01)
+    }
+
+    /// Parse Lace Julia c_real parameter
+    pub fn parse_lace_julia_c_real(&self) -> f64 {
+        self.lace_julia_c_real.parse::<f64>().unwrap_or(0.0)
+    }
+
+    /// Parse Lace Julia c_imag parameter
+    pub fn parse_lace_julia_c_imag(&self) -> f64 {
+        self.lace_julia_c_imag.parse::<f64>().unwrap_or(0.5)
+    }
+
+    /// Parse Lace Julia escape radius parameter
+    pub fn parse_lace_julia_escape_radius(&self) -> f64 {
+        self.lace_julia_escape_radius.parse::<f64>().unwrap_or(2.0).max(0.01)
     }
 
     /// Parse Multifractal-Julia power parameter (k in z_{n+1} = c^k * z_{n-2} + c)
@@ -590,6 +659,7 @@ impl crate::gui::FractalTypeOps for FractalType {
                 let power = input.parse_mandelbrot_power();
                 params.clear();
                 params.insert("power".to_string(), power);
+                params.insert("escape_radius".to_string(), input.parse_mandelbrot_escape_radius());
             }
             FractalType::Julia => {
                 view.center_x = 0.0;
@@ -598,18 +668,21 @@ impl crate::gui::FractalTypeOps for FractalType {
                 params.insert("c_real".to_string(), input.parse_julia_c_real());
                 params.insert("c_imag".to_string(), input.parse_julia_c_imag());
                 params.insert("power".to_string(), input.parse_julia_power());
+                params.insert("escape_radius".to_string(), input.parse_julia_escape_radius());
             }
             FractalType::BurningShip => {
                 view.center_x = -0.5;
                 view.center_y = -0.6;
                 view.zoom = 0.8;
                 params.clear();
+                params.insert("escape_radius".to_string(), input.parse_burning_ship_escape_radius());
             }
             FractalType::TippetsMandelbrot => {
                 view.center_x = -0.5;
                 view.center_y = 0.0;
                 view.zoom = 0.8;
                 params.clear();
+                params.insert("escape_radius".to_string(), input.parse_tippets_escape_radius());
             }
             FractalType::MultifractalJulia => {
                 view.center_x = 0.0;
@@ -630,6 +703,7 @@ impl crate::gui::FractalTypeOps for FractalType {
                 view.zoom = 0.8;
                 params.clear();
                 params.insert("phi".to_string(), input.parse_marek_dragon_phi());
+                params.insert("escape_radius".to_string(), input.parse_marek_dragon_escape_radius());
             }
             FractalType::Tetration => {
                 view.center_x = 0.0;
@@ -661,6 +735,7 @@ impl crate::gui::FractalTypeOps for FractalType {
                 params.clear();
                 params.insert("c_real".to_string(), input.parse_zubieta_c_real());
                 params.insert("c_imag".to_string(), input.parse_zubieta_c_imag());
+                params.insert("escape_radius".to_string(), input.parse_zubieta_escape_radius());
             }
             FractalType::SinJulia => {
                 view.center_x = 0.0;
@@ -718,6 +793,15 @@ impl crate::gui::FractalTypeOps for FractalType {
                 params.insert("seed".to_string(), input.parse_chaos_symmetry1_seed());
                 params.insert("use_log_density".to_string(), if input.chaos_symmetry1_use_log_density { 1.0 } else { 0.0 });
             }
+            FractalType::LaceJulia => {
+                view.center_x = 0.0;
+                view.center_y = 0.0;
+                view.zoom = 0.7;
+                params.clear();
+                params.insert("c_real".to_string(), input.parse_lace_julia_c_real());
+                params.insert("c_imag".to_string(), input.parse_lace_julia_c_imag());
+                params.insert("escape_radius".to_string(), input.parse_lace_julia_escape_radius());
+            }
         }
     }
 
@@ -728,7 +812,7 @@ impl crate::gui::FractalTypeOps for FractalType {
         input_state: &mut InputState,
         needs_redraw: &mut bool,
     ) {
-        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS, AdjProbJulia, ChaosSymmetry1};
+        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS, AdjProbJulia, ChaosSymmetry1, LaceJulia};
         use crate::fractal_gui::FractalGUI;
 
         match self {
@@ -747,6 +831,7 @@ impl crate::gui::FractalTypeOps for FractalType {
             FractalType::MultiJuliaIFS => MultiJuliaIFS::new().render_parameters_gui(ui, params, input_state, needs_redraw),
             FractalType::AdjProbJulia => AdjProbJulia::new().render_parameters_gui(ui, params, input_state, needs_redraw),
             FractalType::ChaosSymmetry1 => ChaosSymmetry1::new().render_parameters_gui(ui, params, input_state, needs_redraw),
+            FractalType::LaceJulia => LaceJulia::new().render_parameters_gui(ui, params, input_state, needs_redraw),
         }
     }
 }
@@ -884,6 +969,8 @@ impl MouseState {
 pub struct ExportState {
     pub directory: Option<std::path::PathBuf>,
     pub filter: FilterType,
+    /// Path to the most recently exported image file, if any.
+    pub last_export_path: Option<std::path::PathBuf>,
 }
 
 impl Default for ExportState {
@@ -891,6 +978,7 @@ impl Default for ExportState {
         Self {
             directory: None,
             filter: FilterType::None,
+            last_export_path: None,
         }
     }
 }
@@ -1196,7 +1284,27 @@ impl From<&crate::export::FractalMetadata> for InputState {
         let marek_dragon_phi = meta.fractal_parameters.get("phi")
             .copied()
             .unwrap_or(0.0);
-        
+
+        // Extract escape_radius for each fractal (same key, different defaults)
+        let mandelbrot_escape_radius = meta.fractal_parameters.get("escape_radius")
+            .copied()
+            .unwrap_or(2.0);
+        let julia_escape_radius = meta.fractal_parameters.get("escape_radius")
+            .copied()
+            .unwrap_or(2.0);
+        let burning_ship_escape_radius = meta.fractal_parameters.get("escape_radius")
+            .copied()
+            .unwrap_or(2.0);
+        let tippets_escape_radius = meta.fractal_parameters.get("escape_radius")
+            .copied()
+            .unwrap_or(2.0);
+        let zubieta_escape_radius = meta.fractal_parameters.get("escape_radius")
+            .copied()
+            .unwrap_or(2.0);
+        let marek_dragon_escape_radius = meta.fractal_parameters.get("escape_radius")
+            .copied()
+            .unwrap_or(2.0);
+
         // Extract Tetration threshold if present
         let tetration_threshold = meta.fractal_parameters.get("threshold")
             .copied()
@@ -1253,6 +1361,17 @@ impl From<&crate::export::FractalMetadata> for InputState {
             .copied()
             .unwrap_or(1.0) > 0.5;
 
+        // Extract Lace Julia parameters if present
+        let lace_julia_c_real = meta.fractal_parameters.get("c_real")
+            .copied()
+            .unwrap_or(0.0);
+        let lace_julia_c_imag = meta.fractal_parameters.get("c_imag")
+            .copied()
+            .unwrap_or(0.5);
+        let lace_julia_escape_radius = meta.fractal_parameters.get("escape_radius")
+            .copied()
+            .unwrap_or(2.0);
+
         Self {
             width: meta.width.to_string(),
             height: meta.height.to_string(),
@@ -1263,9 +1382,12 @@ impl From<&crate::export::FractalMetadata> for InputState {
             julia_angle: julia_c_imag.atan2(julia_c_real).to_string(),
             julia_coord_mode: crate::app_state::CoordinateMode::default(),
             julia_power: julia_power.to_string(),
+            julia_escape_radius: julia_escape_radius.to_string(),
             mandelbrot_power: mandelbrot_power.to_string(),
+            mandelbrot_escape_radius: mandelbrot_escape_radius.to_string(),
             multifractal_julia_power: multifractal_julia_power.to_string(),
             marek_dragon_phi: marek_dragon_phi.to_string(),
+            marek_dragon_escape_radius: marek_dragon_escape_radius.to_string(),
             tetration_threshold: format!("{:.2e}", tetration_threshold),
             lemon_convergence_exp: lemon_convergence_exp.to_string(),
             lemon_denom_power: lemon_denom_power.to_string(),
@@ -1275,6 +1397,9 @@ impl From<&crate::export::FractalMetadata> for InputState {
             zubieta_magnitude: (zubieta_c_real * zubieta_c_real + zubieta_c_imag * zubieta_c_imag).sqrt().to_string(),
             zubieta_angle: zubieta_c_imag.atan2(zubieta_c_real).to_string(),
             zubieta_coord_mode: crate::app_state::CoordinateMode::default(),
+            zubieta_escape_radius: zubieta_escape_radius.to_string(),
+            burning_ship_escape_radius: burning_ship_escape_radius.to_string(),
+            tippets_escape_radius: tippets_escape_radius.to_string(),
             sin_julia_c_real: sin_julia_c_real.to_string(),
             sin_julia_c_imag: sin_julia_c_imag.to_string(),
             sin_julia_magnitude: (sin_julia_c_real * sin_julia_c_real + sin_julia_c_imag * sin_julia_c_imag).sqrt().to_string(),
@@ -1296,6 +1421,15 @@ impl From<&crate::export::FractalMetadata> for InputState {
             chaos_symmetry1_a2: String::from("0"),
             chaos_symmetry1_a3: String::from("0"),
             chaos_symmetry1_a4: String::from("0.5"),
+            lace_julia_c_real: lace_julia_c_real.to_string(),
+            lace_julia_c_imag: lace_julia_c_imag.to_string(),
+            lace_julia_magnitude: (lace_julia_c_real * lace_julia_c_real + lace_julia_c_imag * lace_julia_c_imag).sqrt().to_string(),
+            lace_julia_angle: {
+                let a = lace_julia_c_imag.atan2(lace_julia_c_real);
+                if a < 0.0 { (a + std::f64::consts::TAU).to_string() } else { a.to_string() }
+            },
+            lace_julia_coord_mode: crate::app_state::CoordinateMode::default(),
+            lace_julia_escape_radius: lace_julia_escape_radius.to_string(),
             period: meta.period.to_string(),
             export_scale: meta.export_scale.to_string(),
             export_supersample: meta.export_supersample.to_string(),
@@ -1310,6 +1444,7 @@ impl From<&crate::export::FractalMetadata> for ExportState {
         Self {
             directory: None, // Export directory is not stored in metadata
             filter: meta.parse_filter_type(),
+            last_export_path: None,
         }
     }
 }

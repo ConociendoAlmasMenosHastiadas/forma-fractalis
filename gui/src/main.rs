@@ -1,7 +1,7 @@
 use eframe::egui;
 use forma_fractalis::{
     app_state::{ViewState, InputState, FractalState, ColorState, MouseState, ExportState, RenderState, AnimationState, FractalType, FractalIterations},
-    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS, AdjProbJulia, ChaosSymmetry1}, 
+    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS, AdjProbJulia, ChaosSymmetry1, LaceJulia}, 
     gpu::RenderBackend,
     gui, cli,
     perf_log, enable_profiling,
@@ -156,6 +156,7 @@ impl FractalApp {
         let multi_julia_ifs = MultiJuliaIFS::new();
         let adj_prob_julia = AdjProbJulia::new();
         let chaos_symmetry1 = ChaosSymmetry1::new();
+        let lace_julia = LaceJulia::new();
         
         let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
             FractalType::Mandelbrot => &mandelbrot,
@@ -173,6 +174,7 @@ impl FractalApp {
             FractalType::MultiJuliaIFS => &multi_julia_ifs,
             FractalType::AdjProbJulia => &adj_prob_julia,
             FractalType::ChaosSymmetry1 => &chaos_symmetry1,
+            FractalType::LaceJulia => &lace_julia,
         };
 
         let buffer_size = (self.view_state.view.width * self.view_state.view.height * 4) as usize;
@@ -515,6 +517,7 @@ impl eframe::App for FractalApp {
                             let multi_julia_ifs = MultiJuliaIFS::new();
                             let adj_prob_julia = AdjProbJulia::new();
                             let chaos_symmetry1 = ChaosSymmetry1::new();
+                            let lace_julia = LaceJulia::new();
                             
                             let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
                                 FractalType::Mandelbrot => &mandelbrot,
@@ -532,6 +535,7 @@ impl eframe::App for FractalApp {
                                 FractalType::MultiJuliaIFS => &multi_julia_ifs,
                                 FractalType::AdjProbJulia => &adj_prob_julia,
                                 FractalType::ChaosSymmetry1 => &chaos_symmetry1,
+                                FractalType::LaceJulia => &lace_julia,
                             };
 
                             // Performance / Rendering Backend
@@ -678,6 +682,7 @@ impl eframe::App for FractalApp {
                                 &mut self.input.export_supersample,
                                 &mut self.render,
                                 &mut self.status_message,
+                                &mut self.export.last_export_path,
                                 &mut self.view_state.needs_redraw,
                             );
 
@@ -957,6 +962,7 @@ impl FractalApp {
                 "Multi-Julia IFS" => Box::new(MultiJuliaIFS::new()),
                 "Adj Prob Julia" => Box::new(AdjProbJulia::new()),
                 "ChaosSymmetry1" => Box::new(ChaosSymmetry1::new()),
+                "Lace Julia" => Box::new(LaceJulia::new()),
                 _ => Box::new(Mandelbrot::new()), // Fallback
             };
             

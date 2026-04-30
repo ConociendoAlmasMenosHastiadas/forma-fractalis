@@ -2,15 +2,17 @@
 //
 // param_0 = c.real
 // param_1 = c.imag
+// param_2 = escape_radius (default 2.0)
 //
 // z_{n+1} = z_n^2 + c/z_n,  z_0 = pixel coordinate
-// Escapes when |z| > 2
+// Escapes when |z| > escape_radius
 // Guards against division by zero
 
 fn iterate_fractal(pixel: vec2<f32>) -> u32 {
     var z = pixel;
     let c = vec2<f32>(params.param_0, params.param_1);
-    let escape_radius_sq = 4.0;  // |z| > 2 means z^2 > 4
+    let escape_r = params.param_2;
+    let escape_radius_sq = escape_r * escape_r;
     let epsilon_sq = 1e-30;  // Guard against division by zero
 
     for (var i = 0u; i < params.max_iter; i = i + 1u) {

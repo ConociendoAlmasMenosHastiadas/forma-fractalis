@@ -11,7 +11,7 @@
     <!-- Open Graph -->
     <meta property="og:title" content="Forma Fractalis - Free GPU-Accelerated Fractal Explorer">
     <meta property="og:description" content="Open-source Rust fractal explorer with GPU acceleration. 13 fractal types including orbit accumulation, high-precision deep zoom, custom colormaps, and 8K export.">
-    <meta property="og:image" content="https://raw.githubusercontent.com/ConociendoAlmasMenosHastiadas/forma-fractalis/main/img_resources/showcase/chaossymmetry1_1280x720_2xGaussian1777355263.png">
+    <meta property="og:image" content="https://raw.githubusercontent.com/ConociendoAlmasMenosHastiadas/forma-fractalis/main/img_resources/showcase/lace_julia_3840x2160_4xLanczos31777585168.png">
     <meta property="og:url" content="https://conociendoalmasmenoshastiadas.github.io/forma-fractalis/">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Forma Fractalis">
@@ -20,7 +20,7 @@
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Forma Fractalis - Free GPU-Accelerated Fractal Explorer">
     <meta name="twitter:description" content="Open-source fractal explorer in Rust. 13 fractal types including orbit accumulation, GPU rendering, deep zoom, 8K export.">
-    <meta name="twitter:image" content="https://raw.githubusercontent.com/ConociendoAlmasMenosHastiadas/forma-fractalis/main/img_resources/showcase/chaossymmetry1_1280x720_2xGaussian1777355263.png">
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/ConociendoAlmasMenosHastiadas/forma-fractalis/main/img_resources/showcase/lace_julia_3840x2160_4xLanczos31777585168.png">
 
     <style>
         :root {
@@ -245,9 +245,9 @@
 <!-- Showcase -->
 <div class="container">
     <div class="showcase">
-        <img src="img_resources/showcase/chaossymmetry1_1280x720_2xGaussian1777355263.png"
-             alt="ChaosSymmetry1 attractor fractal rendered via orbit accumulation in Forma Fractalis v0.2.5">
-        <p class="caption">v0.2.5 Showcase &mdash; ChaosSymmetry1 attractor via orbit accumulation (2&times; Gaussian supersample), GPU-accelerated</p>
+        <img src="img_resources/showcase/lace_julia_3840x2160_4xLanczos31777585168.png"
+             alt="Lace Julia fractal (rational map) rendered at 3840x2160 with Lanczos3 filtering in Forma Fractalis v0.2.6">
+        <p class="caption">v0.2.6 Showcase &mdash; Lace Julia fractal: z<sub>n+1</sub> = (i&middot;z<sub>n</sub><sup>3</sup> + 1010&middot;z<sub>n</sub><sup>6</sup>) / (c&middot;i + 3301&middot;z<sub>n</sub><sup>7</sup>), rendered at 3840&times;2160 (4&times; Lanczos3)</p>
     </div>
 </div>
 
@@ -257,8 +257,8 @@
         <h2>Features</h2>
         <div class="features">
             <div class="feature-card">
-                <h3>13 Fractal Types</h3>
-                <p>Mandelbrot, Julia, Burning Ship, Tippets, Multifractal-Julia, Multi-Julia IFS, Cactus, Marek Dragon, Tetration, Lemon, Zubieta, Sin Julia, Insideout Dragon.</p>
+                <h3>14 Fractal Types</h3>
+                <p>Mandelbrot, Julia, Burning Ship, Tippets, Multifractal-Julia, Multi-Julia IFS, Cactus, Marek Dragon, Tetration, Lemon, Zubieta, Sin Julia, Insideout Dragon, Lace Julia.</p>
             </div>
             <div class="feature-card">
                 <h3>GPU-Accelerated Rendering</h3>
@@ -346,6 +346,8 @@
                      alt="Julia Set with configurable power exponent rendered in Forma Fractalis v0.2.3">
                 <img src="img_resources/gallery_expanded/multi-julia_ifs_2560x1440_4xGaussian1776566332.png"
                      alt="Multi-Julia IFS orbit accumulation fractal rendered in Forma Fractalis v0.2.4">
+                <img src="img_resources/gallery_expanded/v0.2.5_chaos_symmetry1.png"
+                     alt="ChaosSymmetry1 attractor fractal rendered via orbit accumulation in Forma Fractalis v0.2.5">
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
                 <img src="img_resources/gallery_expanded/multifractal-julia_3840x2160_4xLanczos31769398723.png"

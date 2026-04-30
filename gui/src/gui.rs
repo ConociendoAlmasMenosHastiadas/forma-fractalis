@@ -724,6 +724,7 @@ pub fn render_actions_section(
     export_supersample_input: &mut String,
     render_state: &mut crate::app_state::RenderState,
     status_message: &mut String,
+    last_export_path: &mut Option<std::path::PathBuf>,
     _needs_redraw: &mut bool,
 ) {
     // Import section
@@ -931,11 +932,29 @@ pub fn render_actions_section(
 
         match result {
             Ok(path) => {
+                *last_export_path = Some(std::path::PathBuf::from(&path));
                 *status_message = format!("Exported to: {}", path);
             }
             Err(e) => {
                 *status_message = format!("Export failed: {}", e);
             }
+        }
+    }
+
+    // Open last exported image button
+    ui.add_space(5.0);
+    let can_open = last_export_path.as_ref().map_or(false, |p| p.exists());
+    let open_button = egui::Button::new("Open Last Export");
+    if ui.add_enabled(can_open, open_button).clicked() {
+        if let Some(path) = last_export_path {
+            if let Err(e) = open::that(path.as_path()) {
+                *status_message = format!("Failed to open file: {}", e);
+            }
+        }
+    }
+    if let Some(path) = last_export_path.as_ref() {
+        if !can_open {
+            ui.label(egui::RichText::new(format!("Last export: {} (not found)", path.display())).small().weak());
         }
     }
 }

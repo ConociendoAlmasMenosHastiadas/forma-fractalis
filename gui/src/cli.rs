@@ -184,6 +184,7 @@ pub fn render_from_cli(args: &Commands) -> Result<(), String> {
             let multi_julia_ifs = crate::fractals::MultiJuliaIFS::new();
             let adj_prob_julia = crate::fractals::AdjProbJulia::new();
             let chaos_symmetry1 = crate::fractals::ChaosSymmetry1::new();
+            let lace_julia = crate::fractals::LaceJulia::new();
             
             let fractal: &dyn Fractal = match fractal_state.fractal_type {
                 crate::app_state::FractalType::Mandelbrot => &mandelbrot,
@@ -201,6 +202,7 @@ pub fn render_from_cli(args: &Commands) -> Result<(), String> {
                 crate::app_state::FractalType::MultiJuliaIFS => &multi_julia_ifs,
                 crate::app_state::FractalType::AdjProbJulia => &adj_prob_julia,
                 crate::app_state::FractalType::ChaosSymmetry1 => &chaos_symmetry1,
+                crate::app_state::FractalType::LaceJulia => &lace_julia,
             };
             
             pb.set_message(format!(

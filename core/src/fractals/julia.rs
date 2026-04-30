@@ -71,9 +71,11 @@ impl Fractal for Julia {
         let c = Complex64::new(julia_c_real, julia_c_imag);
         let mut z = Complex64::new(c_real, c_imag);
         let mut iter = 0;
+        let escape_r = parameters.get("escape_radius").copied().unwrap_or(2.0);
+        let escape_sq = escape_r * escape_r;
 
         while iter < max_iter {
-            if z.norm_sqr() > 4.0 {
+            if z.norm_sqr() > escape_sq {
                 break;
             }
 
@@ -145,6 +147,14 @@ impl Fractal for Julia {
                 10.0,
                 "Iteration exponent k in z^k + c. 2 = classic Julia set."
             ),
+            Parameter::new(
+                "escape_radius",
+                "Escape Radius",
+                2.0,
+                0.5,
+                100.0,
+                "Escape radius: iterate escapes when |z| > escape_radius."
+            ),
         ]
     }
 
@@ -186,7 +196,8 @@ impl Fractal for Julia {
         let mut zr = c_real.clone();
         let mut zi = c_imag.clone();
 
-        let four = BigFloat::from_f64(4.0, p);
+        let escape_r = parameters.get("escape_radius").copied().unwrap_or(2.0);
+        let four = BigFloat::from_f64(escape_r * escape_r, p);
         let two  = BigFloat::from_f64(2.0, p);
         let is_negative_power = power < 0.0;
         let epsilon_bf = BigFloat::from_f64(ABSOLUTE_EPSILON, p);

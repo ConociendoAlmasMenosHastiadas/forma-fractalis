@@ -35,6 +35,7 @@ pub mod sin_julia;
 pub mod multi_julia_ifs;
 pub mod adj_prob_julia;
 pub mod chaos_symmetry1;
+pub mod lace_julia;
 
 // Parameter system extensions
 pub mod parameter_types;
@@ -55,6 +56,7 @@ pub use sin_julia::SinJulia;
 pub use multi_julia_ifs::MultiJuliaIFS;
 pub use adj_prob_julia::AdjProbJulia;
 pub use chaos_symmetry1::ChaosSymmetry1;
+pub use lace_julia::LaceJulia;
 pub use parameter_types::EscapeMode;
 
 /// Represents the view parameters for rendering any fractal
@@ -395,6 +397,7 @@ pub enum FractalType {
     MultiJuliaIFS,
     AdjProbJulia,
     ChaosSymmetry1,
+    LaceJulia,
 }
 
 impl FractalType {
@@ -415,6 +418,7 @@ impl FractalType {
             FractalType::MultiJuliaIFS => "Multi-Julia IFS",
             FractalType::AdjProbJulia => "Adj Prob Julia",
             FractalType::ChaosSymmetry1 => "ChaosSymmetry1",
+            FractalType::LaceJulia => "Lace Julia",
         }
     }
 
@@ -439,6 +443,7 @@ impl FractalType {
             FractalType::MultiJuliaIFS => "z_{n+1} = sqrt(z_n - c_i), i chosen by probability",
             FractalType::AdjProbJulia => "z_{n+1} = s*sqrt(|z_n-z_0|)*exp(i*arg(z_n)/2)",
             FractalType::ChaosSymmetry1 => "z_{n+1} = (a0+a1|z|^2+a2 Re(z^m)+a3 i)*z + a4*conj(z)^{m-1}",
+            FractalType::LaceJulia => "z_{n+1} = (i*z_n^3 + 1010*z_n^6) / (c*i + 3301*z_n^7)",
         }
     }
 
@@ -458,6 +463,7 @@ impl FractalType {
             FractalType::InsideoutDragon,
             FractalType::MultiJuliaIFS,
             FractalType::ChaosSymmetry1,
+            FractalType::LaceJulia,
             // AdjProbJulia mothballed in v0.2.5 — needs formula investigation; see plans/v0.3.7.md
         ]
     }
@@ -480,6 +486,7 @@ impl FractalType {
             FractalType::MultiJuliaIFS => Box::new(MultiJuliaIFS::new()),
             FractalType::AdjProbJulia => Box::new(AdjProbJulia::new()),
             FractalType::ChaosSymmetry1 => Box::new(ChaosSymmetry1::new()),
+            FractalType::LaceJulia => Box::new(LaceJulia::new()),
         }
     }
 

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-04-30
+
+### Added
+- **Lace Julia Fractal**: rational map z_{n+1} = (i·z_n^3 + 1010·z_n^6) / (c·i + 3301·z_n^7), colored by escape velocity
+  - CPU f64 path with pole and denominator guards (|z|² < 1e-30, |denom|² < 1e-30)
+  - CPU hi-precision path: BigFloat arithmetic at 64–1024 bits
+  - GPU f32 compute shader (`lace_julia_kernel.wgsl`) via shader composition pipeline
+  - Complex parameter c with rectangular and polar coordinate input modes (magnitude/angle)
+  - Escape radius parameter (default 2.0, range 0.5–100.0)
+- **Marek Dragon GPU Shader** (`marek_dragon_kernel.wgsl`): escape-time GPU rendering for the Marek Dragon fractal
+- **Escape Radius Slider**: added to Mandelbrot, Julia, Burning Ship, Tippets Mandelbrot, Zubieta, and Marek Dragon (CPU + GPU where applicable)
+- **Open Last Exported Image** button in the export section; opens the most recently exported PNG in the system default viewer
+
+### Changed
+- rand 0.8.5 → 0.8.6 (dependabot)
+
 ## [0.2.5] - 2026-04-29
 
 ### Added

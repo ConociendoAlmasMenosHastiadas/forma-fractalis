@@ -35,9 +35,11 @@ impl Fractal for Zubieta {
         let c = Complex64::new(zubieta_c_real, zubieta_c_imag);
         let mut z = Complex64::new(c_real, c_imag);
         let mut iter = 0;
+        let escape_r = parameters.get("escape_radius").copied().unwrap_or(2.0);
+        let escape_sq = escape_r * escape_r;
 
         while iter < max_iter {
-            if z.norm_sqr() > 4.0 {
+            if z.norm_sqr() > escape_sq {
                 break;
             }
             
@@ -93,6 +95,14 @@ impl Fractal for Zubieta {
                 -2.0,
                 2.0,
                 "Imaginary component of the Zubieta constant"
+            ),
+            Parameter::new(
+                "escape_radius",
+                "Escape Radius",
+                2.0,
+                0.5,
+                100.0,
+                "Escape radius: iterate escapes when |z| > escape_radius."
             ),
         ]
     }
