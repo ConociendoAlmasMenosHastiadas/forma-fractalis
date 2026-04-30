@@ -182,6 +182,8 @@ pub fn render_from_cli(args: &Commands) -> Result<(), String> {
             let zubieta = Zubieta::new();
             let sin_julia = SinJulia::new();
             let multi_julia_ifs = crate::fractals::MultiJuliaIFS::new();
+            let adj_prob_julia = crate::fractals::AdjProbJulia::new();
+            let chaos_symmetry1 = crate::fractals::ChaosSymmetry1::new();
             
             let fractal: &dyn Fractal = match fractal_state.fractal_type {
                 crate::app_state::FractalType::Mandelbrot => &mandelbrot,
@@ -197,6 +199,8 @@ pub fn render_from_cli(args: &Commands) -> Result<(), String> {
                 crate::app_state::FractalType::Zubieta => &zubieta,
                 crate::app_state::FractalType::SinJulia => &sin_julia,
                 crate::app_state::FractalType::MultiJuliaIFS => &multi_julia_ifs,
+                crate::app_state::FractalType::AdjProbJulia => &adj_prob_julia,
+                crate::app_state::FractalType::ChaosSymmetry1 => &chaos_symmetry1,
             };
             
             pb.set_message(format!(

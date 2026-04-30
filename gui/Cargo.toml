@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-forma-fractalis-core = { path = "../core", version = "0.2.3", features = ["gpu"] }
+forma-fractalis-core = { path = "../core", version = "0.2.5", features = ["gpu"] }
 scala-chromatica.workspace = true
 eframe = "0.25"
 rfd = "0.17"

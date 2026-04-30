@@ -52,6 +52,8 @@
 2. Extract and run `forma-fractalis.exe`
 3. Start exploring!
 
+> **Windows SmartScreen notice:** When running the downloaded `.exe` for the first time, Windows may show a "Windows protected your PC" dialog because the binary is not yet code-signed. Click **"More info"** → **"Run anyway"** to proceed. This is expected for open-source projects distributed outside the Microsoft Store.
+
 ### Option 2: Build from Source
 ```bash
 git clone https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis.git
@@ -128,6 +130,7 @@ forma-fractalis --profiling
 | ![Cactus Vertical](img_resources/gallery_expanded/cactus_1080x2400_4xLanczos31772175230.png) |
 | ![Multi-Julia IFS orbit accumulation](img_resources/gallery_expanded/multi-julia_ifs_2560x1440_4xGaussian1776566332.png) |
 | ![Multi-Julia IFS v0.2.3 Julia Power showcase](img_resources/gallery_expanded/v0.2.3_julia_power.png) |
+| ![Multi-Julia IFS v0.2.4 showcase](img_resources/gallery_expanded/v0.2.4_multi_julia_ifs.png) |
 
 </details>
 
@@ -278,14 +281,26 @@ The core library can be used independently. See [core/README.md](core/README.md)
 
 ## Releases
 
-**Latest: v0.2.4** (April 22, 2026)
+**Latest: v0.2.5** (April 29, 2026)
 
-Multi-Julia IFS fractal via inverse-iteration orbit accumulation (chaos game), GPU orbit accumulation compute shader (1D dispatch, atomic density histogram), CPU hi-precision orbit path with BigFloat, Burning Ship hi-precision support, GitHub Sponsors integration.
+ChaosSymmetry1 attractor fractal (orbit accumulation, GPU f32, CPU hi-prec), Cactus GPU shader, Sin Julia hi-precision CPU support, image/png crate upgrade (0.25/0.18).
 
-![v0.2.4 Release - Multi-Julia IFS](img_resources/showcase/v0.2.4_multi_julia_ifs.png)
+![v0.2.5 Release - ChaosSymmetry1 attractor](img_resources/showcase/chaossymmetry1_1280x720_2xGaussian1777355263.png)
 
 <details>
 <summary><b>View release history...</b></summary>
+
+### v0.2.5 (April 29, 2026)
+- ChaosSymmetry1 attractor fractal: orbit accumulation via z_{n+1} = (a0 + a1|z|² + a2·Re(z^m) + a3·i)·z + a4·conj(z)^{m-1}
+- GPU f32 orbit compute shader for ChaosSymmetry1 (repurposes IFS param slots)
+- CPU hi-prec path for ChaosSymmetry1 (f64 orbit + BigFloat screen coordinate mapping)
+- Cactus GPU shader (`cactus_kernel.wgsl`), registered in backend selection
+- Sin Julia CPU hi-precision support (BigFloat sin(), 5 unit tests)
+- `FractalTypeOps::uses_orbit_accumulation()` — hides Iterations field for orbit fractals in GUI
+- image crate upgraded to v0.25, png to v0.18
+- Full-width sliders for ChaosSymmetry1 GUI; ComboBox full-width fix for long fractal names
+- Windows SmartScreen workaround documented in README
+- BENCHMARKS.md: hardware profile recommendations added
 
 ### v0.2.4 (April 22, 2026)
 - Multi-Julia IFS fractal: inverse-iteration chaos game (orbit accumulation, not escape-time)

@@ -15,6 +15,7 @@
 
 use super::{Fractal, FractalView, Parameter};
 use std::collections::HashMap;
+use astro_float::{BigFloat, Consts, RoundingMode};
 
 /// Sin Julia set fractal with configurable constant
 pub struct SinJulia;
@@ -124,6 +125,78 @@ impl Fractal for SinJulia {
             ),
         ]
     }
+
+    fn supports_hiprec(&self) -> bool {
+        true
+    }
+
+    /// High-precision Sin Julia iteration using software floating-point arithmetic.
+    ///
+    /// The Sin Julia formula: z_{n+1} = c * sin(z_n), z_0 = pixel coordinate.
+    ///
+    /// Complex sine: sin(x + iy) = sin(x)*cosh(y) + i*cos(x)*sinh(y)
+    ///
+    /// `bits` is one of: 64, 128, 256, 512, 1024.
+    fn iterate_hiprec(
+        &self,
+        c_real: &BigFloat,
+        c_imag: &BigFloat,
+        parameters: &HashMap<String, f64>,
+        max_iter: u32,
+        bits: u32,
+    ) -> u32 {
+        let sin_julia_c_real = parameters.get("c_real").copied().unwrap_or(1.0);
+        let sin_julia_c_imag = parameters.get("c_imag").copied().unwrap_or(0.1);
+        let escape_radius_f64 = parameters.get("escape_radius").copied().unwrap_or(50.0);
+
+        let p = bits as usize;
+        let rm = RoundingMode::ToEven;
+        let mut cc = Consts::new().expect("BigFloat constants cache");
+
+        // Julia constant
+        let const_cr = BigFloat::from_f64(sin_julia_c_real, p);
+        let const_ci = BigFloat::from_f64(sin_julia_c_imag, p);
+
+        let escape_radius_sq = BigFloat::from_f64(escape_radius_f64 * escape_radius_f64, p);
+
+        // z starts at the pixel coordinate
+        let mut zr = c_real.clone();
+        let mut zi = c_imag.clone();
+
+        for iter in 0..max_iter {
+            let zr2 = zr.mul(&zr, p, rm);
+            let zi2 = zi.mul(&zi, p, rm);
+            let norm_sq = zr2.add(&zi2, p, rm);
+
+            if norm_sq.cmp(&escape_radius_sq).map_or(false, |v| v > 0) {
+                return iter;
+            }
+
+            // Compute sin(z) = sin(zr + i*zi)
+            // sin(x + iy) = sin(x)*cosh(y) + i*cos(x)*sinh(y)
+            let sin_zr = zr.sin(p, rm, &mut cc);
+            let cos_zr = zr.cos(p, rm, &mut cc);
+            let sinh_zi = zi.sinh(p, rm, &mut cc);
+            let cosh_zi = zi.cosh(p, rm, &mut cc);
+
+            let sin_z_re = sin_zr.mul(&cosh_zi, p, rm);
+            let sin_z_im = cos_zr.mul(&sinh_zi, p, rm);
+
+            // Multiply by c: z_{n+1} = c * sin(z)
+            // (a + ib)(x + iy) = ax - by + i(ay + bx)
+            let new_zr = const_cr.mul(&sin_z_re, p, rm).sub(&const_ci.mul(&sin_z_im, p, rm), p, rm);
+            let new_zi = const_cr.mul(&sin_z_im, p, rm).add(&const_ci.mul(&sin_z_re, p, rm), p, rm);
+
+            if new_zr.is_nan() || new_zr.is_inf() || new_zi.is_nan() || new_zi.is_inf() {
+                return iter;
+            }
+
+            zr = new_zr;
+            zi = new_zi;
+        }
+
+        max_iter
+    }
 }
 
 #[cfg(test)]
@@ -160,5 +233,85 @@ mod tests {
         assert!(params.iter().any(|p| p.name == "c_real"));
         assert!(params.iter().any(|p| p.name == "c_imag"));
         assert!(params.iter().any(|p| p.name == "escape_radius"));
+    }
+
+    fn to_bf(re: f64, im: f64, bits: u32) -> (BigFloat, BigFloat) {
+        let p = bits as usize;
+        (BigFloat::from_f64(re, p), BigFloat::from_f64(im, p))
+    }
+
+    fn default_params() -> HashMap<String, f64> {
+        let mut p = HashMap::new();
+        p.insert("c_real".to_string(), 1.0);
+        p.insert("c_imag".to_string(), 0.1);
+        p.insert("escape_radius".to_string(), 50.0);
+        p
+    }
+
+    /// Origin z=0: sin(0)=0, so z stays at 0 forever — inside the set.
+    #[test]
+    fn hiprec_origin_in_set() {
+        let f = SinJulia::new();
+        let (cr, ci) = to_bf(0.0, 0.0, 128);
+        let result = f.iterate_hiprec(&cr, &ci, &default_params(), 100, 128);
+        assert_eq!(result, 100, "origin (z=0) should never escape: sin(0)*c = 0");
+    }
+
+    /// A point with large imaginary part should escape quickly due to cosh growth.
+    #[test]
+    fn hiprec_large_imaginary_escapes() {
+        let f = SinJulia::new();
+        // sin(x + iy) grows like cosh(y) for large y, so z escapes the escape_radius
+        let (cr, ci) = to_bf(0.0, 10.0, 128);
+        let result = f.iterate_hiprec(&cr, &ci, &default_params(), 200, 128);
+        assert!(result < 200, "point with large imaginary part should escape");
+    }
+
+    /// Hi-prec and f64 must agree on unambiguous points.
+    #[test]
+    fn hiprec_matches_f64_for_robust_points() {
+        let f = SinJulia::new();
+        let params = default_params();
+        // Use origin (always in set) and a clearly-escaping point
+        let cases: &[(f64, f64)] = &[
+            (0.0, 0.0),    // always in set: sin(0)=0 forever
+            (0.0, 10.0),   // escapes via cosh growth
+        ];
+        for &(re, im) in cases {
+            let f64_iters = f.iterate(re, im, &params, 100);
+            let (cr, ci) = to_bf(re, im, 128);
+            let hp_iters = f.iterate_hiprec(&cr, &ci, &params, 100, 128);
+            assert_eq!(
+                f64_iters, hp_iters,
+                "f64 and hiprec disagree at ({re},{im}): f64={f64_iters} hiprec={hp_iters}"
+            );
+        }
+    }
+
+    /// Smoke test across all supported bit widths — must not panic.
+    #[test]
+    fn hiprec_bit_widths_smoke() {
+        let f = SinJulia::new();
+        let params = default_params();
+        for &bits in &[64u32, 128, 256, 512, 1024] {
+            let (cr, ci) = to_bf(0.0, 10.0, bits);
+            let result = f.iterate_hiprec(&cr, &ci, &params, 50, bits);
+            assert!(result < 50, "large imaginary point should escape at {bits} bits");
+        }
+    }
+
+    /// Precision should not change result for a clearly-outside point.
+    #[test]
+    fn hiprec_precision_agrees_on_escaping_point() {
+        let f = SinJulia::new();
+        let params = default_params();
+        let (cr64,  ci64)  = to_bf(0.0, 10.0, 64);
+        let (cr128, ci128) = to_bf(0.0, 10.0, 128);
+        let (cr256, ci256) = to_bf(0.0, 10.0, 256);
+        let r64  = f.iterate_hiprec(&cr64,  &ci64,  &params, 100, 64);
+        let r128 = f.iterate_hiprec(&cr128, &ci128, &params, 100, 128);
+        let r256 = f.iterate_hiprec(&cr256, &ci256, &params, 100, 256);
+        assert_eq!(r64, r128, "64-bit vs 128-bit disagree at (0, 10)");
+        assert_eq!(r128, r256, "128-bit vs 256-bit disagree at (0, 10)");
     }
 }

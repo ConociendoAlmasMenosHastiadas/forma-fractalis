@@ -206,4 +206,34 @@ mod tests {
             assert!(b < 50);  // Minimal blue
         }
     }
+
+    #[test]
+    fn test_apply_supersample_filter_gaussian() {
+        // Create a 4x4 solid blue buffer
+        let mut buffer = Vec::with_capacity(4 * 4 * 4);
+        for _ in 0..16 {
+            buffer.extend_from_slice(&[0, 0, 255, 255]); // Blue
+        }
+
+        // Downsample to 2x2 with Gaussian filter
+        let result = apply_supersample_filter(
+            &buffer,
+            4, 4,
+            2, 2,
+            FilterType::Gaussian,
+        ).unwrap();
+
+        // Should be 2x2 = 4 pixels * 4 channels = 16 bytes
+        assert_eq!(result.len(), 2 * 2 * 4);
+
+        // All pixels should still be predominantly blue
+        for i in 0..4 {
+            let r = result[i * 4];
+            let g = result[i * 4 + 1];
+            let b = result[i * 4 + 2];
+            assert!(r < 50);  // Minimal red
+            assert!(g < 50);  // Minimal green
+            assert!(b > 200); // Should be mostly blue
+        }
+    }
 }

@@ -247,9 +247,16 @@ impl WgpuRenderer {
         });
         
         // Create output buffer
+        let output_buffer_size = (output_size * std::mem::size_of::<u32>()) as u64;
+        perf_log!("[GPU-MEM] Render {}x{}: output={:.1} MB, staging={:.1} MB (total GPU alloc ~{:.1} MB)",
+            config.width, config.height,
+            output_buffer_size as f64 / (1024.0 * 1024.0),
+            output_buffer_size as f64 / (1024.0 * 1024.0),
+            2.0 * output_buffer_size as f64 / (1024.0 * 1024.0));
+
         let output_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Output Buffer"),
-            size: (output_size * std::mem::size_of::<u32>()) as u64,
+            size: output_buffer_size,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
@@ -257,7 +264,7 @@ impl WgpuRenderer {
         // Create staging buffer for reading results
         let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Staging Buffer"),
-            size: (output_size * std::mem::size_of::<u32>()) as u64,
+            size: output_buffer_size,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -305,7 +312,7 @@ impl WgpuRenderer {
             0,
             &staging_buffer,
             0,
-            (output_size * std::mem::size_of::<u32>()) as u64,
+            output_buffer_size,
         );
         
         self.queue.submit(Some(encoder.finish()));
@@ -657,6 +664,7 @@ impl WgpuRenderer {
             "Burning Ship" => Some("Burning Ship"),
             "Tippets Mandelbrot" => Some("Tippets Mandelbrot"),
             "Multifractal-Julia" => Some("Multifractal-Julia"),
+            "Cactus" => Some("Cactus"),
             _ => None,
         }
     }
@@ -664,7 +672,8 @@ impl WgpuRenderer {
     /// Map a fractal name to its GPU orbit pipeline name
     fn orbit_pipeline_name_for(fractal_name: &str) -> Option<&'static str> {
         match fractal_name {
-            "Multi-Julia IFS" => Some("Multi-Julia IFS Orbit"),
+            "Multi-Julia IFS"  => Some("Multi-Julia IFS Orbit"),
+            "ChaosSymmetry1"   => Some("ChaosSymmetry1 Orbit"),
             _ => None,
         }
     }
@@ -726,18 +735,45 @@ impl WgpuRenderer {
             max_buffer_size: device_limits.max_buffer_size,
         };
         
-        // Pre-compile all fractal shaders using kernel composition
-        renderer.load_shader("Mandelbrot", include_str!("shaders/mandelbrot_kernel.wgsl"))?;
-        renderer.load_shader("Julia Set", include_str!("shaders/julia_kernel.wgsl"))?;
-        renderer.load_shader("Insideout Dragon", include_str!("shaders/insideout_dragon_kernel.wgsl"))?;
-        renderer.load_shader("Zubieta", include_str!("shaders/zubieta_kernel.wgsl"))?;
-        renderer.load_shader("Sin Julia", include_str!("shaders/sin_julia_kernel.wgsl"))?;
-        renderer.load_shader("Burning Ship", include_str!("shaders/burning_ship_kernel.wgsl"))?;
-        renderer.load_shader("Tippets Mandelbrot", include_str!("shaders/tippets_mandelbrot_kernel.wgsl"))?;
-        renderer.load_shader("Multifractal-Julia", include_str!("shaders/multifractal_julia_kernel.wgsl"))?;
+        // Pre-compile all fractal shaders using kernel composition.
+        // Each load_shader() call composes the kernel with common.wgsl and calls
+        // device.create_compute_pipeline(), which is the expensive step.
+        // Timings are printed when --profiling is active.
+        let shader_compile_start = std::time::Instant::now();
+
+        macro_rules! load_timed {
+            ($renderer:expr, $name:expr, $src:expr) => {{
+                let t = std::time::Instant::now();
+                $renderer.load_shader($name, $src)?;
+                perf_log!("[GPU-INIT] Compiled shader '{}': {:.2?}", $name, t.elapsed());
+            }};
+        }
+
+        load_timed!(renderer, "Mandelbrot",          include_str!("shaders/mandelbrot_kernel.wgsl"));
+        load_timed!(renderer, "Julia Set",            include_str!("shaders/julia_kernel.wgsl"));
+        load_timed!(renderer, "Insideout Dragon",     include_str!("shaders/insideout_dragon_kernel.wgsl"));
+        load_timed!(renderer, "Zubieta",              include_str!("shaders/zubieta_kernel.wgsl"));
+        load_timed!(renderer, "Sin Julia",            include_str!("shaders/sin_julia_kernel.wgsl"));
+        load_timed!(renderer, "Burning Ship",         include_str!("shaders/burning_ship_kernel.wgsl"));
+        load_timed!(renderer, "Tippets Mandelbrot",   include_str!("shaders/tippets_mandelbrot_kernel.wgsl"));
+        load_timed!(renderer, "Multifractal-Julia",   include_str!("shaders/multifractal_julia_kernel.wgsl"));
+        load_timed!(renderer, "Cactus",               include_str!("shaders/cactus_kernel.wgsl"));
 
         // Orbit accumulation shaders (different composition template)
-        renderer.load_orbit_shader("Multi-Julia IFS Orbit", include_str!("shaders/multi_julia_ifs_orbit_kernel.wgsl"))?;
+        {
+            let t = std::time::Instant::now();
+            renderer.load_orbit_shader("Multi-Julia IFS Orbit", include_str!("shaders/multi_julia_ifs_orbit_kernel.wgsl"))?;
+            perf_log!("[GPU-INIT] Compiled orbit shader 'Multi-Julia IFS Orbit': {:.2?}", t.elapsed());
+        }
+        {
+            let t = std::time::Instant::now();
+            renderer.load_orbit_shader("ChaosSymmetry1 Orbit", include_str!("shaders/chaos_symmetry1_orbit_kernel.wgsl"))?;
+            perf_log!("[GPU-INIT] Compiled orbit shader 'ChaosSymmetry1 Orbit': {:.2?}", t.elapsed());
+        }
+
+        let total_compile = shader_compile_start.elapsed();
+        println!("[GPU-INIT] All {} shaders compiled in {:.2?}",
+            renderer.pipelines.len(), total_compile);
 
         Ok(renderer)
     }
@@ -779,52 +815,83 @@ impl FractalRenderer for WgpuRenderer {
         let pipeline_name = Self::orbit_pipeline_name_for(fractal_name)
             .ok_or_else(|| format!("No GPU orbit shader for '{}'", fractal_name))?;
 
-        // Parse IFS map data from fractal_params
-        let num_maps = fractal_params.get("num_attractors").copied().unwrap_or(2.0) as u32;
-        let total_samples = fractal_params.get("samples").copied().unwrap_or(5_000_000.0) as u64;
-        let burn_in = fractal_params.get("burn_in").copied().unwrap_or(50.0) as u32;
-        let seed = fractal_params.get("seed").copied().unwrap_or(0.0) as u32;
-        let samples_per_thread = (total_samples / 64) as u32; // 64 threads
+        let gpu_params = if fractal_name == "ChaosSymmetry1" {
+            // ── ChaosSymmetry1 parameter mapping ──────────────────────────────────
+            // Repurposes OrbitParams fields:  map_re[0..4] = a0..a4,  num_maps = m
+            let total_samples = fractal_params.get("samples").copied().unwrap_or(5_000_000.0) as u64;
+            let burn_in  = fractal_params.get("burn_in").copied().unwrap_or(1_000.0) as u32;
+            let seed     = fractal_params.get("seed").copied().unwrap_or(0.0) as u32;
+            let m        = fractal_params.get("m").copied().unwrap_or(3.0) as u32;
+            let a0       = fractal_params.get("a0").copied().unwrap_or(1.5)  as f32;
+            let a1       = fractal_params.get("a1").copied().unwrap_or(-1.5) as f32;
+            let a2       = fractal_params.get("a2").copied().unwrap_or(0.0)  as f32;
+            let a3       = fractal_params.get("a3").copied().unwrap_or(0.0)  as f32;
+            let a4       = fractal_params.get("a4").copied().unwrap_or(0.5)  as f32;
+            GpuOrbitParams {
+                center_x,
+                center_y,
+                zoom,
+                width,
+                height,
+                samples_per_thread: (total_samples / 64) as u32,
+                burn_in,
+                seed_base: if seed == 0 { 0xDEAD_BEEF } else { seed },
+                num_maps: m.max(2),
+                _pad0: 0,
+                _pad1: 0,
+                _pad2: 0,
+                map_re: [a0, a1, a2, a3, a4, 0.0, 0.0, 0.0],
+                map_im: [0.0; 8],
+                cum_prob: [0.0; 8],
+            }
+        } else {
+            // ── Multi-Julia IFS (and any future IFS-type orbit fractals) ──────────
+            let num_maps = fractal_params.get("num_attractors").copied().unwrap_or(2.0) as u32;
+            let total_samples = fractal_params.get("samples").copied().unwrap_or(5_000_000.0) as u64;
+            let burn_in = fractal_params.get("burn_in").copied().unwrap_or(50.0) as u32;
+            let seed = fractal_params.get("seed").copied().unwrap_or(0.0) as u32;
+            let samples_per_thread = (total_samples / 64) as u32;
 
-        let mut map_re = [0.0f32; 8];
-        let mut map_im = [0.0f32; 8];
-        let mut cum_prob = [0.0f32; 8];
+            let mut map_re = [0.0f32; 8];
+            let mut map_im = [0.0f32; 8];
+            let mut cum_prob = [0.0f32; 8];
 
-        // Build map arrays and cumulative probabilities
-        let mut total_weight = 0.0f64;
-        for i in 0..num_maps.min(8) as usize {
-            map_re[i] = fractal_params.get(&format!("c{}_real", i)).copied().unwrap_or(0.0) as f32;
-            map_im[i] = fractal_params.get(&format!("c{}_imag", i)).copied().unwrap_or(0.0) as f32;
-            let prob = fractal_params.get(&format!("prob{}", i)).copied().unwrap_or(1.0);
-            total_weight += prob;
-        }
-        // Normalize to cumulative
-        let mut running = 0.0f64;
-        for i in 0..num_maps.min(8) as usize {
-            let prob = fractal_params.get(&format!("prob{}", i)).copied().unwrap_or(1.0);
-            running += prob / total_weight;
-            cum_prob[i] = running as f32;
-        }
-        if num_maps > 0 {
-            cum_prob[(num_maps - 1).min(7) as usize] = 1.0; // ensure exact 1.0
-        }
+            // Build map arrays and cumulative probabilities
+            let mut total_weight = 0.0f64;
+            for i in 0..num_maps.min(8) as usize {
+                map_re[i] = fractal_params.get(&format!("c{}_real", i)).copied().unwrap_or(0.0) as f32;
+                map_im[i] = fractal_params.get(&format!("c{}_imag", i)).copied().unwrap_or(0.0) as f32;
+                let prob = fractal_params.get(&format!("prob{}", i)).copied().unwrap_or(1.0);
+                total_weight += prob;
+            }
+            // Normalize to cumulative
+            let mut running = 0.0f64;
+            for i in 0..num_maps.min(8) as usize {
+                let prob = fractal_params.get(&format!("prob{}", i)).copied().unwrap_or(1.0);
+                running += prob / total_weight;
+                cum_prob[i] = running as f32;
+            }
+            if num_maps > 0 {
+                cum_prob[(num_maps - 1).min(7) as usize] = 1.0; // ensure exact 1.0
+            }
 
-        let gpu_params = GpuOrbitParams {
-            center_x,
-            center_y,
-            zoom,
-            width,
-            height,
-            samples_per_thread,
-            burn_in,
-            seed_base: if seed == 0 { 0xDEADBEEF } else { seed },
-            num_maps,
-            _pad0: 0,
-            _pad1: 0,
-            _pad2: 0,
-            map_re,
-            map_im,
-            cum_prob,
+            GpuOrbitParams {
+                center_x,
+                center_y,
+                zoom,
+                width,
+                height,
+                samples_per_thread,
+                burn_in,
+                seed_base: if seed == 0 { 0xDEADBEEF } else { seed },
+                num_maps,
+                _pad0: 0,
+                _pad1: 0,
+                _pad2: 0,
+                map_re,
+                map_im,
+                cum_prob,
+            }
         };
 
         self.render_orbit_density_internal(width, height, &gpu_params, pipeline_name)

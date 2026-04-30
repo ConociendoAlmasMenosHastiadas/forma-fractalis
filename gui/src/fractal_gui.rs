@@ -14,6 +14,7 @@ use crate::app_state::{InputState, CoordinateMode};
 use crate::fractals::{
     Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia,
     Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS,
+    AdjProbJulia, ChaosSymmetry1,
 };
 use crate::fractals::parameter_types::EscapeMode;
 
@@ -1316,6 +1317,424 @@ impl FractalGUI for InsideoutDragon {
                 "Range: slider [1.0, 100.0], text input: any positive value"
             ).small().weak());
         });
+
+        ui.add_space(10.0);
+    }
+}
+
+// -- Adj Prob Julia -------------------------------------------------------
+
+impl FractalGUI for AdjProbJulia {
+    fn render_parameters_gui(
+        &self,
+        ui: &mut egui::Ui,
+        params: &mut HashMap<String, f64>,
+        input_state: &mut InputState,
+        needs_redraw: &mut bool,
+    ) {
+        // Sync GUI fields from params on load/reset
+        {
+            let p_thresh = params.get("threshold").copied().unwrap_or(0.5);
+            let p_samp   = params.get("samples").copied().unwrap_or(20.0);
+            let p_burn   = params.get("burn_in").copied().unwrap_or(10.0);
+            let p_seed   = params.get("seed").copied().unwrap_or(0.0);
+            let p_log    = params.get("use_log_density").copied().unwrap_or(1.0) > 0.5;
+            if input_state.parse_adj_prob_julia_threshold() != p_thresh {
+                input_state.adj_prob_julia_threshold = format!("{:.4}", p_thresh);
+            }
+            if input_state.parse_adj_prob_julia_samples() != p_samp {
+                input_state.adj_prob_julia_samples = format!("{:.0}", p_samp);
+            }
+            if input_state.parse_adj_prob_julia_burn_in() != p_burn {
+                input_state.adj_prob_julia_burn_in = format!("{:.0}", p_burn);
+            }
+            if input_state.parse_adj_prob_julia_seed() != p_seed {
+                input_state.adj_prob_julia_seed = format!("{:.0}", p_seed);
+            }
+            if input_state.adj_prob_julia_use_log_density != p_log {
+                input_state.adj_prob_julia_use_log_density = p_log;
+            }
+        }
+
+        ui.label(egui::RichText::new("Adj Prob Julia Parameters").strong());
+        ui.label(
+            egui::RichText::new("z_{n+1} = s*sqrt(z_n - z_0),  z_0 = screen pixel")
+                .small()
+                .weak(),
+        );
+        ui.label(
+            egui::RichText::new("R=0.5: full Julia sets.  R=0: +sqrt branch only.  R=1: -sqrt branch only.")
+                .small()
+                .weak(),
+        );
+        ui.add_space(6.0);
+
+        // Sign threshold slider
+        let mut threshold = input_state.parse_adj_prob_julia_threshold();
+        ui.horizontal(|ui| {
+            ui.label("Sign Threshold (R):");
+            if ui.add(egui::Slider::new(&mut threshold, 0.0..=1.0)
+                .text("").step_by(0.01).fixed_decimals(2)).changed()
+            {
+                input_state.adj_prob_julia_threshold = format!("{:.4}", threshold);
+                *needs_redraw = true;
+            }
+        });
+
+        ui.add_space(8.0);
+        ui.separator();
+        ui.add_space(4.0);
+
+        // Samples per pixel (linear, small range)
+        let mut samples = input_state.parse_adj_prob_julia_samples();
+        ui.horizontal(|ui| {
+            ui.label("Samples/pixel:");
+            if ui.add(egui::Slider::new(&mut samples, 1.0..=500.0)
+                .text("").step_by(1.0).fixed_decimals(0)).changed()
+            {
+                input_state.adj_prob_julia_samples = format!("{:.0}", samples);
+                *needs_redraw = true;
+            }
+        });
+        ui.label(egui::RichText::new("Orbit steps per pixel per pass (x64 passes total)").small().weak());
+
+        ui.add_space(4.0);
+
+        // Burn-in slider
+        let mut burn_in = input_state.parse_adj_prob_julia_burn_in();
+        ui.horizontal(|ui| {
+            ui.label("Burn-in:");
+            if ui.add(egui::Slider::new(&mut burn_in, 0.0..=200.0)
+                .text("").step_by(1.0).fixed_decimals(0)).changed()
+            {
+                input_state.adj_prob_julia_burn_in = format!("{:.0}", burn_in);
+                *needs_redraw = true;
+            }
+        });
+        ui.label(egui::RichText::new("Steps discarded before recording").small().weak());
+
+        ui.add_space(4.0);
+
+        // Log density checkbox
+        if ui.checkbox(&mut input_state.adj_prob_julia_use_log_density, "Log density normalization").changed() {
+            *needs_redraw = true;
+        }
+        ui.label(egui::RichText::new("Compresses dynamic range (recommended)").small().weak());
+
+        ui.add_space(4.0);
+
+        // Seed text field
+        ui.horizontal(|ui| {
+            ui.label("PRNG Seed:");
+            if ui.add(egui::TextEdit::singleline(&mut input_state.adj_prob_julia_seed)
+                .desired_width(80.0)).changed()
+            {
+                trigger_debounced_redraw(&mut input_state.debounce_timer, &mut input_state.pending_redraw);
+            }
+        });
+
+        // Always keep params in sync
+        params.insert("threshold".to_string(),     input_state.parse_adj_prob_julia_threshold());
+        params.insert("samples".to_string(),       input_state.parse_adj_prob_julia_samples());
+        params.insert("burn_in".to_string(),       input_state.parse_adj_prob_julia_burn_in());
+        params.insert("seed".to_string(),          input_state.parse_adj_prob_julia_seed());
+        params.insert("use_log_density".to_string(), if input_state.adj_prob_julia_use_log_density { 1.0 } else { 0.0 });
+
+        ui.add_space(10.0);
+    }
+}
+
+// ── ChaosSymmetry1 ────────────────────────────────────────────────────────
+
+impl FractalGUI for ChaosSymmetry1 {
+    fn render_parameters_gui(
+        &self,
+        ui: &mut egui::Ui,
+        params: &mut HashMap<String, f64>,
+        input_state: &mut InputState,
+        needs_redraw: &mut bool,
+    ) {
+        // Sync GUI text fields from params on load/reset
+        {
+            let p_samp = params.get("samples").copied().unwrap_or(5_000_000.0);
+            let p_burn = params.get("burn_in").copied().unwrap_or(1_000.0);
+            let p_seed = params.get("seed").copied().unwrap_or(0.0);
+            let p_log  = params.get("use_log_density").copied().unwrap_or(1.0) > 0.5;
+            if input_state.parse_chaos_symmetry1_samples() != p_samp {
+                input_state.chaos_symmetry1_samples = format!("{:.0}", p_samp);
+            }
+            if input_state.parse_chaos_symmetry1_burn_in() != p_burn {
+                input_state.chaos_symmetry1_burn_in = format!("{:.0}", p_burn);
+            }
+            if input_state.parse_chaos_symmetry1_seed() != p_seed {
+                input_state.chaos_symmetry1_seed = format!("{:.0}", p_seed);
+            }
+            if input_state.chaos_symmetry1_use_log_density != p_log {
+                input_state.chaos_symmetry1_use_log_density = p_log;
+            }
+        }
+
+        ui.label(egui::RichText::new("ChaosSymmetry1 Parameters").strong());
+        ui.label(
+            egui::RichText::new(
+                "z_{n+1} = (a0+a1|z|^2+a2 Re(z^m)+a3 i)*z + a4*conj(z)^{m-1}"
+            )
+            .small()
+            .weak(),
+        );
+        ui.add_space(6.0);
+
+        // ── Symmetry degree m ──
+        let mut m_val = params.get("m").copied().unwrap_or(3.0).round().clamp(2.0, 8.0);
+        ui.horizontal(|ui| {
+            ui.label("m (symmetry degree):");
+            if ui.add(egui::Slider::new(&mut m_val, 2.0..=8.0)
+                .step_by(1.0).fixed_decimals(0)).changed()
+            {
+                params.insert("m".to_string(), m_val.round());
+                *needs_redraw = true;
+            }
+        });
+        ui.label(egui::RichText::new("Rotational symmetry of the attractor image").small().weak());
+
+        ui.add_space(6.0);
+        ui.separator();
+        ui.add_space(4.0);
+        ui.label(egui::RichText::new("Tip: Ctrl+click any slider to type an exact value").small().weak());
+        ui.add_space(4.0);
+
+        // ── a0 and a1 ──
+        // Sync text fields from params on load/reset
+        {
+            let p_a0 = params.get("a0").copied().unwrap_or(1.5);
+            let p_a1 = params.get("a1").copied().unwrap_or(-1.5);
+            let p_a2 = params.get("a2").copied().unwrap_or(0.0);
+            let p_a3 = params.get("a3").copied().unwrap_or(0.0);
+            let p_a4 = params.get("a4").copied().unwrap_or(0.5);
+            if (input_state.parse_chaos_symmetry1_a0() - p_a0).abs() > 1e-9 {
+                input_state.chaos_symmetry1_a0 = format!("{:.4}", p_a0);
+            }
+            if (input_state.parse_chaos_symmetry1_a1() - p_a1).abs() > 1e-9 {
+                input_state.chaos_symmetry1_a1 = format!("{:.4}", p_a1);
+            }
+            if (input_state.parse_chaos_symmetry1_a2() - p_a2).abs() > 1e-9 {
+                input_state.chaos_symmetry1_a2 = format!("{:.4}", p_a2);
+            }
+            if (input_state.parse_chaos_symmetry1_a3() - p_a3).abs() > 1e-9 {
+                input_state.chaos_symmetry1_a3 = format!("{:.4}", p_a3);
+            }
+            if (input_state.parse_chaos_symmetry1_a4() - p_a4).abs() > 1e-9 {
+                input_state.chaos_symmetry1_a4 = format!("{:.4}", p_a4);
+            }
+        }
+
+        let mut a0 = params.get("a0").copied().unwrap_or(1.5);
+        ui.horizontal(|ui| {
+            ui.label("a0:");
+            if ui.add(egui::TextEdit::singleline(&mut input_state.chaos_symmetry1_a0).desired_width(80.0)).changed() {
+                if let Ok(v) = input_state.chaos_symmetry1_a0.parse::<f64>() {
+                    a0 = v.clamp(-3.0, 3.0);
+                    params.insert("a0".to_string(), a0);
+                    *needs_redraw = true;
+                }
+            }
+        });
+        {
+            let orig_w = ui.style().spacing.slider_width;
+            ui.style_mut().spacing.slider_width = ui.available_width() - 20.0;
+            if ui.add(egui::Slider::new(&mut a0, -3.0..=3.0)
+                .show_value(false).step_by(0.001)).changed()
+            {
+                params.insert("a0".to_string(), a0);
+                input_state.chaos_symmetry1_a0 = format!("{:.4}", a0);
+                *needs_redraw = true;
+            }
+            ui.style_mut().spacing.slider_width = orig_w;
+        }
+
+        let mut a1 = params.get("a1").copied().unwrap_or(-1.5);
+        ui.horizontal(|ui| {
+            ui.label("a1:");
+            if ui.add(egui::TextEdit::singleline(&mut input_state.chaos_symmetry1_a1).desired_width(80.0)).changed() {
+                if let Ok(v) = input_state.chaos_symmetry1_a1.parse::<f64>() {
+                    a1 = v.clamp(-3.0, 3.0);
+                    params.insert("a1".to_string(), a1);
+                    *needs_redraw = true;
+                }
+            }
+        });
+        {
+            let orig_w = ui.style().spacing.slider_width;
+            ui.style_mut().spacing.slider_width = ui.available_width() - 20.0;
+            if ui.add(egui::Slider::new(&mut a1, -3.0..=3.0)
+                .show_value(false).step_by(0.001)).changed()
+            {
+                params.insert("a1".to_string(), a1);
+                input_state.chaos_symmetry1_a1 = format!("{:.4}", a1);
+                *needs_redraw = true;
+            }
+            ui.style_mut().spacing.slider_width = orig_w;
+        }
+        ui.label(
+            egui::RichText::new("a0 & a1: interesting when outside (-1,1); a1 opposite sign to a0")
+                .small().weak(),
+        );
+
+        ui.add_space(4.0);
+
+        // ── a2 ──
+        let mut a2 = params.get("a2").copied().unwrap_or(0.0);
+        ui.horizontal(|ui| {
+            ui.label("a2 (perturbation):");
+            if ui.add(egui::TextEdit::singleline(&mut input_state.chaos_symmetry1_a2).desired_width(80.0)).changed() {
+                if let Ok(v) = input_state.chaos_symmetry1_a2.parse::<f64>() {
+                    a2 = v.clamp(-2.0, 2.0);
+                    params.insert("a2".to_string(), a2);
+                    *needs_redraw = true;
+                }
+            }
+        });
+        {
+            let orig_w = ui.style().spacing.slider_width;
+            ui.style_mut().spacing.slider_width = ui.available_width() - 20.0;
+            if ui.add(egui::Slider::new(&mut a2, -2.0..=2.0)
+                .show_value(false).step_by(0.001)).changed()
+            {
+                params.insert("a2".to_string(), a2);
+                input_state.chaos_symmetry1_a2 = format!("{:.4}", a2);
+                *needs_redraw = true;
+            }
+            ui.style_mut().spacing.slider_width = orig_w;
+        }
+        ui.label(egui::RichText::new("0 = no perturbation; non-zero perturbs the symmetry").small().weak());
+
+        ui.add_space(4.0);
+
+        // ── a3 ──
+        let mut a3 = params.get("a3").copied().unwrap_or(0.0);
+        ui.horizontal(|ui| {
+            ui.label("a3 (bilateral symmetry):");
+            if ui.add(egui::TextEdit::singleline(&mut input_state.chaos_symmetry1_a3).desired_width(80.0)).changed() {
+                if let Ok(v) = input_state.chaos_symmetry1_a3.parse::<f64>() {
+                    a3 = v.clamp(-1.0, 1.0);
+                    params.insert("a3".to_string(), a3);
+                    *needs_redraw = true;
+                }
+            }
+        });
+        {
+            let orig_w = ui.style().spacing.slider_width;
+            ui.style_mut().spacing.slider_width = ui.available_width() - 20.0;
+            if ui.add(egui::Slider::new(&mut a3, -1.0..=1.0)
+                .show_value(false).step_by(0.001)).changed()
+            {
+                params.insert("a3".to_string(), a3);
+                input_state.chaos_symmetry1_a3 = format!("{:.4}", a3);
+                *needs_redraw = true;
+            }
+            ui.style_mut().spacing.slider_width = orig_w;
+        }
+        ui.label(egui::RichText::new("0 = mirror-symmetric; non-zero breaks bilateral symmetry").small().weak());
+
+        ui.add_space(4.0);
+
+        // ── a4 ──
+        let mut a4 = params.get("a4").copied().unwrap_or(0.5);
+        ui.horizontal(|ui| {
+            ui.label("a4:");
+            if ui.add(egui::TextEdit::singleline(&mut input_state.chaos_symmetry1_a4).desired_width(80.0)).changed() {
+                if let Ok(v) = input_state.chaos_symmetry1_a4.parse::<f64>() {
+                    a4 = v.clamp(-1.0, 1.0);
+                    params.insert("a4".to_string(), a4);
+                    *needs_redraw = true;
+                }
+            }
+        });
+        {
+            let orig_w = ui.style().spacing.slider_width;
+            ui.style_mut().spacing.slider_width = ui.available_width() - 20.0;
+            if ui.add(egui::Slider::new(&mut a4, -1.0..=1.0)
+                .show_value(false).step_by(0.001)).changed()
+            {
+                params.insert("a4".to_string(), a4);
+                input_state.chaos_symmetry1_a4 = format!("{:.4}", a4);
+                *needs_redraw = true;
+            }
+            ui.style_mut().spacing.slider_width = orig_w;
+        }
+        ui.label(egui::RichText::new("Conjugate term scale; avoid values near 0").small().weak());
+
+        ui.add_space(6.0);
+        ui.separator();
+        ui.add_space(4.0);
+
+        // ── Samples (log scale) ──
+        let mut samples = input_state.parse_chaos_symmetry1_samples();
+        let mut log_samples = samples.log10();
+        ui.horizontal(|ui| {
+            ui.label("Samples:");
+            if ui.add(
+                egui::Slider::new(&mut log_samples, 5.0..=7.7)
+                    .text("")
+                    .step_by(0.01)
+                    .fixed_decimals(2)
+                    .custom_formatter(|v, _| {
+                        let s = 10.0_f64.powf(v);
+                        if s >= 1_000_000.0 {
+                            format!("{:.1}M", s / 1_000_000.0)
+                        } else {
+                            format!("{:.0}K", s / 1_000.0)
+                        }
+                    }),
+            ).changed() {
+                samples = 10.0_f64.powf(log_samples);
+                input_state.chaos_symmetry1_samples = format!("{:.0}", samples);
+                *needs_redraw = true;
+            }
+        });
+        ui.label(egui::RichText::new("More samples = smoother image, slower render").small().weak());
+
+        ui.add_space(4.0);
+
+        // ── Burn-in ──
+        let mut burn_in = input_state.parse_chaos_symmetry1_burn_in();
+        ui.horizontal(|ui| {
+            ui.label("Burn-in:");
+            if ui.add(egui::Slider::new(&mut burn_in, 0.0..=10_000.0)
+                .text("").step_by(100.0).fixed_decimals(0)).changed()
+            {
+                input_state.chaos_symmetry1_burn_in = format!("{:.0}", burn_in);
+                *needs_redraw = true;
+            }
+        });
+        ui.label(egui::RichText::new("Steps discarded to settle onto the attractor (pass 1)").small().weak());
+
+        ui.add_space(4.0);
+
+        // ── Log density ──
+        if ui.checkbox(&mut input_state.chaos_symmetry1_use_log_density, "Log density normalization").changed() {
+            *needs_redraw = true;
+        }
+        ui.label(egui::RichText::new("Compresses dynamic range (strongly recommended)").small().weak());
+
+        ui.add_space(4.0);
+
+        // ── Seed ──
+        ui.horizontal(|ui| {
+            ui.label("PRNG Seed:");
+            if ui.add(egui::TextEdit::singleline(&mut input_state.chaos_symmetry1_seed)
+                .desired_width(80.0)).changed()
+            {
+                trigger_debounced_redraw(&mut input_state.debounce_timer, &mut input_state.pending_redraw);
+            }
+        });
+        ui.label(egui::RichText::new("Different seeds produce different starting points").small().weak());
+
+        // Always keep params in sync with GUI state
+        params.insert("samples".to_string(),        input_state.parse_chaos_symmetry1_samples());
+        params.insert("burn_in".to_string(),        input_state.parse_chaos_symmetry1_burn_in());
+        params.insert("seed".to_string(),           input_state.parse_chaos_symmetry1_seed());
+        params.insert("use_log_density".to_string(), if input_state.chaos_symmetry1_use_log_density { 1.0 } else { 0.0 });
 
         ui.add_space(10.0);
     }

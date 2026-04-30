@@ -76,6 +76,7 @@ pub trait FractalTypeOps {
         input_state: &mut InputState,
         needs_redraw: &mut bool,
     );
+    fn uses_orbit_accumulation(&self) -> bool;
 }
 
 /// Helper to trigger debounced redraw (for text inputs)
@@ -436,27 +437,24 @@ where
     section_header(ui, "Fractal Settings");
 
     // Fractal type selector
-    ui.horizontal(|ui| {
-        ui.label("Type:");
-        ui.add_space(15.0);
-        
-        let current_name = fractal_type.get_name();
-        egui::ComboBox::from_id_source("fractal_type")
-            .selected_text(current_name)
-            .show_ui(ui, |ui| {
-                for ft in FT::all_types() {
-                    if ui.selectable_value(fractal_type, ft, ft.get_name()).clicked() {
-                        // Reset view to fractal's default when switching
-                        ft.reset_view_and_params(
-                            view,
-                            fractal_parameters,
-                            input_state,
-                        );
-                        *needs_redraw = true;
-                    }
+    ui.label("Type:");
+    let current_name = fractal_type.get_name();
+    egui::ComboBox::from_id_source("fractal_type")
+        .selected_text(current_name)
+        .width(ui.available_width() - 4.0)
+        .show_ui(ui, |ui| {
+            for ft in FT::all_types() {
+                if ui.selectable_value(fractal_type, ft, ft.get_name()).clicked() {
+                    // Reset view to fractal's default when switching
+                    ft.reset_view_and_params(
+                        view,
+                        fractal_parameters,
+                        input_state,
+                    );
+                    *needs_redraw = true;
                 }
-            });
-    });
+            }
+        });
 
     // Display the fractal's mathematical equation
     let equation = fractal_type.get_equation();
@@ -479,59 +477,62 @@ where
         needs_redraw,
     );
 
-    // Iterations input with multiply/divide buttons
-    ui.horizontal(|ui| {
-        ui.label("Iterations:");
-        ui.add_space(5.0);
-        if ui
-            .add(egui::TextEdit::singleline(&mut input_state.iterations).desired_width(80.0))
-            .changed()
-        {
-            trigger_debounced_redraw(&mut input_state.debounce_timer, &mut input_state.pending_redraw);
-        }
+    // Iterations input with multiply/divide buttons — hidden for orbit-accumulation fractals
+    // (those fractals expose their own Samples control in their parameter section above)
+    if !fractal_type.uses_orbit_accumulation() {
+        ui.horizontal(|ui| {
+            ui.label("Iterations:");
+            ui.add_space(5.0);
+            if ui
+                .add(egui::TextEdit::singleline(&mut input_state.iterations).desired_width(80.0))
+                .changed()
+            {
+                trigger_debounced_redraw(&mut input_state.debounce_timer, &mut input_state.pending_redraw);
+            }
 
-        if ui.small_button("×2").clicked() {
-            if let Ok(val) = input_state.iterations.parse::<u32>() {
-                input_state.iterations = (val * 2).to_string();
-                *needs_redraw = true;
+            if ui.small_button("×2").clicked() {
+                if let Ok(val) = input_state.iterations.parse::<u32>() {
+                    input_state.iterations = (val * 2).to_string();
+                    *needs_redraw = true;
+                }
             }
-        }
-        if ui.small_button("÷2").clicked() {
-            if let Ok(val) = input_state.iterations.parse::<u32>() {
-                input_state.iterations = (val / 2).to_string();
-                *needs_redraw = true;
+            if ui.small_button("÷2").clicked() {
+                if let Ok(val) = input_state.iterations.parse::<u32>() {
+                    input_state.iterations = (val / 2).to_string();
+                    *needs_redraw = true;
+                }
             }
-        }
-        if ui.small_button("×10").clicked() {
-            if let Ok(val) = input_state.iterations.parse::<u32>() {
-                input_state.iterations = (val * 10).to_string();
-                *needs_redraw = true;
+            if ui.small_button("×10").clicked() {
+                if let Ok(val) = input_state.iterations.parse::<u32>() {
+                    input_state.iterations = (val * 10).to_string();
+                    *needs_redraw = true;
+                }
             }
-        }
-        if ui.small_button("÷10").clicked() {
-            if let Ok(val) = input_state.iterations.parse::<u32>() {
-                input_state.iterations = (val / 10).to_string();
-                *needs_redraw = true;
+            if ui.small_button("÷10").clicked() {
+                if let Ok(val) = input_state.iterations.parse::<u32>() {
+                    input_state.iterations = (val / 10).to_string();
+                    *needs_redraw = true;
+                }
             }
-        }
-    });
+        });
 
-    // GPU iteration safety warning
-    #[cfg(feature = "gpu")]
-    if matches!(render_backend, RenderBackend::Gpu) {
-        if let Ok(iter_val) = input_state.iterations.parse::<u32>() {
-            if iter_val > crate::gpu::GPU_MAX_SAFE_ITERATIONS {
-                ui.label(
-                    egui::RichText::new(format!(
-                        "WARNING: {} iterations exceeds GPU safe limit ({}). \
-                         GPU will clamp to {}. Use CPU mode for higher iterations.",
-                        iter_val,
-                        crate::gpu::GPU_MAX_SAFE_ITERATIONS,
-                        crate::gpu::GPU_MAX_SAFE_ITERATIONS,
-                    ))
-                    .small()
-                    .color(egui::Color32::from_rgb(255, 165, 0)),
-                );
+        // GPU iteration safety warning
+        #[cfg(feature = "gpu")]
+        if matches!(render_backend, RenderBackend::Gpu) {
+            if let Ok(iter_val) = input_state.iterations.parse::<u32>() {
+                if iter_val > crate::gpu::GPU_MAX_SAFE_ITERATIONS {
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "WARNING: {} iterations exceeds GPU safe limit ({}). \
+                             GPU will clamp to {}. Use CPU mode for higher iterations.",
+                            iter_val,
+                            crate::gpu::GPU_MAX_SAFE_ITERATIONS,
+                            crate::gpu::GPU_MAX_SAFE_ITERATIONS,
+                        ))
+                        .small()
+                        .color(egui::Color32::from_rgb(255, 165, 0)),
+                    );
+                }
             }
         }
     }

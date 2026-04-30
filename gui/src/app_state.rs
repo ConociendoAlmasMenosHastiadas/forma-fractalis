@@ -318,6 +318,20 @@ pub struct InputState {
     pub sin_julia_coord_mode: CoordinateMode,
     pub sin_julia_escape_radius: String,
     pub multi_julia_ifs: MultiJuliaIFSState,
+    pub adj_prob_julia_threshold: String,
+    pub adj_prob_julia_samples: String,
+    pub adj_prob_julia_burn_in: String,
+    pub adj_prob_julia_seed: String,
+    pub adj_prob_julia_use_log_density: bool,
+    pub chaos_symmetry1_samples: String,
+    pub chaos_symmetry1_burn_in: String,
+    pub chaos_symmetry1_seed: String,
+    pub chaos_symmetry1_use_log_density: bool,
+    pub chaos_symmetry1_a0: String,
+    pub chaos_symmetry1_a1: String,
+    pub chaos_symmetry1_a2: String,
+    pub chaos_symmetry1_a3: String,
+    pub chaos_symmetry1_a4: String,
     pub period: String,
     pub export_scale: String,
     pub export_supersample: String,
@@ -358,6 +372,20 @@ impl Default for InputState {
             sin_julia_coord_mode: CoordinateMode::default(),
             sin_julia_escape_radius: String::from("50.0"),
             multi_julia_ifs: MultiJuliaIFSState::default(),
+            adj_prob_julia_threshold: String::from("0.5"),
+            adj_prob_julia_samples: String::from("20"),
+            adj_prob_julia_burn_in: String::from("10"),
+            adj_prob_julia_seed: String::from("0"),
+            adj_prob_julia_use_log_density: true,
+            chaos_symmetry1_samples: String::from("5000000"),
+            chaos_symmetry1_burn_in: String::from("1000"),
+            chaos_symmetry1_seed: String::from("0"),
+            chaos_symmetry1_use_log_density: true,
+            chaos_symmetry1_a0: String::from("1.5"),
+            chaos_symmetry1_a1: String::from("-1.5"),
+            chaos_symmetry1_a2: String::from("0"),
+            chaos_symmetry1_a3: String::from("0"),
+            chaos_symmetry1_a4: String::from("0.5"),
             period: String::from("128"),
             export_scale: String::from("3.0"),
             export_supersample: String::from("4"),
@@ -462,6 +490,50 @@ impl InputState {
     pub fn parse_sin_julia_escape_radius(&self) -> f64 {
         self.sin_julia_escape_radius.parse::<f64>().unwrap_or(50.0)
     }
+
+    pub fn parse_adj_prob_julia_threshold(&self) -> f64 {
+        self.adj_prob_julia_threshold.parse::<f64>().unwrap_or(0.5).clamp(0.0, 1.0)
+    }
+
+    pub fn parse_adj_prob_julia_samples(&self) -> f64 {
+        self.adj_prob_julia_samples.parse::<f64>().unwrap_or(5_000_000.0).max(1.0)
+    }
+
+    pub fn parse_adj_prob_julia_burn_in(&self) -> f64 {
+        self.adj_prob_julia_burn_in.parse::<f64>().unwrap_or(50.0).max(0.0)
+    }
+
+    pub fn parse_adj_prob_julia_seed(&self) -> f64 {
+        self.adj_prob_julia_seed.parse::<f64>().unwrap_or(0.0)
+    }
+
+    pub fn parse_chaos_symmetry1_samples(&self) -> f64 {
+        self.chaos_symmetry1_samples.parse::<f64>().unwrap_or(5_000_000.0).max(1.0)
+    }
+
+    pub fn parse_chaos_symmetry1_burn_in(&self) -> f64 {
+        self.chaos_symmetry1_burn_in.parse::<f64>().unwrap_or(1_000.0).max(0.0)
+    }
+
+    pub fn parse_chaos_symmetry1_seed(&self) -> f64 {
+        self.chaos_symmetry1_seed.parse::<f64>().unwrap_or(0.0)
+    }
+
+    pub fn parse_chaos_symmetry1_a0(&self) -> f64 {
+        self.chaos_symmetry1_a0.parse::<f64>().unwrap_or(1.5).clamp(-3.0, 3.0)
+    }
+    pub fn parse_chaos_symmetry1_a1(&self) -> f64 {
+        self.chaos_symmetry1_a1.parse::<f64>().unwrap_or(-1.5).clamp(-3.0, 3.0)
+    }
+    pub fn parse_chaos_symmetry1_a2(&self) -> f64 {
+        self.chaos_symmetry1_a2.parse::<f64>().unwrap_or(0.0).clamp(-2.0, 2.0)
+    }
+    pub fn parse_chaos_symmetry1_a3(&self) -> f64 {
+        self.chaos_symmetry1_a3.parse::<f64>().unwrap_or(0.0).clamp(-1.0, 1.0)
+    }
+    pub fn parse_chaos_symmetry1_a4(&self) -> f64 {
+        self.chaos_symmetry1_a4.parse::<f64>().unwrap_or(0.5).clamp(-1.0, 1.0)
+    }
 }
 
 /// Re-export `FractalIterations` from core for use throughout the GUI.
@@ -494,6 +566,14 @@ impl crate::gui::FractalTypeOps for FractalType {
 
     fn is_mandelbrot(&self) -> bool {
         FractalType::is_mandelbrot(self)
+    }
+
+    fn uses_orbit_accumulation(&self) -> bool {
+        matches!(self,
+            FractalType::MultiJuliaIFS
+            | FractalType::ChaosSymmetry1
+            | FractalType::AdjProbJulia
+        )
     }
 
     fn reset_view_and_params(
@@ -611,6 +691,33 @@ impl crate::gui::FractalTypeOps for FractalType {
                 params.insert("burn_in".to_string(), 50.0);
                 params.insert("use_log_density".to_string(), 1.0);
             }
+            FractalType::AdjProbJulia => {
+                view.center_x = 0.0;
+                view.center_y = 0.0;
+                view.zoom = 1.0;
+                params.clear();
+                params.insert("threshold".to_string(), input.parse_adj_prob_julia_threshold());
+                params.insert("samples".to_string(), input.parse_adj_prob_julia_samples());
+                params.insert("burn_in".to_string(), input.parse_adj_prob_julia_burn_in());
+                params.insert("seed".to_string(), input.parse_adj_prob_julia_seed());
+                params.insert("use_log_density".to_string(), if input.adj_prob_julia_use_log_density { 1.0 } else { 0.0 });
+            }
+            FractalType::ChaosSymmetry1 => {
+                view.center_x = 0.0;
+                view.center_y = 0.0;
+                view.zoom = 1.0;
+                params.clear();
+                params.insert("a0".to_string(), 1.5);
+                params.insert("a1".to_string(), -1.5);
+                params.insert("a2".to_string(), 0.0);
+                params.insert("a3".to_string(), 0.0);
+                params.insert("a4".to_string(), 0.5);
+                params.insert("m".to_string(),  3.0);
+                params.insert("samples".to_string(), input.parse_chaos_symmetry1_samples());
+                params.insert("burn_in".to_string(), input.parse_chaos_symmetry1_burn_in());
+                params.insert("seed".to_string(), input.parse_chaos_symmetry1_seed());
+                params.insert("use_log_density".to_string(), if input.chaos_symmetry1_use_log_density { 1.0 } else { 0.0 });
+            }
         }
     }
 
@@ -621,7 +728,7 @@ impl crate::gui::FractalTypeOps for FractalType {
         input_state: &mut InputState,
         needs_redraw: &mut bool,
     ) {
-        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS};
+        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS, AdjProbJulia, ChaosSymmetry1};
         use crate::fractal_gui::FractalGUI;
 
         match self {
@@ -638,6 +745,8 @@ impl crate::gui::FractalTypeOps for FractalType {
             FractalType::Zubieta => Zubieta::new().render_parameters_gui(ui, params, input_state, needs_redraw),
             FractalType::SinJulia => SinJulia::new().render_parameters_gui(ui, params, input_state, needs_redraw),
             FractalType::MultiJuliaIFS => MultiJuliaIFS::new().render_parameters_gui(ui, params, input_state, needs_redraw),
+            FractalType::AdjProbJulia => AdjProbJulia::new().render_parameters_gui(ui, params, input_state, needs_redraw),
+            FractalType::ChaosSymmetry1 => ChaosSymmetry1::new().render_parameters_gui(ui, params, input_state, needs_redraw),
         }
     }
 }
@@ -1127,6 +1236,23 @@ impl From<&crate::export::FractalMetadata> for InputState {
             .copied()
             .unwrap_or(50.0);
 
+        // Extract Adj Prob Julia parameters if present
+        let adj_prob_julia_threshold = meta.fractal_parameters.get("threshold")
+            .copied()
+            .unwrap_or(0.5);
+        let adj_prob_julia_samples = meta.fractal_parameters.get("samples")
+            .copied()
+            .unwrap_or(5_000_000.0);
+        let adj_prob_julia_burn_in = meta.fractal_parameters.get("burn_in")
+            .copied()
+            .unwrap_or(50.0);
+        let adj_prob_julia_seed = meta.fractal_parameters.get("seed")
+            .copied()
+            .unwrap_or(0.0);
+        let adj_prob_julia_use_log_density = meta.fractal_parameters.get("use_log_density")
+            .copied()
+            .unwrap_or(1.0) > 0.5;
+
         Self {
             width: meta.width.to_string(),
             height: meta.height.to_string(),
@@ -1156,6 +1282,20 @@ impl From<&crate::export::FractalMetadata> for InputState {
             sin_julia_coord_mode: crate::app_state::CoordinateMode::default(),
             sin_julia_escape_radius: sin_julia_escape_radius.to_string(),
             multi_julia_ifs: MultiJuliaIFSState::from_params(&meta.fractal_parameters),
+            adj_prob_julia_threshold: adj_prob_julia_threshold.to_string(),
+            adj_prob_julia_samples: format!("{:.0}", adj_prob_julia_samples),
+            adj_prob_julia_burn_in: format!("{:.0}", adj_prob_julia_burn_in),
+            adj_prob_julia_seed: format!("{:.0}", adj_prob_julia_seed),
+            adj_prob_julia_use_log_density,
+            chaos_symmetry1_samples: String::from("5000000"),
+            chaos_symmetry1_burn_in: String::from("1000"),
+            chaos_symmetry1_seed: String::from("0"),
+            chaos_symmetry1_use_log_density: true,
+            chaos_symmetry1_a0: String::from("1.5"),
+            chaos_symmetry1_a1: String::from("-1.5"),
+            chaos_symmetry1_a2: String::from("0"),
+            chaos_symmetry1_a3: String::from("0"),
+            chaos_symmetry1_a4: String::from("0.5"),
             period: meta.period.to_string(),
             export_scale: meta.export_scale.to_string(),
             export_supersample: meta.export_supersample.to_string(),

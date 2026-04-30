@@ -14,7 +14,7 @@ use crate::gpu::WgpuRenderer;
 use crate::fractals::{
     Fractal,
     Mandelbrot, Julia, BurningShip, InsideoutDragon, Zubieta, SinJulia, TippetsMandelbrot,
-    MultifractalJulia,
+    MultifractalJulia, Cactus,
 };
 use crate::rendering::compute_iterations;
 use std::collections::HashMap;
@@ -316,5 +316,6 @@ fn gpu_supported_fractals() -> Vec<(String, Box<dyn Fractal>)> {
         ("Sin Julia".to_string(), Box::new(SinJulia::new())),
         ("Tippets Mandelbrot".to_string(), Box::new(TippetsMandelbrot::new())),
         ("Multifractal-Julia".to_string(), Box::new(MultifractalJulia::new())),
+        ("Cactus".to_string(), Box::new(Cactus::new())),
     ]
 }

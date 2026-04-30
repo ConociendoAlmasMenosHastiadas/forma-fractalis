@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufWriter;
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
 /// Create metadata for PNG export as key-value pairs
@@ -264,7 +265,7 @@ pub fn export_png(
     let mut encoder = png::Encoder::new(writer, target_width, target_height);
     encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
-    encoder.set_compression(png::Compression::Default);
+    encoder.set_compression(png::Compression::default());
     
     // Add metadata as tEXt chunks
     for (key, value) in metadata {
@@ -715,7 +716,10 @@ mod tests {
         use std::collections::HashMap;
         use tempfile::TempDir;
         use crate::fractals::FractalType;
-        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus};
+        use crate::fractals::{
+            Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus,
+            MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS,
+        };
         
         let temp_dir = TempDir::new().unwrap();
         let colormap = ColorMap::default_scheme();
@@ -867,8 +871,172 @@ mod tests {
             assert_eq!(loaded.fractal_type, "Cactus");
             assert_eq!(loaded.parse_fractal_type().unwrap(), FractalType::Cactus);
         }
+
+        // Test Marek Dragon
+        {
+            let mut params = HashMap::new();
+            params.insert("phi".to_string(), 0.7);
+            let view = FractalView {
+                center_x: 0.0,
+                center_y: 0.0,
+                zoom: 1.0,
+                width: 400,
+                height: 300,
+                parameters: params.clone(),
+            };
+            let fractal = MarekDragon::new();
+            let result = export_png_test(
+                &view, &colormap, 100, &fractal, &params,
+                false, 256, false, [0, 0, 0], false,
+                FilterType::None, 1, 1.0, Some(&temp_dir.path().to_path_buf()),
+            );
+            assert!(result.is_ok(), "Marek Dragon export failed");
+            let loaded = load_png_metadata(result.unwrap()).unwrap();
+            assert_eq!(loaded.fractal_type, "Marek Dragon");
+            assert_eq!(loaded.parse_fractal_type().unwrap(), FractalType::MarekDragon);
+        }
+
+        // Test Tetration
+        {
+            let params = HashMap::new();
+            let view = FractalView {
+                center_x: 0.0,
+                center_y: 0.0,
+                zoom: 1.0,
+                width: 400,
+                height: 300,
+                parameters: params.clone(),
+            };
+            let fractal = Tetration::new();
+            let result = export_png_test(
+                &view, &colormap, 100, &fractal, &params,
+                false, 256, false, [0, 0, 0], false,
+                FilterType::None, 1, 1.0, Some(&temp_dir.path().to_path_buf()),
+            );
+            assert!(result.is_ok(), "Tetration export failed");
+            let loaded = load_png_metadata(result.unwrap()).unwrap();
+            assert_eq!(loaded.fractal_type, "Tetration");
+            assert_eq!(loaded.parse_fractal_type().unwrap(), FractalType::Tetration);
+        }
+
+        // Test Lemon
+        {
+            let params = HashMap::new();
+            let view = FractalView {
+                center_x: 0.0,
+                center_y: 0.0,
+                zoom: 1.0,
+                width: 400,
+                height: 300,
+                parameters: params.clone(),
+            };
+            let fractal = Lemon::new();
+            let result = export_png_test(
+                &view, &colormap, 100, &fractal, &params,
+                false, 256, false, [0, 0, 0], false,
+                FilterType::None, 1, 1.0, Some(&temp_dir.path().to_path_buf()),
+            );
+            assert!(result.is_ok(), "Lemon export failed");
+            let loaded = load_png_metadata(result.unwrap()).unwrap();
+            assert_eq!(loaded.fractal_type, "Lemon");
+            assert_eq!(loaded.parse_fractal_type().unwrap(), FractalType::Lemon);
+        }
+
+        // Test Insideout Dragon
+        {
+            let params = HashMap::new();
+            let view = FractalView {
+                center_x: 0.0,
+                center_y: 0.0,
+                zoom: 1.0,
+                width: 400,
+                height: 300,
+                parameters: params.clone(),
+            };
+            let fractal = InsideoutDragon::new();
+            let result = export_png_test(
+                &view, &colormap, 100, &fractal, &params,
+                false, 256, false, [0, 0, 0], false,
+                FilterType::None, 1, 1.0, Some(&temp_dir.path().to_path_buf()),
+            );
+            assert!(result.is_ok(), "Insideout Dragon export failed");
+            let loaded = load_png_metadata(result.unwrap()).unwrap();
+            assert_eq!(loaded.fractal_type, "Insideout Dragon");
+            assert_eq!(loaded.parse_fractal_type().unwrap(), FractalType::InsideoutDragon);
+        }
+
+        // Test Zubieta
+        {
+            let params = HashMap::new();
+            let view = FractalView {
+                center_x: 0.0,
+                center_y: 0.0,
+                zoom: 1.0,
+                width: 400,
+                height: 300,
+                parameters: params.clone(),
+            };
+            let fractal = Zubieta::new();
+            let result = export_png_test(
+                &view, &colormap, 100, &fractal, &params,
+                false, 256, false, [0, 0, 0], false,
+                FilterType::None, 1, 1.0, Some(&temp_dir.path().to_path_buf()),
+            );
+            assert!(result.is_ok(), "Zubieta export failed");
+            let loaded = load_png_metadata(result.unwrap()).unwrap();
+            assert_eq!(loaded.fractal_type, "Zubieta");
+            assert_eq!(loaded.parse_fractal_type().unwrap(), FractalType::Zubieta);
+        }
+
+        // Test Sin Julia
+        {
+            let mut params = HashMap::new();
+            params.insert("c_real".to_string(), 1.0);
+            params.insert("c_imag".to_string(), 0.1);
+            let view = FractalView {
+                center_x: 0.0,
+                center_y: 0.0,
+                zoom: 1.0,
+                width: 400,
+                height: 300,
+                parameters: params.clone(),
+            };
+            let fractal = SinJulia::new();
+            let result = export_png_test(
+                &view, &colormap, 100, &fractal, &params,
+                false, 256, false, [0, 0, 0], false,
+                FilterType::None, 1, 1.0, Some(&temp_dir.path().to_path_buf()),
+            );
+            assert!(result.is_ok(), "Sin Julia export failed");
+            let loaded = load_png_metadata(result.unwrap()).unwrap();
+            assert_eq!(loaded.fractal_type, "Sin Julia");
+            assert_eq!(loaded.parse_fractal_type().unwrap(), FractalType::SinJulia);
+        }
+
+        // Test Multi-Julia IFS
+        {
+            let params = HashMap::new();
+            let view = FractalView {
+                center_x: 0.0,
+                center_y: 0.0,
+                zoom: 1.0,
+                width: 400,
+                height: 300,
+                parameters: params.clone(),
+            };
+            let fractal = MultiJuliaIFS::new();
+            let result = export_png_test(
+                &view, &colormap, 100, &fractal, &params,
+                false, 256, false, [0, 0, 0], false,
+                FilterType::None, 1, 1.0, Some(&temp_dir.path().to_path_buf()),
+            );
+            assert!(result.is_ok(), "Multi-Julia IFS export failed");
+            let loaded = load_png_metadata(result.unwrap()).unwrap();
+            assert_eq!(loaded.fractal_type, "Multi-Julia IFS");
+            assert_eq!(loaded.parse_fractal_type().unwrap(), FractalType::MultiJuliaIFS);
+        }
     }
-    
+
     #[test]
     fn test_png_without_metadata() {
         use tempfile::NamedTempFile;
@@ -1085,7 +1253,7 @@ pub fn load_png_metadata<P: AsRef<Path>>(path: P) -> Result<FractalMetadata, Str
     let file = File::open(path)
         .map_err(|e| format!("Failed to open PNG file: {}", e))?;
     
-    let decoder = png::Decoder::new(file);
+    let decoder = png::Decoder::new(BufReader::new(file));
     let reader = decoder.read_info()
         .map_err(|e| format!("Failed to read PNG info: {}", e))?;
     
@@ -1232,6 +1400,8 @@ impl FractalMetadata {
             "Zubieta" => Ok(FractalType::Zubieta),
             "Sin Julia" => Ok(FractalType::SinJulia),
             "Multi-Julia IFS" => Ok(FractalType::MultiJuliaIFS),
+            "Adj Prob Julia" => Ok(FractalType::AdjProbJulia),
+            "ChaosSymmetry1" => Ok(FractalType::ChaosSymmetry1),
             other => Err(format!("Unknown fractal type: {}", other)),
         }
     }

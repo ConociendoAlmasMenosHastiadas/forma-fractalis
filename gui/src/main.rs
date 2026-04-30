@@ -1,7 +1,7 @@
 use eframe::egui;
 use forma_fractalis::{
     app_state::{ViewState, InputState, FractalState, ColorState, MouseState, ExportState, RenderState, AnimationState, FractalType, FractalIterations},
-    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS}, 
+    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS, AdjProbJulia, ChaosSymmetry1}, 
     gpu::RenderBackend,
     gui, cli,
     perf_log, enable_profiling,
@@ -154,6 +154,8 @@ impl FractalApp {
         let zubieta = Zubieta::new();
         let sin_julia = SinJulia::new();
         let multi_julia_ifs = MultiJuliaIFS::new();
+        let adj_prob_julia = AdjProbJulia::new();
+        let chaos_symmetry1 = ChaosSymmetry1::new();
         
         let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
             FractalType::Mandelbrot => &mandelbrot,
@@ -169,6 +171,8 @@ impl FractalApp {
             FractalType::Zubieta => &zubieta,
             FractalType::SinJulia => &sin_julia,
             FractalType::MultiJuliaIFS => &multi_julia_ifs,
+            FractalType::AdjProbJulia => &adj_prob_julia,
+            FractalType::ChaosSymmetry1 => &chaos_symmetry1,
         };
 
         let buffer_size = (self.view_state.view.width * self.view_state.view.height * 4) as usize;
@@ -509,6 +513,8 @@ impl eframe::App for FractalApp {
                             let zubieta = Zubieta::new();
                             let sin_julia = SinJulia::new();
                             let multi_julia_ifs = MultiJuliaIFS::new();
+                            let adj_prob_julia = AdjProbJulia::new();
+                            let chaos_symmetry1 = ChaosSymmetry1::new();
                             
                             let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
                                 FractalType::Mandelbrot => &mandelbrot,
@@ -524,6 +530,8 @@ impl eframe::App for FractalApp {
                                 FractalType::Zubieta => &zubieta,
                                 FractalType::SinJulia => &sin_julia,
                                 FractalType::MultiJuliaIFS => &multi_julia_ifs,
+                                FractalType::AdjProbJulia => &adj_prob_julia,
+                                FractalType::ChaosSymmetry1 => &chaos_symmetry1,
                             };
 
                             // Performance / Rendering Backend
@@ -947,6 +955,8 @@ impl FractalApp {
                 "Zubieta" => Box::new(Zubieta::new()),
                 "Sin Julia" => Box::new(SinJulia::new()),
                 "Multi-Julia IFS" => Box::new(MultiJuliaIFS::new()),
+                "Adj Prob Julia" => Box::new(AdjProbJulia::new()),
+                "ChaosSymmetry1" => Box::new(ChaosSymmetry1::new()),
                 _ => Box::new(Mandelbrot::new()), // Fallback
             };
             

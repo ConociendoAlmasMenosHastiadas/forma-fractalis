@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufWriter;
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
 /// Create metadata for PNG export as key-value pairs
@@ -264,7 +265,7 @@ pub fn export_png(
     let mut encoder = png::Encoder::new(writer, target_width, target_height);
     encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
-    encoder.set_compression(png::Compression::Default);
+    encoder.set_compression(png::Compression::default());
     
     // Add metadata as tEXt chunks
     for (key, value) in metadata {
@@ -1105,7 +1106,7 @@ pub fn load_png_metadata<P: AsRef<Path>>(path: P) -> Result<FractalMetadata, Str
     let file = File::open(path)
         .map_err(|e| format!("Failed to open PNG file: {}", e))?;
     
-    let decoder = png::Decoder::new(file);
+    let decoder = png::Decoder::new(BufReader::new(file));
     let reader = decoder.read_info()
         .map_err(|e| format!("Failed to read PNG info: {}", e))?;
     

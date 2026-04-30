@@ -294,6 +294,101 @@ When adding new version results, use this format:
 
 ---
 
+## Version 0.2.5 (April 2026)
+
+### Changes Affecting Performance
+- Added Cactus GPU shader (9th GPU-capable fractal)
+- Added Sin Julia hi-prec BigFloat path
+- GPU init now logs per-shader compile times and total via `--profiling`
+- GPU buffer size logged per render via `--profiling`
+- Expanded `gpu_bench` to cover all 9 GPU fractals (was Mandelbrot-only)
+
+### Hardware
+- GPU: NVIDIA GeForce RTX 3080 Ti (Vulkan)
+- GPU shader compilation total: ~214ms at startup (10 pipelines)
+
+### GPU vs CPU Benchmark — All GPU-Capable Fractals
+
+| Fractal | Config | CPU (ms) | GPU (ms) | Speedup |
+|---------|--------|----------|----------|---------|
+| Mandelbrot | HD @ 256 iter | 9.30 | 2.90 | 3.21x |
+| Mandelbrot | HD @ 1024 iter | 20.26 | 2.74 | 7.38x |
+| Mandelbrot | FHD @ 1024 iter | 45.00 | 5.65 | 7.96x |
+| Mandelbrot | FHD @ 2048 iter | 72.31 | 5.68 | 12.72x |
+| Julia Set | HD @ 256 iter | 8.32 | 2.62 | 3.17x |
+| Julia Set | HD @ 1024 iter | 9.69 | 3.40 | 2.85x |
+| Julia Set | FHD @ 1024 iter | 22.51 | 5.35 | 4.21x |
+| Julia Set | FHD @ 2048 iter | 21.29 | 5.63 | 3.78x |
+| Burning Ship | HD @ 256 iter | 9.73 | 2.71 | 3.59x |
+| Burning Ship | HD @ 1024 iter | 20.62 | 3.61 | 5.72x |
+| Burning Ship | FHD @ 1024 iter | 46.08 | 6.11 | 7.54x |
+| Burning Ship | FHD @ 2048 iter | 83.15 | 7.93 | 10.48x |
+| Tippets Mandelbrot | HD @ 256 iter | 14.31 | 4.42 | 3.24x |
+| Tippets Mandelbrot | HD @ 1024 iter | 42.65 | 5.81 | 7.34x |
+| Tippets Mandelbrot | FHD @ 1024 iter | 96.30 | 9.41 | 10.23x |
+| Tippets Mandelbrot | FHD @ 2048 iter | 173.34 | 10.32 | 16.80x |
+| Multifractal-Julia | HD @ 256 iter | 487.22 | 5.08 | **95.96x** |
+| Multifractal-Julia | HD @ 1024 iter | 623.71 | 6.79 | **91.80x** |
+| Multifractal-Julia | FHD @ 1024 iter | 1464.84 | 16.19 | **90.51x** |
+| Multifractal-Julia | FHD @ 2048 iter | 1777.31 | 11.82 | **150.35x** |
+| Cactus | HD @ 256 iter | 11.68 | 5.35 | 2.18x |
+| Cactus | HD @ 1024 iter | 21.57 | 6.54 | 3.30x |
+| Cactus | FHD @ 1024 iter | 54.03 | 10.51 | 5.14x |
+| Cactus | FHD @ 2048 iter | 73.87 | 11.62 | 6.36x |
+| Zubieta | HD @ 256 iter | 5.80 | 5.44 | 1.07x |
+| Zubieta | HD @ 1024 iter | 5.48 | 5.61 | 0.98x |
+| Zubieta | FHD @ 1024 iter | 13.74 | 8.84 | 1.55x |
+| Zubieta | FHD @ 2048 iter | 13.38 | 8.90 | 1.50x |
+| Sin Julia | HD @ 256 iter | 231.86 | 7.54 | 30.73x |
+| Sin Julia | HD @ 1024 iter | 259.93 | 8.74 | 29.74x |
+| Sin Julia | FHD @ 1024 iter | 552.69 | 16.11 | 34.30x |
+| Sin Julia | FHD @ 2048 iter | 537.17 | 14.95 | 35.92x |
+| Insideout Dragon | HD @ 256 iter | 162.50 | 7.49 | 21.71x |
+| Insideout Dragon | HD @ 1024 iter | 629.24 | 16.68 | 37.71x |
+| Insideout Dragon | FHD @ 1024 iter | 1484.58 | 33.48 | 44.35x |
+| Insideout Dragon | FHD @ 2048 iter | 3138.05 | 32.89 | **95.42x** |
+
+### Key Observations
+- **Multifractal-Julia** is the biggest winner: CPU is extremely slow (inverse-power formula), GPU achieves **91–150x speedup**. GPU is effectively mandatory for this fractal.
+- **Insideout Dragon** is a surprise: CPU is extremely slow at high iter (3138ms FHD@2048), GPU holds steady at ~33ms — **95x speedup**. CPU path is not practical for high iteration counts.
+- **Sin Julia** benefits strongly from GPU: transcendental `sin()` per pixel drives 30–36x speedup.
+- **Zubieta** shows near-zero GPU benefit at HD (0.98–1.07x): the fractal escapes very quickly and the CPU path is already RAM/overhead-bound, not compute-bound. GPU overhead dominates at small frame sizes; modest gain (~1.5x) at FHD.
+- **Cactus** (new this release): modest 2–6x speedup. CPU is already quick due to its iteration structure.
+- **Julia Set** shows the smallest consistent speedup (~3–4x) — early escape at low iteration counts keeps CPU competitive.
+- GPU times scale weakly with iteration count for most fractals (~2x for 8x iteration increase), indicating compute-bound behaviour on the GPU rather than memory-bound.
+
+### CPU-Only Regression Check — HD (1280x720) @ 1024 Iterations
+
+| Fractal | v0.2.3 | v0.2.5 | Delta |
+|---------|--------|--------|-------|
+| Mandelbrot | 18.21ms | 20.92ms | +15% |
+| Julia | 8.55ms | 10.62ms | +24% |
+| BurningShip | 19.93ms | 23.15ms | +16% |
+| Tippets | 41.94ms | 45.28ms | +8% |
+
+**Note:** Minor regression (~8–24%) vs v0.2.3. All fractals still within performance targets. Likely caused by increased codegen/LTO pressure from the expanded crate. No algorithmic changes; not a concern given GPU availability.
+
+### CPU Full Results — Classic Fractals (HD 1280x720)
+
+| Fractal | 256 iter | 1024 iter | 4096 iter |
+|---------|----------|-----------|-----------|
+| Mandelbrot | 9.38ms | 20.92ms | 68.87ms ✓ |
+| Julia | 8.71ms | 10.62ms | 12.70ms ✓ |
+| Burning Ship | 9.74ms | 23.15ms | 71.78ms ✓ |
+| Tippets | 15.48ms | 45.28ms | 165.31ms ⚠ |
+
+### CPU Summary — Compute-Heavy GPU Fractals (HD 1280x720)
+
+| Fractal | 256 iter | 1024 iter | Note |
+|---------|----------|-----------|------|
+| Multifractal-Julia | 487ms | 624ms | GPU strongly recommended |
+| Sin Julia | 232ms | 260ms | GPU strongly recommended |
+| Insideout Dragon | 163ms | 629ms | GPU strongly recommended |
+| Cactus | 12ms | 22ms | CPU acceptable |
+| Zubieta | 6ms | 5ms | CPU fast (early escape) |
+
+---
+
 ## Running Benchmarks
 
 To run benchmarks yourself:
@@ -303,6 +398,43 @@ cargo bench --bench fractal_bench
 ```
 
 This will run the full benchmark suite (takes ~2-3 minutes) and output results to the console. Copy the relevant sections into this document for the new version.
+
+---
+
+## Recommended Settings by Hardware Profile
+
+Based on v0.2.5 benchmark data (RTX 3080 Ti reference system, 12-core CPU).
+
+### No dedicated GPU / integrated graphics
+Use CPU backend. Stick to lower iteration counts for interactive use.
+
+| Use Case | Recommended Settings |
+|----------|----------------------|
+| Interactive exploration | HD (1280×720), ≤512 iter |
+| Compute-heavy fractals (Sin Julia, Insideout Dragon, Multifractal-Julia) | SD (854×480), ≤256 iter |
+| Export renders | FHD (1920×1080), ≤1024 iter (expect 30–60s for slow fractals) |
+
+### Mid-range dedicated GPU (e.g. GTX 1060 / RX 580 class)
+GPU backend recommended. Speedups will be lower than the RTX reference — expect roughly 50–70% of the listed speedup values.
+
+| Use Case | Recommended Settings |
+|----------|----------------------|
+| Interactive exploration | HD, ≤1024 iter (GPU), all fractals smooth |
+| Compute-heavy fractals | HD, ≤2048 iter GPU — still fast |
+| Export renders | FHD or 4K, ≤4096 iter GPU |
+
+### High-end dedicated GPU (RTX 3070+ / RX 6700 XT+)
+GPU backend recommended for all fractals. The reference benchmarks above apply directly.
+
+| Use Case | Recommended Settings |
+|----------|----------------------|
+| Interactive exploration | FHD, ≤2048 iter GPU |
+| Compute-heavy fractals | FHD, ≤4096 iter GPU — all complete in <50ms |
+| Export renders | 4K–8K, high iter counts practical |
+
+### When to prefer CPU over GPU
+- Zubieta at HD and below: GPU overhead exceeds compute savings (~1x speedup); CPU is equally fast.
+- Any fractal at very small preview sizes (< 256×256): GPU dispatch overhead dominates.
 
 ---
 

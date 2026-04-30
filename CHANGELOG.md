@@ -7,7 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.4] - 2026-04-22
+## [0.2.5] - 2026-04-29
+
+### Added
+- **ChaosSymmetry1 Attractor Fractal**: orbit accumulation via z_{n+1} = (a0 + a1|z|² + a2·Re(z^m) + a3·i)·z + a4·conj(z)^{m-1}
+  - CPU f64 path: `accumulate_orbits()` with two-pass burn-in and golden-angle sub-orbit seeds
+  - CPU hi-prec path: f64 orbit arithmetic + BigFloat screen coordinate mapping
+  - GPU f32 orbit compute shader (`chaos_symmetry1_orbit_kernel.wgsl`); repurposes IFS param slots
+  - GUI: full-width sliders for a0–a4, TextEdit alongside each for precise entry, m / samples / burn-in / log-density / seed controls
+- **Cactus GPU Shader** (`cactus_kernel.wgsl`): escape-time GPU rendering, registered in backend selection; 2–7x speedup over CPU
+- **Sin Julia Hi-Precision CPU Support**: BigFloat `sin()` iterate with 5 unit tests
+- **`FractalTypeOps::uses_orbit_accumulation()`**: hides Iterations control in GUI for orbit-accumulation fractals (ChaosSymmetry1, Multi-Julia IFS, AdjProbJulia)
+- **Hardware Profile Benchmark Guide**: "Recommended Settings by Hardware Profile" section in BENCHMARKS.md
+
+### Changed
+- `image` crate upgraded to v0.25; `png` crate upgraded to v0.18
+  - `png::Decoder::new` now requires `BufRead + Seek` — wrapped `File` in `BufReader`
+  - `Compression::Default` removed — replaced with `Compression::default()`
+- Fractal type dropdown in GUI changed to full-width ComboBox (no more truncation)
+- GPU test list (`gpu_test.rs`) updated to include Cactus
+
+### Fixed
+- Windows SmartScreen "protected your PC" — workaround documented in README under Installation
+
+### Technical
+- capability_table.md: ChaosSymmetry1 (all three backends), Cactus GPU, Sin Julia hi-prec all marked yes
+
+
 
 ### Added
 - **Multi-Julia IFS Fractal**: inverse-iteration chaos game via orbit accumulation
