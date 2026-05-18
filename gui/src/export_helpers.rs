@@ -17,6 +17,9 @@ pub fn metadata_from_app_state(
         center_x: view_state.view.center_x,
         center_y: view_state.view.center_y,
         zoom: view_state.view.zoom,
+        precise_center_x: view_state.view.precise_center_x.clone(),
+        precise_center_y: view_state.view.precise_center_y.clone(),
+        precise_zoom: view_state.view.precise_zoom.clone(),
         width: view_state.view.width,
         height: view_state.view.height,
         max_iterations: input_state.parse_iterations(),
@@ -27,6 +30,7 @@ pub fn metadata_from_app_state(
         use_interior_color: color_state.use_interior_color,
         interior_color: color_state.interior_color,
         use_log_scale: color_state.use_log_scale,
+        color_offset: color_state.color_offset,
         export_filter: export_state.filter.as_str().to_string(),
         export_supersample: input_state.parse_export_supersample(),
         export_scale: input_state.parse_export_scale() as f32,
@@ -68,6 +72,13 @@ pub fn export_png_from_state(
     let filter_type = export_state.filter;
     let output_dir = export_state.directory.as_ref();
     let backend = render_state.backend;
+    // For Perturbation mode, the pipeline uses hiprec_bits for both the reference
+    // orbit and the glitch fallback. Pass pt_bits so export resolution matches.
+    let effective_bits = if matches!(backend, crate::gpu::RenderBackend::Perturbation) {
+        render_state.pt_bits
+    } else {
+        render_state.hiprec_bits
+    };
 
     #[cfg(feature = "gpu")]
     if matches!(backend, crate::gpu::RenderBackend::Gpu) {
@@ -88,13 +99,16 @@ pub fn export_png_from_state(
         use_interior_color,
         interior_color,
         use_log_scale,
+        color_state.color_offset,
         filter_type,
         supersample,
         scale,
         output_dir,
         backend,
-        render_state.hiprec_bits,
+        effective_bits,
         render_state.max_threads,
+        render_state.pt_glitch_tolerance,
+        render_state.pt_tiles,
         render_state.gpu_renderer.as_mut(),
     );
 
@@ -110,13 +124,16 @@ pub fn export_png_from_state(
         use_interior_color,
         interior_color,
         use_log_scale,
+        color_state.color_offset,
         filter_type,
         supersample,
         scale,
         output_dir,
         backend,
-        render_state.hiprec_bits,
+        effective_bits,
         render_state.max_threads,
+        render_state.pt_glitch_tolerance,
+        render_state.pt_tiles,
     )
 }
 

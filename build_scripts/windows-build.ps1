@@ -70,9 +70,29 @@ if (Test-Path $zipPath) {
 }
 
 Write-Host "Creating zip archive..." -ForegroundColor Cyan
+# Resolve 7-Zip from PATH first, then fall back to the standard install locations.
+$sevenZip = (Get-Command 7z -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source)
+if (-not $sevenZip) {
+    $sevenZipCandidates = @(
+        (Join-Path ${env:ProgramFiles} "7-Zip\7z.exe"),
+        (Join-Path ${env:ProgramFiles(x86)} "7-Zip\7z.exe")
+    )
+
+    foreach ($candidate in $sevenZipCandidates) {
+        if ($candidate -and (Test-Path $candidate)) {
+            $sevenZip = $candidate
+            break
+        }
+    }
+}
+
+if (-not $sevenZip) {
+    throw "7z.exe not found. Install 7-Zip or add it to PATH before running windows-build.ps1."
+}
+
 # Use 7z with metadata-cleaning flags - cd into builds to avoid nested paths
 Push-Location $buildsDir
-7z a -tzip -mtc=off -mta=off "$distName.zip" "$distName\*"
+& $sevenZip a -tzip -mtc=off -mta=off "$distName.zip" "$distName\*"
 Pop-Location
 
 # Clean up distribution directory

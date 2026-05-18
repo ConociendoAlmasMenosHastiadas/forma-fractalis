@@ -112,6 +112,7 @@ pub mod gpu;
 pub mod gpu_test;
 pub mod number_utils;
 pub mod orbit_accumulation;
+pub mod perturbation;
 pub mod rendering;
 pub mod rendering_pipeline;
 
@@ -386,6 +387,66 @@ mod tests {
         assert!(!iters.is_valid_for(&config, "Julia", RenderBackend::Cpu, 0));
         // HiPrec backend: invalid (cache was computed with Cpu)
         assert!(!iters.is_valid_for(&config, fractal.name(), RenderBackend::CpuHiPrec, 256));
+    }
+
+    #[test]
+    fn perturbation_cache_validity_tracks_pt_settings() {
+        use crate::gpu::RenderBackend;
+
+        let fractal = Mandelbrot::new();
+        let config = FractalConfig::headless(32, 24, 64);
+        let cache = FractalIterations::from_render_state(
+            vec![0; (config.view.width * config.view.height) as usize],
+            &config.view,
+            config.max_iterations,
+            fractal.name(),
+            config.fractal_parameters.clone(),
+            RenderBackend::Perturbation,
+            128,
+            4.0,
+            4,
+        );
+
+        assert!(cache.is_valid_for_render(
+            &config.view,
+            config.max_iterations,
+            fractal.name(),
+            &config.fractal_parameters,
+            RenderBackend::Perturbation,
+            128,
+            4.0,
+            4,
+        ));
+        assert!(!cache.is_valid_for_render(
+            &config.view,
+            config.max_iterations,
+            fractal.name(),
+            &config.fractal_parameters,
+            RenderBackend::Perturbation,
+            256,
+            4.0,
+            4,
+        ));
+        assert!(!cache.is_valid_for_render(
+            &config.view,
+            config.max_iterations,
+            fractal.name(),
+            &config.fractal_parameters,
+            RenderBackend::Perturbation,
+            128,
+            8.0,
+            4,
+        ));
+        assert!(!cache.is_valid_for_render(
+            &config.view,
+            config.max_iterations,
+            fractal.name(),
+            &config.fractal_parameters,
+            RenderBackend::Perturbation,
+            128,
+            4.0,
+            2,
+        ));
     }
 
     #[test]

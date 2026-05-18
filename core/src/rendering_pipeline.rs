@@ -18,9 +18,55 @@ use scala_chromatica::ColorMap;
 use crate::fractals::{Fractal, FractalView};
 use crate::gpu::RenderBackend;
 use crate::perf_log;
-use crate::rendering::{render_fractal, render_fractal_hiprec, apply_colors_from_cache};
+use crate::rendering::{apply_colors_from_cache, FractalIterations};
 use std::collections::HashMap;
+use std::sync::{OnceLock, RwLock};
 use std::time::Instant;
+
+#[derive(Clone, Debug)]
+pub struct PtRenderReport {
+    pub total_pixels: usize,
+    pub pt_pixels: usize,
+    pub fallback_pixels: usize,
+    pub fallback_pct: f64,
+    pub sa_accepted_pixel_count: usize,
+    pub sa_accepted_pixel_pct: f64,
+    pub sa_avg_skipped_iterations: f64,
+    pub sa_max_skipped_iterations: usize,
+    pub sa_rejected_escape_margin_count: usize,
+    pub sa_rejected_correction_count: usize,
+    pub rebased_pixel_count: usize,
+    pub rebased_pixel_pct: f64,
+    pub rebase_count: usize,
+    pub rebase_exhausted_count: usize,
+    pub pt_tiles: u32,
+    pub min_orbit_len: usize,
+    pub orbit_exhausted: bool,
+    pub low_zoom_warning: bool,
+    pub hiprec_bits: u32,
+    pub max_iterations: u32,
+}
+
+fn pt_report_store() -> &'static RwLock<Option<PtRenderReport>> {
+    static STORE: OnceLock<RwLock<Option<PtRenderReport>>> = OnceLock::new();
+    STORE.get_or_init(|| RwLock::new(None))
+}
+
+fn set_last_pt_report(report: PtRenderReport) {
+    if let Ok(mut guard) = pt_report_store().write() {
+        *guard = Some(report);
+    }
+}
+
+fn clear_last_pt_report() {
+    if let Ok(mut guard) = pt_report_store().write() {
+        *guard = None;
+    }
+}
+
+pub fn latest_pt_report() -> Option<PtRenderReport> {
+    pt_report_store().read().ok().and_then(|guard| guard.clone())
+}
 
 /// Configuration for a render operation
 #[derive(Clone)]
@@ -33,6 +79,7 @@ pub struct RenderConfig<'a> {
     pub use_interior_color: bool,
     pub interior_color: [u8; 3],
     pub use_log_scale: bool,
+    pub color_offset: u32,
     pub fractal: &'a dyn Fractal,
     pub fractal_parameters: HashMap<String, f64>,
     pub backend: RenderBackend,
@@ -41,6 +88,13 @@ pub struct RenderConfig<'a> {
     /// Maximum rayon threads for CPU rendering. 0 = use all available (rayon default).
     /// Values 1..N limit parallelism to reduce CPU load during background work.
     pub max_threads: usize,
+    /// Multiplier on the PT glitch threshold: `|dz|² > pt_glitch_tolerance * |z_total|²`.
+    /// 1.0 = mathematically strict (default). Higher values reduce hi-prec fallback
+    /// count at the cost of slight color inaccuracy in deep-zoom regions.
+    pub pt_glitch_tolerance: f64,
+    /// NxN tile grid for perturbation theory reference orbits.
+    /// 1 = single reference orbit, 2 = 2x2 = 4 orbits, etc.
+    pub pt_tiles: u32,
 }
 
 impl<'a> RenderConfig<'a> {
@@ -60,11 +114,14 @@ impl<'a> RenderConfig<'a> {
             use_interior_color: false,
             interior_color: [0, 0, 0],
             use_log_scale: false,
+            color_offset: 0,
             fractal,
             fractal_parameters: HashMap::new(),
             backend: RenderBackend::default(),
             hiprec_bits: crate::gpu::HIPREC_DEFAULT_BITS,
             max_threads: 0,
+            pt_glitch_tolerance: 1.0,
+            pt_tiles: 1,
         }
     }
 
@@ -84,6 +141,21 @@ impl<'a> RenderConfig<'a> {
     /// Pass 0 to use all available threads (rayon default).
     pub fn with_max_threads(mut self, max_threads: usize) -> Self {
         self.max_threads = max_threads;
+        self
+    }
+
+    /// Builder pattern: set PT glitch tolerance multiplier.
+    /// 1.0 = strict (default). Higher values reduce hi-prec fallbacks at the
+    /// cost of slight color inaccuracy.
+    pub fn with_pt_glitch_tolerance(mut self, tolerance: f64) -> Self {
+        self.pt_glitch_tolerance = tolerance;
+        self
+    }
+
+    /// Builder pattern: set the PT tile grid size.
+    /// Values < 1 are clamped to 1.
+    pub fn with_pt_tiles(mut self, pt_tiles: u32) -> Self {
+        self.pt_tiles = pt_tiles.max(1);
         self
     }
 
@@ -107,6 +179,12 @@ impl<'a> RenderConfig<'a> {
         self
     }
 
+    /// Builder pattern: set colormap phase offset
+    pub fn with_color_offset(mut self, color_offset: u32) -> Self {
+        self.color_offset = color_offset;
+        self
+    }
+
     /// Builder pattern: set fractal parameters
     pub fn with_fractal_parameters(mut self, parameters: HashMap<String, f64>) -> Self {
         self.fractal_parameters = parameters;
@@ -121,6 +199,511 @@ pub enum RenderTarget {
     Preview,
     /// Render for export at specified dimensions
     Export { width: u32, height: u32 },
+}
+
+fn target_dimensions(config: &RenderConfig, target: RenderTarget) -> (u32, u32) {
+    match target {
+        RenderTarget::Preview => (config.view.width, config.view.height),
+        RenderTarget::Export { width, height } => (width, height),
+    }
+}
+
+fn target_view_for(config: &RenderConfig, target: RenderTarget) -> FractalView {
+    let (width, height) = target_dimensions(config, target);
+    let mut target_view = config.view.clone();
+    target_view.width = width;
+    target_view.height = height;
+    target_view
+}
+
+fn effective_cache_bits(config: &RenderConfig) -> u32 {
+    if matches!(config.backend, RenderBackend::CpuHiPrec | RenderBackend::Perturbation) {
+        config.hiprec_bits
+    } else {
+        0
+    }
+}
+
+fn build_iteration_cache(
+    config: &RenderConfig,
+    target_view: &FractalView,
+    iterations: Vec<u32>,
+) -> FractalIterations {
+    FractalIterations::from_render_state(
+        iterations,
+        target_view,
+        config.max_iterations,
+        config.fractal.name(),
+        config.fractal_parameters.clone(),
+        config.backend,
+        effective_cache_bits(config),
+        config.pt_glitch_tolerance,
+        config.pt_tiles,
+    )
+}
+
+fn scaled_orbit_params(config: &RenderConfig, target_view: &FractalView) -> HashMap<String, f64> {
+    let mut params = config.fractal_parameters.clone();
+    let preview_pixels = (config.view.width as f64) * (config.view.height as f64);
+    let target_pixels = (target_view.width as f64) * (target_view.height as f64);
+    if target_pixels > preview_pixels && preview_pixels > 0.0 {
+        let scale = target_pixels / preview_pixels;
+        let base_samples = params.get("samples").copied().unwrap_or(5_000_000.0);
+        params.insert("samples".to_string(), (base_samples * scale).round());
+    }
+    params
+}
+
+fn finalize_pt_iteration_cache(
+    config: &RenderConfig,
+    target_view: &FractalView,
+    orbits: &[crate::perturbation::ReferenceOrbit],
+    result: crate::perturbation::PerturbationResult,
+) -> FractalIterations {
+    let pt_tiles = config.pt_tiles.max(1);
+    let orbit_exhausted = orbits.iter().any(|o| o.escaped);
+    let min_orbit_len = orbits.iter().map(|o| o.orbit.len()).min().unwrap_or(0);
+
+    let total_pixels = (target_view.width * target_view.height) as usize;
+    let pt_pixels = total_pixels.saturating_sub(result.glitch_count);
+    let hiprec_pixels = result.glitch_count;
+    let hiprec_pct = if total_pixels > 0 {
+        hiprec_pixels as f64 / total_pixels as f64 * 100.0
+    } else {
+        0.0
+    };
+    let sa_accepted_pixel_pct = if total_pixels > 0 {
+        result.sa_accepted_pixel_count as f64 / total_pixels as f64 * 100.0
+    } else {
+        0.0
+    };
+    let sa_avg_skipped_iterations = if result.sa_accepted_pixel_count > 0 {
+        result.sa_total_skipped_iterations as f64 / result.sa_accepted_pixel_count as f64
+    } else {
+        0.0
+    };
+    let rebased_pixel_pct = if total_pixels > 0 {
+        result.rebased_pixel_count as f64 / total_pixels as f64 * 100.0
+    } else {
+        0.0
+    };
+
+    set_last_pt_report(PtRenderReport {
+        total_pixels,
+        pt_pixels,
+        fallback_pixels: hiprec_pixels,
+        fallback_pct: hiprec_pct,
+        sa_accepted_pixel_count: result.sa_accepted_pixel_count,
+        sa_accepted_pixel_pct,
+        sa_avg_skipped_iterations,
+        sa_max_skipped_iterations: result.sa_max_skipped_iterations,
+        sa_rejected_escape_margin_count: result.sa_rejected_escape_margin_count,
+        sa_rejected_correction_count: result.sa_rejected_correction_count,
+        rebased_pixel_count: result.rebased_pixel_count,
+        rebased_pixel_pct,
+        rebase_count: result.rebase_count,
+        rebase_exhausted_count: result.rebase_exhausted_count,
+        pt_tiles,
+        min_orbit_len,
+        orbit_exhausted,
+        low_zoom_warning: result.low_zoom_warning,
+        hiprec_bits: config.hiprec_bits,
+        max_iterations: config.max_iterations,
+    });
+
+    perf_log!(
+        "[PT] Pixels: {} total | {} PT delta ({:.1}%) | {} {}-bit hi-prec ({:.2}%) | SA px={} ({:.2}%) avg skip={:.1} max={} guards(e={}, c={}) | rebased px={} ({:.2}%) | rebases={} | budget-hit fallback={} | tiles={}x{} | shortest orbit len={}",
+        total_pixels, pt_pixels, 100.0 - hiprec_pct,
+        hiprec_pixels, config.hiprec_bits, hiprec_pct,
+        result.sa_accepted_pixel_count, sa_accepted_pixel_pct,
+        sa_avg_skipped_iterations, result.sa_max_skipped_iterations,
+        result.sa_rejected_escape_margin_count, result.sa_rejected_correction_count,
+        result.rebased_pixel_count, rebased_pixel_pct,
+        result.rebase_count,
+        result.rebase_exhausted_count,
+        pt_tiles, pt_tiles, min_orbit_len
+    );
+
+    if orbit_exhausted {
+        perf_log!(
+            "[PT] NOTE: at least one reference orbit escaped early (shortest orbit len={}, max_iter={}). \
+             This view may have a high fallback rate; try increasing tile count or switching to CPU Hi-Prec.",
+            min_orbit_len,
+            config.max_iterations,
+        );
+    }
+
+    if result.low_zoom_warning {
+        perf_log!(
+            "[PT] Warning: zoom={:.2e} is below the PT threshold; CPU mode is sufficient",
+            target_view.zoom
+        );
+    }
+
+    build_iteration_cache(config, target_view, result.iterations)
+}
+
+pub fn colorize_iteration_cache_with_config(
+    config: &RenderConfig,
+    iterations: &FractalIterations,
+) -> Vec<u8> {
+    let mut buffer = vec![0u8; (iterations.width * iterations.height * 4) as usize];
+    apply_colors_from_cache(
+        &mut buffer,
+        &iterations.data,
+        config.colormap,
+        config.max_iterations,
+        config.use_period,
+        config.period,
+        config.use_interior_color,
+        config.interior_color,
+        config.use_log_scale,
+        config.color_offset,
+    );
+    buffer
+}
+
+fn log_preview_render(
+    config: &RenderConfig,
+    iterations: &FractalIterations,
+    compute_time: std::time::Duration,
+    color_time: std::time::Duration,
+    total_time: std::time::Duration,
+) {
+    if matches!(config.backend, RenderBackend::Perturbation) {
+        let pt_tiles = config.pt_tiles.max(1);
+        perf_log!(
+            "[PERF] PT Render {}x{} @ {}bit/{} iter tiles={}x{}: total={:.2?} (compute={:.2?}, color={:.2?})",
+            iterations.width,
+            iterations.height,
+            config.hiprec_bits,
+            config.max_iterations,
+            pt_tiles,
+            pt_tiles,
+            total_time,
+            compute_time,
+            color_time,
+        );
+        return;
+    }
+
+    if config.fractal.uses_orbit_accumulation() {
+        if matches!(config.backend, RenderBackend::CpuHiPrec) {
+            perf_log!(
+                "[PERF] HiPrec Orbit Accumulation {}x{} @ {} iter ({} bits): total={:.2?} (compute={:.2?}, color={:.2?})",
+                iterations.width,
+                iterations.height,
+                config.max_iterations,
+                config.hiprec_bits,
+                total_time,
+                compute_time,
+                color_time,
+            );
+        } else {
+            perf_log!(
+                "[PERF] Orbit Accumulation Render {}x{} @ {} iter: total={:.2?} (compute={:.2?}, color={:.2?})",
+                iterations.width,
+                iterations.height,
+                config.max_iterations,
+                total_time,
+                compute_time,
+                color_time,
+            );
+        }
+        return;
+    }
+
+    match config.backend {
+        RenderBackend::Cpu => perf_log!(
+            "[PERF] CPU Render {}x{} @ {} iter: total={:.2?} (compute={:.2?}, color={:.2?})",
+            iterations.width,
+            iterations.height,
+            config.max_iterations,
+            total_time,
+            compute_time,
+            color_time,
+        ),
+        RenderBackend::CpuHiPrec => perf_log!(
+            "[PERF] Hi-Prec CPU Render {}bit {}x{} @ {} iter: total={:.2?} (compute={:.2?}, color={:.2?})",
+            config.hiprec_bits,
+            iterations.width,
+            iterations.height,
+            config.max_iterations,
+            total_time,
+            compute_time,
+            color_time,
+        ),
+        RenderBackend::Gpu => perf_log!(
+            "[PERF] GPU Render {}x{} @ {} iter: total={:.2?} (compute={:.2?}, color={:.2?})",
+            iterations.width,
+            iterations.height,
+            config.max_iterations,
+            total_time,
+            compute_time,
+            color_time,
+        ),
+        RenderBackend::Perturbation => unreachable!("PT preview logging handled above"),
+    }
+}
+
+#[cfg(feature = "gpu")]
+pub fn compute_iteration_cache_with_config(
+    config: &RenderConfig,
+    target: RenderTarget,
+    gpu_renderer: Option<&mut crate::gpu::WgpuRenderer>,
+) -> Result<FractalIterations, String> {
+    use crate::gpu::{self, FractalRenderer, RenderConfig as GpuRenderConfig};
+    use crate::perturbation::{is_supported_fractal, ReferenceOrbit, render_perturbation_tiled};
+
+    if !matches!(config.backend, gpu::RenderBackend::Perturbation) {
+        clear_last_pt_report();
+    }
+
+    let target_view = target_view_for(config, target);
+
+    if config.fractal.uses_orbit_accumulation() {
+        if matches!(config.backend, gpu::RenderBackend::CpuHiPrec) {
+            if !config.fractal.supports_hiprec() {
+                return Err(format!(
+                    "Hi-precision not supported for fractal '{}'. Switch to CPU mode.",
+                    config.fractal.name()
+                ));
+            }
+
+            let params = scaled_orbit_params(config, &target_view);
+            let iterations = crate::orbit_accumulation::compute_orbit_density_hiprec(
+                &target_view,
+                config.fractal,
+                &params,
+                config.max_iterations,
+                config.max_threads,
+                config.hiprec_bits,
+            )?;
+            return Ok(build_iteration_cache(config, &target_view, iterations));
+        }
+
+        if matches!(config.backend, gpu::RenderBackend::Gpu) {
+            if let Some(gpu) = gpu_renderer.as_deref() {
+                if gpu.supports_orbit_density(config.fractal.name()) {
+                    let params = scaled_orbit_params(config, &target_view);
+                    let raw_density = crate::gpu::FractalRenderer::render_orbit_density(
+                        gpu,
+                        target_view.width,
+                        target_view.height,
+                        &params,
+                        config.fractal.name(),
+                        target_view.center_x as f32,
+                        target_view.center_y as f32,
+                        target_view.zoom as f32,
+                    )?;
+                    let use_log = params.get("use_log_density").copied().unwrap_or(1.0) > 0.5;
+                    let iterations = crate::orbit_accumulation::DensityBuffer::from_raw(
+                        target_view.width,
+                        target_view.height,
+                        raw_density,
+                    )
+                    .normalize(config.max_iterations, use_log);
+                    return Ok(build_iteration_cache(config, &target_view, iterations));
+                }
+            }
+        }
+
+        let params = scaled_orbit_params(config, &target_view);
+        let iterations = crate::orbit_accumulation::compute_orbit_density(
+            &target_view,
+            config.fractal,
+            &params,
+            config.max_iterations,
+            config.max_threads,
+        );
+        return Ok(build_iteration_cache(config, &target_view, iterations));
+    }
+
+    if matches!(config.backend, gpu::RenderBackend::Perturbation) {
+        if !is_supported_fractal(config.fractal, &config.fractal_parameters) {
+            return Err(format!(
+                "Perturbation Theory is only supported for Mandelbrot (power=2). \
+                 Fractal '{}' is not supported. Switch to CPU or CPU Hi-Prec.",
+                config.fractal.name()
+            ));
+        }
+
+        let pt_tiles = config.pt_tiles.max(1);
+        let tiles = pt_tiles as usize;
+        let orbits = ReferenceOrbit::compute_tile_orbits(
+            &target_view,
+            pt_tiles,
+            config.max_iterations,
+            config.hiprec_bits,
+        );
+
+        let result = render_perturbation_tiled(
+            &target_view,
+            &orbits,
+            tiles,
+            tiles,
+            config.fractal,
+            &config.fractal_parameters,
+            config.max_iterations,
+            config.hiprec_bits,
+            config.max_threads,
+            config.pt_glitch_tolerance,
+        );
+
+        return Ok(finalize_pt_iteration_cache(config, &target_view, &orbits, result));
+    }
+
+    if matches!(config.backend, gpu::RenderBackend::CpuHiPrec) {
+        let iterations = crate::rendering::compute_iterations_hiprec(
+            &target_view,
+            config.max_iterations,
+            config.fractal,
+            &config.fractal_parameters,
+            config.hiprec_bits,
+            config.max_threads,
+        )?;
+        return Ok(build_iteration_cache(config, &target_view, iterations));
+    }
+
+    let use_gpu = matches!(config.backend, gpu::RenderBackend::Gpu)
+        && gpu_renderer.as_deref().is_some_and(|gpu| gpu.supports_fractal(config.fractal.name()));
+
+    if use_gpu {
+        let param_values: Vec<f64> = config.fractal.parameters()
+            .iter()
+            .map(|p| config.fractal_parameters.get(&p.name).copied().unwrap_or(p.default))
+            .collect();
+        let gpu_config = GpuRenderConfig {
+            center_x: target_view.center_x,
+            center_y: target_view.center_y,
+            zoom: target_view.zoom,
+            max_iter: config.max_iterations,
+            width: target_view.width,
+            height: target_view.height,
+            fractal_params: param_values,
+        };
+        let gpu = gpu_renderer.ok_or_else(|| {
+            "GPU requested but not initialized. Switch to CPU mode.".to_string()
+        })?;
+        let iterations = gpu.render_iterations(&gpu_config, config.fractal)?;
+        return Ok(build_iteration_cache(config, &target_view, iterations));
+    } else if matches!(config.backend, gpu::RenderBackend::Gpu) {
+        if gpu_renderer.is_none() {
+            return Err("GPU requested but not initialized. Switch to CPU mode.".to_string());
+        }
+        return Err(format!(
+            "GPU does not support fractal: {}. Switch to CPU mode.",
+            config.fractal.name()
+        ));
+    }
+
+    let iterations = crate::rendering::compute_iterations(
+        &target_view,
+        config.max_iterations,
+        config.fractal,
+        &config.fractal_parameters,
+    );
+    Ok(build_iteration_cache(config, &target_view, iterations))
+}
+
+#[cfg(not(feature = "gpu"))]
+pub fn compute_iteration_cache_with_config(
+    config: &RenderConfig,
+    target: RenderTarget,
+) -> Result<FractalIterations, String> {
+    use crate::perturbation::{is_supported_fractal, ReferenceOrbit, render_perturbation_tiled};
+
+    if !matches!(config.backend, RenderBackend::Perturbation) {
+        clear_last_pt_report();
+    }
+
+    let target_view = target_view_for(config, target);
+
+    if config.fractal.uses_orbit_accumulation() {
+        if matches!(config.backend, RenderBackend::CpuHiPrec) {
+            if !config.fractal.supports_hiprec() {
+                return Err(format!(
+                    "Hi-precision not supported for fractal '{}'. Switch to CPU mode.",
+                    config.fractal.name()
+                ));
+            }
+
+            let params = scaled_orbit_params(config, &target_view);
+            let iterations = crate::orbit_accumulation::compute_orbit_density_hiprec(
+                &target_view,
+                config.fractal,
+                &params,
+                config.max_iterations,
+                config.max_threads,
+                config.hiprec_bits,
+            )?;
+            return Ok(build_iteration_cache(config, &target_view, iterations));
+        }
+
+        let params = scaled_orbit_params(config, &target_view);
+        let iterations = crate::orbit_accumulation::compute_orbit_density(
+            &target_view,
+            config.fractal,
+            &params,
+            config.max_iterations,
+            config.max_threads,
+        );
+        return Ok(build_iteration_cache(config, &target_view, iterations));
+    }
+
+    if matches!(config.backend, RenderBackend::Perturbation) {
+        if !is_supported_fractal(config.fractal, &config.fractal_parameters) {
+            return Err(format!(
+                "Perturbation Theory is only supported for Mandelbrot (power=2). \
+                 Fractal '{}' is not supported. Switch to CPU or CPU Hi-Prec.",
+                config.fractal.name()
+            ));
+        }
+
+        let pt_tiles = config.pt_tiles.max(1);
+        let tiles = pt_tiles as usize;
+        let orbits = ReferenceOrbit::compute_tile_orbits(
+            &target_view,
+            pt_tiles,
+            config.max_iterations,
+            config.hiprec_bits,
+        );
+
+        let result = render_perturbation_tiled(
+            &target_view,
+            &orbits,
+            tiles,
+            tiles,
+            config.fractal,
+            &config.fractal_parameters,
+            config.max_iterations,
+            config.hiprec_bits,
+            config.max_threads,
+            config.pt_glitch_tolerance,
+        );
+
+        return Ok(finalize_pt_iteration_cache(config, &target_view, &orbits, result));
+    }
+
+    if matches!(config.backend, RenderBackend::CpuHiPrec) {
+        let iterations = crate::rendering::compute_iterations_hiprec(
+            &target_view,
+            config.max_iterations,
+            config.fractal,
+            &config.fractal_parameters,
+            config.hiprec_bits,
+            config.max_threads,
+        )?;
+        return Ok(build_iteration_cache(config, &target_view, iterations));
+    }
+
+    let iterations = crate::rendering::compute_iterations(
+        &target_view,
+        config.max_iterations,
+        config.fractal,
+        &config.fractal_parameters,
+    );
+    Ok(build_iteration_cache(config, &target_view, iterations))
 }
 
 /// Unified rendering function used by both preview and export
@@ -138,402 +721,16 @@ pub fn render_with_config(
     target: RenderTarget,
     gpu_renderer: Option<&mut crate::gpu::WgpuRenderer>,
 ) -> Result<Vec<u8>, String> {
-    use crate::gpu::{FractalRenderer, self};
-    
-    let _total_timer = Instant::now();
-    
-    // Determine output dimensions based on target
-    let (width, height) = match target {
-        RenderTarget::Preview => (config.view.width, config.view.height),
-        RenderTarget::Export { width, height } => (width, height),
-    };
-
-    // Create view with target dimensions (may differ from config.view for export)
-    let mut target_view = config.view.clone();
-    target_view.width = width;
-    target_view.height = height;
-
-    // Orbit-accumulation fractals: CpuHiPrec path first, then GPU orbit, then CPU density.
-    if config.fractal.uses_orbit_accumulation() {
-        if matches!(config.backend, gpu::RenderBackend::CpuHiPrec) {
-            if config.fractal.supports_hiprec() {
-                return render_orbit_accumulation_hiprec(config, &target_view, target, _total_timer);
-            } else {
-                return Err(format!(
-                    "Hi-precision not supported for fractal '{}'. Switch to CPU mode.",
-                    config.fractal.name()
-                ));
-            }
-        }
-        // GPU orbit accumulation path
-        if matches!(config.backend, gpu::RenderBackend::Gpu) {
-            if let Some(ref gpu) = gpu_renderer {
-                if gpu.supports_orbit_density(config.fractal.name()) {
-                    return render_orbit_accumulation_gpu(
-                        config, &target_view, target, _total_timer, *gpu,
-                    );
-                }
-            }
-            // GPU requested but no orbit shader — fall through to CPU
-        }
-        return Ok(render_orbit_accumulation(config, &target_view, target, _total_timer));
-    }
-
-    // Use the backend the user explicitly selected - no heuristics
-    let use_gpu = matches!(config.backend, gpu::RenderBackend::Gpu) 
-        && gpu_renderer.is_some()
-        && gpu_renderer.as_ref().unwrap().supports_fractal(config.fractal.name());
-
-    // CPU Hi-Prec path: dispatch before GPU/CPU check
-    if matches!(config.backend, gpu::RenderBackend::CpuHiPrec) {
-        return render_with_hiprec(config, &target_view, target, _total_timer);
-    }
-
-    if use_gpu {
-        match render_with_gpu(config, &target_view, gpu_renderer.unwrap()) {
-            Ok(buffer) => {
-                let total_time = _total_timer.elapsed();
-                if matches!(target, RenderTarget::Preview) {
-                    perf_log!("[PERF] GPU Render {}x{} @ {} iter: total={:.2?}",
-                        width, height, config.max_iterations, total_time);
-                }
-                return Ok(buffer);
-            }
-            Err(e) => {
-                // Do NOT fall back to CPU silently - the user must choose to switch.
-                // Silent fallback could run for minutes/hours at high iteration counts.
-                return Err(format!("GPU rendering failed: {}. Switch to CPU mode if needed.", e));
-            }
-        }
-    } else if matches!(config.backend, gpu::RenderBackend::Gpu) {
-        // User requested GPU but it's not available
-        if gpu_renderer.is_none() {
-            return Err("GPU requested but not initialized. Switch to CPU mode.".to_string());
-        } else if gpu_renderer.is_some() && !gpu_renderer.as_ref().unwrap().supports_fractal(config.fractal.name()) {
-            return Err(format!("GPU does not support fractal: {}. Switch to CPU mode.", config.fractal.name()));
-        }
-    }
-
-    // CPU rendering path
-    Ok(render_with_cpu(config, &target_view, target, _total_timer))
-}
-
-/// Orbit-accumulation rendering path (CPU only, used for all backends).
-/// This is dispatched from `render_with_config` before any backend check.
-fn render_orbit_accumulation(
-    config: &RenderConfig,
-    target_view: &FractalView,
-    target: RenderTarget,
-    total_timer: Instant,
-) -> Vec<u8> {
-    let buffer_size = (target_view.width * target_view.height * 4) as usize;
-    let mut buffer = vec![0u8; buffer_size];
-
-    let render_timer = Instant::now();
-
-    // Scale samples proportionally to pixel count so that exports at higher
-    // resolution have the same density-per-pixel as the preview.
-    let mut params = config.fractal_parameters.clone();
-    let preview_pixels = (config.view.width as f64) * (config.view.height as f64);
-    let target_pixels = (target_view.width as f64) * (target_view.height as f64);
-    if target_pixels > preview_pixels && preview_pixels > 0.0 {
-        let scale = target_pixels / preview_pixels;
-        let base_samples = params.get("samples").copied().unwrap_or(5_000_000.0);
-        params.insert("samples".to_string(), (base_samples * scale).round());
-    }
-
-    let iterations = crate::orbit_accumulation::compute_orbit_density(
-        target_view,
-        config.fractal,
-        &params,
-        config.max_iterations,
-        config.max_threads,
-    );
-    apply_colors_from_cache(
-        &mut buffer,
-        &iterations,
-        config.colormap,
-        config.max_iterations,
-        config.use_period,
-        config.period,
-        config.use_interior_color,
-        config.interior_color,
-        config.use_log_scale,
-        0, // color_offset handled by GUI cache path
-    );
-
-    let render_time = render_timer.elapsed();
-    if matches!(target, RenderTarget::Preview) {
-        let total_time = total_timer.elapsed();
-        perf_log!("[PERF] Orbit Accumulation Render {}x{} @ {} iter: total={:.2?} (render={:.2?})",
-            target_view.width, target_view.height, config.max_iterations,
-            total_time, render_time);
-    }
-
-    buffer
-}
-
-/// Hi-precision orbit accumulation rendering path.
-fn render_orbit_accumulation_hiprec(
-    config: &RenderConfig,
-    target_view: &FractalView,
-    target: RenderTarget,
-    total_timer: Instant,
-) -> Result<Vec<u8>, String> {
-    let buffer_size = (target_view.width * target_view.height * 4) as usize;
-    let mut buffer = vec![0u8; buffer_size];
-
-    let render_timer = Instant::now();
-
-    // Scale samples proportionally to pixel count for exports
-    let mut params = config.fractal_parameters.clone();
-    let preview_pixels = (config.view.width as f64) * (config.view.height as f64);
-    let target_pixels = (target_view.width as f64) * (target_view.height as f64);
-    if target_pixels > preview_pixels && preview_pixels > 0.0 {
-        let scale = target_pixels / preview_pixels;
-        let base_samples = params.get("samples").copied().unwrap_or(5_000_000.0);
-        params.insert("samples".to_string(), (base_samples * scale).round());
-    }
-
-    let iterations = crate::orbit_accumulation::compute_orbit_density_hiprec(
-        target_view,
-        config.fractal,
-        &params,
-        config.max_iterations,
-        config.max_threads,
-        config.hiprec_bits,
-    )?;
-
-    let render_time = render_timer.elapsed();
-
-    // Color the iteration buffer
-    apply_colors_from_cache(
-        &mut buffer,
-        &iterations,
-        config.colormap,
-        config.max_iterations,
-        config.use_period,
-        config.period,
-        config.use_interior_color,
-        config.interior_color,
-        config.use_log_scale,
-        0,
-    );
+    let total_timer = Instant::now();
+    let compute_timer = Instant::now();
+    let iterations = compute_iteration_cache_with_config(config, target, gpu_renderer)?;
+    let compute_time = compute_timer.elapsed();
+    let color_timer = Instant::now();
+    let buffer = colorize_iteration_cache_with_config(config, &iterations);
+    let color_time = color_timer.elapsed();
 
     if matches!(target, RenderTarget::Preview) {
-        let total_time = total_timer.elapsed();
-        perf_log!("[PERF] HiPrec Orbit Accumulation {}x{} @ {} iter ({} bits): total={:.2?} (render={:.2?})",
-            target_view.width, target_view.height, config.max_iterations,
-            config.hiprec_bits, total_time, render_time);
-    }
-
-    Ok(buffer)
-}
-
-/// GPU orbit accumulation rendering path.
-#[cfg(feature = "gpu")]
-fn render_orbit_accumulation_gpu(
-    config: &RenderConfig,
-    target_view: &FractalView,
-    target: RenderTarget,
-    total_timer: Instant,
-    gpu: &crate::gpu::WgpuRenderer,
-) -> Result<Vec<u8>, String> {
-    let buffer_size = (target_view.width * target_view.height * 4) as usize;
-    let mut buffer = vec![0u8; buffer_size];
-
-    let render_timer = Instant::now();
-
-    // Scale samples for export resolution
-    let mut params = config.fractal_parameters.clone();
-    let preview_pixels = (config.view.width as f64) * (config.view.height as f64);
-    let target_pixels = (target_view.width as f64) * (target_view.height as f64);
-    if target_pixels > preview_pixels && preview_pixels > 0.0 {
-        let scale = target_pixels / preview_pixels;
-        let base_samples = params.get("samples").copied().unwrap_or(5_000_000.0);
-        params.insert("samples".to_string(), (base_samples * scale).round());
-    }
-
-    let raw_density = crate::gpu::FractalRenderer::render_orbit_density(
-        gpu,
-        target_view.width,
-        target_view.height,
-        &params,
-        config.fractal.name(),
-        target_view.center_x as f32,
-        target_view.center_y as f32,
-        target_view.zoom as f32,
-    )?;
-
-    // Normalize the raw density counts (reuse CPU normalization logic)
-    let use_log = params.get("use_log_density").copied().unwrap_or(1.0) > 0.5;
-    let iterations = crate::orbit_accumulation::DensityBuffer::from_raw(
-        target_view.width, target_view.height, raw_density,
-    ).normalize(config.max_iterations, use_log);
-
-    let render_time = render_timer.elapsed();
-
-    apply_colors_from_cache(
-        &mut buffer,
-        &iterations,
-        config.colormap,
-        config.max_iterations,
-        config.use_period,
-        config.period,
-        config.use_interior_color,
-        config.interior_color,
-        config.use_log_scale,
-        0,
-    );
-
-    if matches!(target, RenderTarget::Preview) {
-        let total_time = total_timer.elapsed();
-        perf_log!("[PERF] GPU Orbit Accumulation {}x{} @ {} iter: total={:.2?} (render={:.2?})",
-            target_view.width, target_view.height, config.max_iterations,
-            total_time, render_time);
-    }
-
-    Ok(buffer)
-}
-
-/// CPU rendering path
-#[cfg(feature = "gpu")]
-fn render_with_cpu(
-    config: &RenderConfig,
-    target_view: &FractalView,
-    target: RenderTarget,
-    total_timer: Instant,
-) -> Vec<u8> {
-    let alloc_timer = Instant::now();
-    let buffer_size = (target_view.width * target_view.height * 4) as usize;
-    let mut buffer = vec![0u8; buffer_size];
-    let alloc_time = alloc_timer.elapsed();
-
-    let render_timer = Instant::now();
-
-    render_fractal(
-        &mut buffer,
-        target_view,
-        config.colormap,
-        config.max_iterations,
-        config.use_period,
-        config.period,
-        config.use_interior_color,
-        config.interior_color,
-        config.use_log_scale,
-        config.fractal,
-        &config.fractal_parameters,
-        config.max_threads,
-    );
-
-    let render_time = render_timer.elapsed();
-
-    if matches!(target, RenderTarget::Preview) {
-        let total_time = total_timer.elapsed();
-        perf_log!("[PERF] CPU Render {}x{} @ {} iter: total={:.2?} (alloc={:.2?}, render={:.2?})",
-            target_view.width, target_view.height, config.max_iterations,
-            total_time, alloc_time, render_time);
-    }
-
-    buffer
-}
-
-/// CPU hi-precision rendering path
-#[cfg(feature = "gpu")]
-fn render_with_hiprec(
-    config: &RenderConfig,
-    target_view: &FractalView,
-    target: RenderTarget,
-    total_timer: Instant,
-) -> Result<Vec<u8>, String> {
-    let buffer_size = (target_view.width * target_view.height * 4) as usize;
-    let mut buffer = vec![0u8; buffer_size];
-
-    render_fractal_hiprec(
-        &mut buffer,
-        target_view,
-        config.colormap,
-        config.max_iterations,
-        config.use_period,
-        config.period,
-        config.use_interior_color,
-        config.interior_color,
-        config.use_log_scale,
-        config.fractal,
-        &config.fractal_parameters,
-        config.hiprec_bits,
-        config.max_threads,
-    )?;
-
-    if matches!(target, RenderTarget::Preview) {
-        let total_time = total_timer.elapsed();
-        perf_log!(
-            "[PERF] Hi-Prec CPU Render {}bit {}x{} @ {} iter: total={:.2?}",
-            config.hiprec_bits, target_view.width, target_view.height,
-            config.max_iterations, total_time
-        );
-    }
-
-    Ok(buffer)
-}
-
-/// GPU rendering path
-#[cfg(feature = "gpu")]
-fn render_with_gpu(
-    config: &RenderConfig,
-    target_view: &FractalView,
-    gpu_renderer: &mut crate::gpu::WgpuRenderer,
-) -> Result<Vec<u8>, String> {
-    use crate::gpu::{FractalRenderer, RenderConfig as GpuRenderConfig};
-    use scala_chromatica::color_from_iterations;
-    use rayon::prelude::*;
-    
-    // Convert fractal parameters to vec
-    let param_values: Vec<f64> = config.fractal.parameters()
-        .iter()
-        .map(|p| config.fractal_parameters.get(&p.name).copied().unwrap_or(p.default))
-        .collect();
-    
-    // Create GPU render config
-    let gpu_config = GpuRenderConfig {
-        center_x: target_view.center_x,
-        center_y: target_view.center_y,
-        zoom: target_view.zoom,
-        max_iter: config.max_iterations,
-        width: target_view.width,
-        height: target_view.height,
-        fractal_params: param_values,
-    };
-
-    // Render iteration counts on GPU
-    let iterations = gpu_renderer.render_iterations(&gpu_config, config.fractal)?;
-
-    // Apply colormap on CPU using proper color_from_iterations (handles period, log scale, etc.)
-    let buffer_size = (target_view.width * target_view.height * 4) as usize;
-    let mut buffer = vec![0u8; buffer_size];
-    
-    // Use parallel processing for color application (same as CPU path)
-    let pixels: Vec<[u8; 4]> = iterations
-        .par_iter()
-        .map(|&iter| {
-            let color = color_from_iterations(
-                iter,
-                config.max_iterations,
-                config.colormap,
-                config.use_period,
-                config.period,
-                config.use_interior_color,
-                config.interior_color,
-                config.use_log_scale,
-            );
-            [color.r, color.g, color.b, 255]
-        })
-        .collect();
-    
-    // Copy computed pixels to frame buffer
-    for (i, pixel) in pixels.iter().enumerate() {
-        let idx = i * 4;
-        buffer[idx..idx + 4].copy_from_slice(pixel);
+        log_preview_render(config, &iterations, compute_time, color_time, total_timer.elapsed());
     }
 
     Ok(buffer)
@@ -545,93 +742,16 @@ pub fn render_with_config(
     config: &RenderConfig,
     target: RenderTarget,
 ) -> Result<Vec<u8>, String> {
-    let _total_timer = Instant::now();
+    let total_timer = Instant::now();
+    let compute_timer = Instant::now();
+    let iterations = compute_iteration_cache_with_config(config, target)?;
+    let compute_time = compute_timer.elapsed();
+    let color_timer = Instant::now();
+    let buffer = colorize_iteration_cache_with_config(config, &iterations);
+    let color_time = color_timer.elapsed();
 
-    // Determine output dimensions based on target
-    let (width, height) = match target {
-        RenderTarget::Preview => (config.view.width, config.view.height),
-        RenderTarget::Export { width, height } => (width, height),
-    };
-
-    // Create view with target dimensions (may differ from config.view for export)
-    let mut target_view = config.view.clone();
-    target_view.width = width;
-    target_view.height = height;
-
-    // Orbit-accumulation fractals: CpuHiPrec path first, then standard CPU density.
-    if config.fractal.uses_orbit_accumulation() {
-        if matches!(config.backend, RenderBackend::CpuHiPrec) {
-            if config.fractal.supports_hiprec() {
-                return render_orbit_accumulation_hiprec(config, &target_view, target, _total_timer);
-            } else {
-                return Err(format!(
-                    "Hi-precision not supported for fractal '{}'. Switch to CPU mode.",
-                    config.fractal.name()
-                ));
-            }
-        }
-        return Ok(render_orbit_accumulation(config, &target_view, target, _total_timer));
-    }
-
-    // CPU Hi-Prec path
-    if matches!(config.backend, RenderBackend::CpuHiPrec) {
-        let buffer_size = (width * height * 4) as usize;
-        let mut buffer = vec![0u8; buffer_size];
-        render_fractal_hiprec(
-            &mut buffer,
-            &target_view,
-            config.colormap,
-            config.max_iterations,
-            config.use_period,
-            config.period,
-            config.use_interior_color,
-            config.interior_color,
-            config.use_log_scale,
-            config.fractal,
-            &config.fractal_parameters,
-            config.hiprec_bits,
-            config.max_threads,
-        )?;
-        if matches!(target, RenderTarget::Preview) {
-            let total_time = _total_timer.elapsed();
-            perf_log!(
-                "[PERF] Hi-Prec CPU Render {}bit {}x{} @ {} iter: total={:.2?}",
-                config.hiprec_bits, width, height, config.max_iterations, total_time
-            );
-        }
-        return Ok(buffer);
-    }
-
-    // Allocate buffer
-    let alloc_timer = Instant::now();
-    let buffer_size = (width * height * 4) as usize;
-    let mut buffer = vec![0u8; buffer_size];
-    let alloc_time = alloc_timer.elapsed();
-
-    // Render using fractal trait
-    let render_timer = Instant::now();
-    render_fractal(
-        &mut buffer,
-        &target_view,
-        config.colormap,
-        config.max_iterations,
-        config.use_period,
-        config.period,
-        config.use_interior_color,
-        config.interior_color,
-        config.use_log_scale,
-        config.fractal,
-        &config.fractal_parameters,
-        config.max_threads,
-    );
-    let render_time = render_timer.elapsed();
-
-    // Performance logging (only for preview, to avoid spamming during export)
     if matches!(target, RenderTarget::Preview) {
-        let total_time = _total_timer.elapsed();
-        perf_log!("[PERF] Render {}x{} @ {} iter: total={:.2?} (alloc={:.2?}, render={:.2?})",
-            width, height, config.max_iterations,
-            total_time, alloc_time, render_time);
+        log_preview_render(config, &iterations, compute_time, color_time, total_timer.elapsed());
     }
 
     Ok(buffer)
@@ -641,7 +761,8 @@ pub fn render_with_config(
 mod tests {
     use super::*;
     use scala_chromatica::ColorMap;
-    use crate::fractals::Mandelbrot;
+    use crate::fractals::{Mandelbrot, Zubieta};
+    use std::collections::HashMap;
 
     #[test]
     fn test_render_config_builder() {
@@ -664,6 +785,26 @@ mod tests {
     }
 
     #[test]
+    fn test_colorize_iteration_cache_respects_color_offset() {
+        let view = FractalView::new(2, 2);
+        let colormap = ColorMap::default_scheme();
+        let mandelbrot = Mandelbrot::new();
+
+        let config0 = RenderConfig::new(view.clone(), &colormap, 64, &mandelbrot)
+            .with_period(true, 16)
+            .with_color_offset(0);
+        let config4 = RenderConfig::new(view.clone(), &colormap, 64, &mandelbrot)
+            .with_period(true, 16)
+            .with_color_offset(4);
+
+        let cache = build_iteration_cache(&config0, &view, vec![1, 2, 3, 4]);
+        let buffer0 = colorize_iteration_cache_with_config(&config0, &cache);
+        let buffer4 = colorize_iteration_cache_with_config(&config4, &cache);
+
+        assert_ne!(buffer0, buffer4, "color_offset should change colorized output");
+    }
+
+    #[test]
     fn test_render_target_dimensions() {
         let view = FractalView::new(640, 480);
         let colormap = ColorMap::default_scheme();
@@ -683,5 +824,70 @@ mod tests {
         #[cfg(not(feature = "gpu"))]
         let buffer = render_with_config(&config, RenderTarget::Export { width: 1920, height: 1080 }).expect("render failed");
         assert_eq!(buffer.len(), 1920 * 1080 * 4);
+    }
+
+    #[test]
+    fn test_perturbation_backend_renders_with_tiles() {
+        let mut view = FractalView::new(64, 64);
+        view.center_x = -0.75;
+        view.center_y = 0.1;
+        view.zoom = 1.0e6;
+
+        let colormap = ColorMap::default_scheme();
+        let mandelbrot = Mandelbrot::new();
+        let config = RenderConfig::new(view, &colormap, 128, &mandelbrot)
+            .with_backend(crate::gpu::RenderBackend::Perturbation)
+            .with_hiprec_bits(64)
+            .with_max_threads(1)
+            .with_pt_tiles(2);
+
+        #[cfg(feature = "gpu")]
+        let buffer = render_with_config(&config, RenderTarget::Preview, None).expect("PT render failed");
+        #[cfg(not(feature = "gpu"))]
+        let buffer = render_with_config(&config, RenderTarget::Preview).expect("PT render failed");
+
+        assert_eq!(buffer.len(), 64 * 64 * 4);
+    }
+
+    #[test]
+    fn test_perturbation_backend_rejects_unsupported_fractal() {
+        let view = FractalView::new(32, 32);
+        let colormap = ColorMap::default_scheme();
+        let zubieta = Zubieta::new();
+        let config = RenderConfig::new(view, &colormap, 64, &zubieta)
+            .with_backend(crate::gpu::RenderBackend::Perturbation);
+
+        #[cfg(feature = "gpu")]
+        let err = render_with_config(&config, RenderTarget::Preview, None)
+            .expect_err("unsupported fractal should fail through the full render pipeline");
+        #[cfg(not(feature = "gpu"))]
+        let err = render_with_config(&config, RenderTarget::Preview)
+            .expect_err("unsupported fractal should fail through the full render pipeline");
+
+        assert!(err.contains("Perturbation Theory is only supported for Mandelbrot (power=2)"));
+        assert!(err.contains("Fractal 'Zubieta' is not supported"));
+    }
+
+    #[test]
+    fn test_perturbation_backend_rejects_unsupported_power() {
+        let view = FractalView::new(32, 32);
+        let colormap = ColorMap::default_scheme();
+        let mandelbrot = Mandelbrot::new();
+        let mut params = HashMap::new();
+        params.insert("power".to_string(), 3.0);
+
+        let config = RenderConfig::new(view, &colormap, 64, &mandelbrot)
+            .with_backend(crate::gpu::RenderBackend::Perturbation)
+            .with_fractal_parameters(params);
+
+        #[cfg(feature = "gpu")]
+        let err = render_with_config(&config, RenderTarget::Preview, None)
+            .expect_err("unsupported power should fail through the full render pipeline");
+        #[cfg(not(feature = "gpu"))]
+        let err = render_with_config(&config, RenderTarget::Preview)
+            .expect_err("unsupported power should fail through the full render pipeline");
+
+        assert!(err.contains("Perturbation Theory is only supported for Mandelbrot (power=2)"));
+        assert!(err.contains("Fractal 'Mandelbrot' is not supported"));
     }
 }

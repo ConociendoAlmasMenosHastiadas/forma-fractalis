@@ -48,6 +48,12 @@ pub enum RenderBackend {
     /// `bits` must be one of: 64, 128, 256, 512, 1024.
     CpuHiPrec,
 
+    /// Perturbation Theory deep-zoom renderer.
+    /// Computes one BigFloat reference orbit at the view center, then renders
+    /// every other pixel as an f64 delta from that reference.
+    /// Only valid for Mandelbrot (power = 2). Other fractals return an error.
+    Perturbation,
+
     /// GPU rendering using compute shaders
     #[cfg(feature = "gpu")]
     Gpu,
@@ -64,11 +70,20 @@ impl RenderBackend {
     pub fn all() -> Vec<RenderBackend> {
         #[cfg(feature = "gpu")]
         {
-            vec![RenderBackend::Cpu, RenderBackend::CpuHiPrec, RenderBackend::Gpu]
+            vec![
+                RenderBackend::Cpu,
+                RenderBackend::CpuHiPrec,
+                RenderBackend::Perturbation,
+                RenderBackend::Gpu,
+            ]
         }
         #[cfg(not(feature = "gpu"))]
         {
-            vec![RenderBackend::Cpu, RenderBackend::CpuHiPrec]
+            vec![
+                RenderBackend::Cpu,
+                RenderBackend::CpuHiPrec,
+                RenderBackend::Perturbation,
+            ]
         }
     }
 
@@ -77,6 +92,7 @@ impl RenderBackend {
         match self {
             RenderBackend::Cpu => "CPU",
             RenderBackend::CpuHiPrec => "CPU Hi-Prec",
+            RenderBackend::Perturbation => "Perturbation",
             #[cfg(feature = "gpu")]
             RenderBackend::Gpu => "GPU",
         }

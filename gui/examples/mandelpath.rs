@@ -5,7 +5,6 @@ use forma_fractalis::{
     rendering_pipeline::{render_with_config, RenderConfig, RenderTarget},
 };
 use num_complex::Complex64;
-use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 /// Render a section header with consistent styling
@@ -183,19 +182,16 @@ impl MandelPathApp {
 
         let mandelbrot = Mandelbrot::new();
 
-        let config = RenderConfig {
-            view: self.view_state.view.clone(),
-            fractal: &mandelbrot,
-            fractal_parameters: HashMap::new(),
-            colormap: &self.color.colormap,
+        let config = RenderConfig::new(
+            self.view_state.view.clone(),
+            &self.color.colormap,
             max_iterations,
-            use_period: self.color.use_period,
-            period,
-            use_interior_color: self.color.use_interior_color,
-            interior_color: self.color.interior_color,
-            use_log_scale: self.color.use_log_scale,
-            backend: forma_fractalis::gpu::RenderBackend::Cpu,
-        };
+            &mandelbrot,
+        )
+        .with_period(self.color.use_period, period)
+        .with_interior_color(self.color.use_interior_color, self.color.interior_color)
+        .with_log_scale(self.color.use_log_scale)
+        .with_backend(forma_fractalis::gpu::RenderBackend::Cpu);
 
         #[cfg(feature = "gpu")]
         let buffer = render_with_config(&config, RenderTarget::Preview, None);

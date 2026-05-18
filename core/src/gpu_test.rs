@@ -14,7 +14,7 @@ use crate::gpu::WgpuRenderer;
 use crate::fractals::{
     Fractal,
     Mandelbrot, Julia, BurningShip, InsideoutDragon, Zubieta, SinJulia, TippetsMandelbrot,
-    MultifractalJulia, Cactus, MarekDragon, LaceJulia,
+    MultifractalJulia, Cactus, MarekDragon, LaceJulia, Tetration,
 };
 use crate::rendering::compute_iterations;
 use std::collections::HashMap;
@@ -96,7 +96,7 @@ pub fn run_gpu_tests(config: &GpuTestConfig) -> Result<Vec<GpuTestResult>, Strin
                 return Err(format!(
                     "[GPU-TEST] No GPU-supported fractal found matching '{}'. \
                      Available: Mandelbrot, Julia Set, Burning Ship, Insideout Dragon, \
-                     Zubieta, Sin Julia, Tippets Mandelbrot, Multifractal-Julia, Cactus, Marek Dragon, Lace Julia",
+                     Zubieta, Sin Julia, Tippets Mandelbrot, Multifractal-Julia, Cactus, Marek Dragon, Lace Julia, Tetration",
                     name
                 ));
             }
@@ -319,5 +319,6 @@ fn gpu_supported_fractals() -> Vec<(String, Box<dyn Fractal>)> {
         ("Cactus".to_string(), Box::new(Cactus::new())),
         ("Marek Dragon".to_string(), Box::new(MarekDragon::new())),
         ("Lace Julia".to_string(), Box::new(LaceJulia::new())),
+        ("Tetration".to_string(), Box::new(Tetration::new())),
     ]
 }

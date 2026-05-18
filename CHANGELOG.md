@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-05-18
+
+### Added
+- **Perturbation Theory Backend** for Mandelbrot power=2 deep zoom rendering
+  - BigFloat reference orbit plus f64 delta iteration in the unified preview/export pipeline
+  - Tiled reference orbits, bounded rebasing, denser retry before direct fallback, and series-approximation warm starts
+  - PT profiling/status telemetry, low-zoom warnings, and explicit unsupported-fractal refusal paths
+- **Tetration GPU Shader**: WGPU compute shader support for all four Tetration escape modes, covered by the GPU parity command
+- **Cactus CPU Hi-Precision Support**: BigFloat rendering across the supported bit-width ladder
+- **Precise Deep-Camera Persistence**: optional exact center/zoom strings round-trip through PNG and JSON metadata for extreme deep-zoom scenes
+
+### Changed
+- PT preview and export now both route through the unified rendering pipeline instead of separate code paths
+- Preview recoloring reuses cached scalar data across CPU, CPU Hi-Prec, GPU, PT, and orbit-accumulation backends; PT cache validity now includes `pt_bits`, `pt_tiles`, and `pt_glitch_tolerance`
+- PT defaults stay conservative for release: `pt_tiles = 1` remains the global default and PT reference precision now starts at 128 bits
+- PT and CPU Hi-Prec text-entry interactions now use progressive half-resolution preview refinement before the final full-resolution redraw
+
+### Fixed
+- Deep zoom drag-targeting now preserves the intended region when temporary preview scaling is active
+- PT cache invalidation, orbit-exhausted reporting, and tile-center coordinate mapping now align with the unified rendering path and deep-zoom metadata flow
+
 ## [0.2.6] - 2026-04-30
 
 ### Added
@@ -883,7 +904,8 @@ let buffer = render_fractal_to_buffer(&fractal, &config)?;
 - **v0.1.1** (2026-01-12): Unified pipeline, filtering, supersampling
 - **v0.1.0** (2026-01-11): Initial release with Mandelbrot explorer
 
-[Unreleased]: https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/compare/v0.2.7...HEAD
+[0.2.7]: https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/compare/v0.2.6...v0.2.7
 [0.1.4]: https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/compare/v0.1.1...v0.1.2

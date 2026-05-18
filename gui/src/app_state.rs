@@ -226,11 +226,13 @@ pub struct ViewState {
     pub view: FractalView,
     pub fractal_texture: Option<egui::TextureHandle>,
     pub needs_redraw: bool,
-    /// Cached iteration counts from the last full CPU render.
+    /// Cached iteration or density values from the last full preview render.
     ///
-    /// `Some` after the first successful CPU render; `None` on startup, after
-    /// a GPU render, or after a dimension change that invalidates the buffer.
-    /// Call `FractalIterations::is_valid_for()` before reusing.
+    /// `Some` after the first successful preview render; `None` on startup or
+    /// after a dimension change that invalidates the buffer. The cache stores
+    /// backend-specific metadata, so color-only preview changes can reuse CPU,
+    /// GPU, PT, and orbit-accumulation results safely.
+    /// Call `FractalIterations::is_valid_for_render()` before reusing.
     pub iteration_cache: Option<FractalIterations>,
     /// Display zoom factor for the preview panel ([0.1, 1.0]).
     /// 1.0 = fit-to-panel (fills available space); 0.5 = half the panel.
@@ -994,6 +996,14 @@ pub struct RenderState {
     pub backend: crate::gpu::RenderBackend,
     /// Bit width used when backend == CpuHiPrec. Must be one of HIPREC_BIT_OPTIONS.
     pub hiprec_bits: u32,
+    /// Bit width used for the BigFloat reference orbit when backend == Perturbation.
+    /// Also controls the hi-prec fallback precision for glitched pixels.
+    /// Must be one of HIPREC_BIT_OPTIONS. Default: 128.
+    pub pt_bits: u32,
+    /// Glitch tolerance multiplier for PT rendering. Controls `|dz|² > tolerance * |z_total|²`.
+    /// 1.0 = mathematically strict (default). Higher values (e.g. 4.0) reduce the number of
+    /// expensive hi-prec fallback pixels at the cost of slight color inaccuracy.
+    pub pt_glitch_tolerance: f64,
     /// Maximum rayon threads for CPU rendering.
     /// 0 = use all available threads (rayon default). 1..N = limited parallelism.
     pub max_threads: usize,
@@ -1001,6 +1011,23 @@ pub struct RenderState {
     /// Set when switching TO CpuHiPrec, cleared when switching away.
     /// Used to restore exact original dimensions and display zoom without floating-point drift.
     pub hiprec_preview_saved: Option<(u32, u32, String, f32)>,
+    /// True while the GUI is showing a temporary low-resolution preview during
+    /// debounced edits on expensive backends.
+    pub progressive_preview_active: bool,
+    /// Timestamp of the debounced edit batch that produced the current
+    /// temporary preview. A new timestamp means the preview should refresh.
+    pub progressive_preview_stamp: Option<Instant>,
+    /// Cached reference orbits for Perturbation Theory rendering.
+    /// Contains `pt_tiles * pt_tiles` orbits arranged in a square grid.
+    /// Empty when PT backend is not in use or cache is invalid.
+    pub reference_orbits: Vec<forma_fractalis_core::perturbation::ReferenceOrbit>,
+    /// NxN tile grid size for multi-reference PT. 1 = single orbit (view center).
+    /// 2 = 2x2=4 orbits, 4 = 4x4=16 orbits, etc.
+    pub pt_tiles: u32,
+    /// View dimensions at the time orbits were last computed.
+    /// If width/height change (resize), tile centers shift and orbits must be recomputed.
+    pub last_orbit_view_w: u32,
+    pub last_orbit_view_h: u32,
     #[cfg(feature = "gpu")]
     pub gpu_renderer: Option<crate::gpu::WgpuRenderer>,
 }
@@ -1010,8 +1037,16 @@ impl Default for RenderState {
         Self {
             backend: crate::gpu::RenderBackend::default(),
             hiprec_bits: crate::gpu::HIPREC_DEFAULT_BITS,
-            max_threads: 0,
+            pt_bits: crate::perturbation::PT_REFERENCE_BITS,
+            pt_glitch_tolerance: 1.0,
+            pt_tiles: 1,
+            max_threads: 18,
             hiprec_preview_saved: None,
+            progressive_preview_active: false,
+            progressive_preview_stamp: None,
+            reference_orbits: Vec::new(),
+            last_orbit_view_w: 0,
+            last_orbit_view_h: 0,
             #[cfg(feature = "gpu")]
             gpu_renderer: None,  // Lazy initialization on first use
         }
@@ -1249,7 +1284,7 @@ impl From<&crate::export::FractalMetadata> for ColorState {
                 meta.interior_color[2].to_string(),
             ],
             use_log_scale: meta.use_log_scale,
-            color_offset: 0,
+            color_offset: meta.color_offset,
         }
     }
 }
@@ -1464,6 +1499,9 @@ mod tests {
             center_x: -0.5,
             center_y: 0.0,
             zoom: 0.8,
+            precise_center_x: None,
+            precise_center_y: None,
+            precise_zoom: None,
             width: 1920,
             height: 1080,
             max_iterations: 512,
@@ -1474,6 +1512,7 @@ mod tests {
             use_interior_color: false,
             interior_color: [0, 0, 0],
             use_log_scale: false,
+            color_offset: 0,
             export_filter: "None".to_string(),
             export_supersample: 1,
             export_scale: 1.0,
@@ -1503,6 +1542,9 @@ mod tests {
             center_x: 0.0,
             center_y: 0.0,
             zoom: 1.0,
+            precise_center_x: None,
+            precise_center_y: None,
+            precise_zoom: None,
             width: 1280,
             height: 720,
             max_iterations: 256,
@@ -1513,6 +1555,7 @@ mod tests {
             use_interior_color: false,
             interior_color: [0, 0, 0],
             use_log_scale: false,
+            color_offset: 0,
             export_filter: "None".to_string(),
             export_supersample: 1,
             export_scale: 1.0,
@@ -1535,6 +1578,9 @@ mod tests {
             center_x: 0.0,
             center_y: 0.0,
             zoom: 1.0,
+            precise_center_x: None,
+            precise_center_y: None,
+            precise_zoom: None,
             width: 3840,
             height: 2160,
             max_iterations: 1024,
@@ -1545,6 +1591,7 @@ mod tests {
             use_interior_color: false,
             interior_color: [0, 0, 0],
             use_log_scale: false,
+            color_offset: 0,
             export_filter: "Lanczos3".to_string(),
             export_supersample: 4,
             export_scale: 2.0,
@@ -1570,6 +1617,9 @@ mod tests {
             center_x: 0.0,
             center_y: 0.0,
             zoom: 1.0,
+            precise_center_x: None,
+            precise_center_y: None,
+            precise_zoom: None,
             width: 1280,
             height: 720,
             max_iterations: 256,
@@ -1580,6 +1630,7 @@ mod tests {
             use_interior_color: true,
             interior_color: [255, 128, 64],
             use_log_scale: true,
+            color_offset: 7,
             export_filter: "None".to_string(),
             export_supersample: 1,
             export_scale: 1.0,
@@ -1594,6 +1645,7 @@ mod tests {
         assert!(color_state.use_interior_color);
         assert_eq!(color_state.interior_color, [255, 128, 64]);
         assert!(color_state.use_log_scale);
+        assert_eq!(color_state.color_offset, 7);
         assert_eq!(color_state.interior_color_rgb_text[0], "255");
         assert_eq!(color_state.interior_color_rgb_text[1], "128");
         assert_eq!(color_state.interior_color_rgb_text[2], "64");
@@ -1612,6 +1664,7 @@ mod tests {
         let view_state = ViewState::new(1920, 1080);
         let mut color_state = ColorState::default();
         color_state.use_period = true;
+        color_state.color_offset = 9;
         
         let mut input_state = InputState::default();
         input_state.iterations = "512".to_string();
@@ -1640,6 +1693,7 @@ mod tests {
         assert_eq!(view_state2.view.width, 1920);
         assert_eq!(view_state2.view.height, 1080);
         assert!(color_state2.use_period);
+        assert_eq!(color_state2.color_offset, 9);
         assert_eq!(input_state2.iterations, "512");
         assert_eq!(export_state2.filter, FilterType::Lanczos3);
     }
@@ -1684,8 +1738,6 @@ mod tests {
 
     #[test]
     fn test_multi_julia_ifs_metadata_roundtrip() {
-        use crate::filtering::FilterType;
-
         // Create Multi-Julia IFS state with custom attractors
         let mut fractal_state = FractalState {
             fractal_type: FractalType::MultiJuliaIFS,

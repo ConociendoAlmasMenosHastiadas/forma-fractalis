@@ -10,6 +10,7 @@ pub use forma_fractalis_core::gpu;
 pub use forma_fractalis_core::gpu_test;
 pub use forma_fractalis_core::number_utils;
 pub use forma_fractalis_core::orbit_accumulation;
+pub use forma_fractalis_core::perturbation;
 pub use forma_fractalis_core::rendering;
 pub use forma_fractalis_core::rendering_pipeline;
 

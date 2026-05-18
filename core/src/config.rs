@@ -193,6 +193,9 @@ impl FractalConfig {
             center_x: metadata.center_x,
             center_y: metadata.center_y,
             zoom: metadata.zoom,
+            precise_center_x: metadata.precise_center_x.clone(),
+            precise_center_y: metadata.precise_center_y.clone(),
+            precise_zoom: metadata.precise_zoom.clone(),
             width: metadata.width,
             height: metadata.height,
             parameters: metadata.fractal_parameters.clone(),
@@ -209,7 +212,7 @@ impl FractalConfig {
                 use_interior_color: metadata.use_interior_color,
                 interior_color: metadata.interior_color,
                 use_log_scale: metadata.use_log_scale,
-                color_offset: 0,
+                color_offset: metadata.color_offset,
             },
         }
     }

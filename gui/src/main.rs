@@ -1,11 +1,11 @@
 use eframe::egui;
 use forma_fractalis::{
-    app_state::{ViewState, InputState, FractalState, ColorState, MouseState, ExportState, RenderState, AnimationState, FractalType, FractalIterations},
-    fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS, AdjProbJulia, ChaosSymmetry1, LaceJulia}, 
+    app_state::{ViewState, InputState, FractalState, ColorState, MouseState, ExportState, RenderState, AnimationState, FractalType},
+    fractals::{FractalView, Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS, AdjProbJulia, ChaosSymmetry1, LaceJulia}, 
     gpu::RenderBackend,
     gui, cli,
     perf_log, enable_profiling,
-    rendering_pipeline::{render_with_config, RenderConfig, RenderTarget},
+    rendering_pipeline::{colorize_iteration_cache_with_config, compute_iteration_cache_with_config, latest_pt_report, RenderConfig, RenderTarget},
 };
 use std::time::{Duration, Instant};
 use std::sync::mpsc::{self, Receiver};
@@ -52,6 +52,30 @@ fn main() -> Result<(), eframe::Error> {
 /// Debounce delay for text input to prevent lag during typing
 /// Redraws are delayed until user stops typing for this duration
 const INPUT_DEBOUNCE_DELAY: Duration = Duration::from_millis(500);
+
+/// Preview downscale used while debounced edits are still settling on slower backends.
+const PROGRESSIVE_PREVIEW_SCALE: f32 = 0.5;
+const PROGRESSIVE_PREVIEW_MIN_DIMENSION: u32 = 100;
+
+fn progressive_preview_view(view: &FractalView) -> Option<FractalView> {
+    let width = ((view.width as f32) * PROGRESSIVE_PREVIEW_SCALE)
+        .round()
+        .max(PROGRESSIVE_PREVIEW_MIN_DIMENSION as f32) as u32;
+    let height = ((view.height as f32) * PROGRESSIVE_PREVIEW_SCALE)
+        .round()
+        .max(PROGRESSIVE_PREVIEW_MIN_DIMENSION as f32) as u32;
+    let width = width.min(view.width);
+    let height = height.min(view.height);
+
+    if width == view.width && height == view.height {
+        return None;
+    }
+
+    let mut preview = view.clone();
+    preview.width = width;
+    preview.height = height;
+    Some(preview)
+}
 
 /// Main application state for the fractal explorer
 /// 
@@ -177,166 +201,133 @@ impl FractalApp {
             FractalType::LaceJulia => &lace_julia,
         };
 
-        let buffer_size = (self.view_state.view.width * self.view_state.view.height * 4) as usize;
+        let preview_view = if self.render.progressive_preview_active {
+            progressive_preview_view(&self.view_state.view)
+        } else {
+            None
+        };
+        let render_view = preview_view.as_ref().unwrap_or(&self.view_state.view);
+
+        let buffer_size = (render_view.width * render_view.height * 4) as usize;
         let mut buffer = vec![0u8; buffer_size];
 
-        // CPU / CpuHiPrec mode: Use iteration cache for fast color-only updates.
-        // GPU mode: Always use unified pipeline (fast enough to not need cache).
-        if matches!(self.render.backend, RenderBackend::Cpu | RenderBackend::CpuHiPrec) {
-            // Check if we can reuse cached iteration counts (same view/fractal/backend/bits).
-            let use_cache = self.view_state.iteration_cache.as_ref().map_or(false, |cache| {
-                let config = self.view_state.to_fractal_config(
-                    &self.fractal, &self.color, &self.input,
-                );
-                cache.is_valid_for(
-                    &config,
-                    fractal.name(),
-                    self.render.backend,
-                    self.render.hiprec_bits,
-                )
-            });
+        let effective_bits = match self.render.backend {
+            RenderBackend::CpuHiPrec => self.render.hiprec_bits,
+            RenderBackend::Perturbation => self.render.pt_bits,
+            _ => 0,
+        };
 
-            if use_cache {
-                // Fast path: Only color settings changed; reuse cached iterations.
-                perf_log!("[CACHE] Using cached iterations");
-                let cache = self.view_state.iteration_cache.as_ref().unwrap();
-                forma_fractalis::rendering::apply_colors_from_cache(
-                    &mut buffer,
-                    &cache.data,
-                    &self.color.colormap,
-                    max_iterations,
-                    self.color.use_period,
-                    period,
-                    self.color.use_interior_color,
-                    self.color.interior_color,
-                    self.color.use_log_scale,
-                    self.color.color_offset,
-                );
-            } else {
-                // Full render: compute iterations, cache them, then apply colors.
-                let iterations: Vec<u32> = if fractal.uses_orbit_accumulation() {
-                    perf_log!("[CACHE] Computing orbit density (orbit accumulation)");
-                    forma_fractalis::orbit_accumulation::compute_orbit_density(
-                        &self.view_state.view,
-                        fractal,
-                        &self.fractal.parameters,
-                        max_iterations,
-                        self.render.max_threads,
-                    )
-                } else {
-                    match self.render.backend {
-                        RenderBackend::Cpu => {
-                            perf_log!("[CACHE] Computing and caching iterations (CPU f64)");
-                            perf_log!("[CPU] View: center=({:.10}, {:.10}), zoom={:.10}",
-                                self.view_state.view.center_x, self.view_state.view.center_y, self.view_state.view.zoom);
-                            forma_fractalis::rendering::compute_iterations(
-                                &self.view_state.view,
-                                max_iterations,
-                                fractal,
-                                &self.fractal.parameters,
-                            )
-                        }
-                        RenderBackend::CpuHiPrec => {
-                            perf_log!("[CACHE] Computing and caching iterations (CPU HiPrec {}bit)", self.render.hiprec_bits);
-                            perf_log!("[CPU-HIPREC] View: center=({:.10}, {:.10}), zoom={:.10}",
-                                self.view_state.view.center_x, self.view_state.view.center_y, self.view_state.view.zoom);
-                            match forma_fractalis::rendering::compute_iterations_hiprec(
-                                &self.view_state.view,
-                                max_iterations,
-                                fractal,
-                                &self.fractal.parameters,
-                                self.render.hiprec_bits,
-                                self.render.max_threads,
-                            ) {
-                                Ok(iters) => iters,
-                                Err(e) => {
-                                    self.status_message = format!("Hi-Prec render error: {}", e);
-                                    eprintln!("[ERROR] {}", e);
-                                    self.view_state.clear_redraw();
-                                    return;
-                                }
-                            }
-                        }
-                        _ => unreachable!("GPU backends are handled in the else branch"),
-                    }
-                };
-
-                // Store in cache for future color-only updates.
-                let cache_config = self.view_state.to_fractal_config(
-                    &self.fractal, &self.color, &self.input,
-                );
-                self.view_state.iteration_cache = Some(FractalIterations::new(
-                    iterations.clone(),
-                    &cache_config,
-                    fractal.name(),
-                    self.render.backend,
-                    self.render.hiprec_bits,
-                ));
-
-                // Apply colors to the computed iterations.
-                forma_fractalis::rendering::apply_colors_from_cache(
-                    &mut buffer,
-                    &iterations,
-                    &self.color.colormap,
-                    max_iterations,
-                    self.color.use_period,
-                    period,
-                    self.color.use_interior_color,
-                    self.color.interior_color,
-                    self.color.use_log_scale,
-                    self.color.color_offset,
-                );
-            }
-        } else {
-            // GPU mode: Use unified rendering pipeline (no caching needed, fast enough)
-            perf_log!("[GPU] View: center=({:.10}, {:.10}), zoom={:.10}", 
-                self.view_state.view.center_x, self.view_state.view.center_y, self.view_state.view.zoom);
-            let config = RenderConfig::new(
-                self.view_state.view.clone(),
-                &self.color.colormap,
+        let use_cache = self.view_state.iteration_cache.as_ref().map_or(false, |cache| {
+            cache.is_valid_for_render(
+                render_view,
                 max_iterations,
-                fractal,
+                fractal.name(),
+                &self.fractal.parameters,
+                self.render.backend,
+                effective_bits,
+                self.render.pt_glitch_tolerance,
+                self.render.pt_tiles,
             )
-            .with_fractal_parameters(self.fractal.parameters.clone())
-            .with_period(self.color.use_period, period)
-            .with_interior_color(self.color.use_interior_color, self.color.interior_color)
-            .with_log_scale(self.color.use_log_scale)
-            .with_backend(self.render.backend)
-            .with_hiprec_bits(self.render.hiprec_bits)
-            .with_max_threads(self.render.max_threads);
+        });
+
+        let config = RenderConfig::new(
+            render_view.clone(),
+            &self.color.colormap,
+            max_iterations,
+            fractal,
+        )
+        .with_fractal_parameters(self.fractal.parameters.clone())
+        .with_period(self.color.use_period, period)
+        .with_interior_color(self.color.use_interior_color, self.color.interior_color)
+        .with_log_scale(self.color.use_log_scale)
+        .with_color_offset(self.color.color_offset)
+        .with_backend(self.render.backend)
+        .with_hiprec_bits(effective_bits)
+        .with_max_threads(self.render.max_threads)
+        .with_pt_glitch_tolerance(self.render.pt_glitch_tolerance)
+        .with_pt_tiles(self.render.pt_tiles);
+
+        if use_cache {
+            perf_log!("[CACHE] Using cached iterations/density");
+        } else {
+            perf_log!("[{}] Computing preview cache: center=({:.10}, {:.10}), zoom={}",
+                match self.render.backend {
+                    RenderBackend::Cpu => "CPU",
+                    RenderBackend::CpuHiPrec => "CPU-HIPREC",
+                    RenderBackend::Gpu => "GPU",
+                    RenderBackend::Perturbation => "PT",
+                },
+                render_view.center_x,
+                render_view.center_y,
+                gui::format_zoom_profile(render_view.zoom),
+            );
 
             #[cfg(feature = "gpu")]
-            let render_result = render_with_config(
+            let cache_result = compute_iteration_cache_with_config(
                 &config,
                 RenderTarget::Preview,
                 self.render.gpu_renderer.as_mut(),
             );
-            
+
             #[cfg(not(feature = "gpu"))]
-            let render_result = render_with_config(&config, RenderTarget::Preview);
-            
-            match render_result {
-                Ok(data) => buffer = data,
+            let cache_result = compute_iteration_cache_with_config(&config, RenderTarget::Preview);
+
+            match cache_result {
+                Ok(iteration_cache) => {
+                    if matches!(self.render.backend, RenderBackend::Perturbation) {
+                        if let Some(report) = latest_pt_report() {
+                            let guidance = if report.low_zoom_warning {
+                                "PT not needed at this zoom; CPU mode is sufficient".to_string()
+                            } else if report.fallback_pct >= 75.0 || report.rebase_exhausted_count > 0 {
+                                "poor PT case: try more tiles, move to a boundary/interior point, or switch to CPU Hi-Prec".to_string()
+                            } else if report.rebased_pixel_count > 0 {
+                                "rebasing is helping on this view".to_string()
+                            } else {
+                                "PT delta path is stable".to_string()
+                            };
+
+                            self.status_message = format!(
+                                "PT {}x{} {}b | delta {:.1}% | hi-prec {:.1}% | SA {:.1}% avg {:.1} max {} | rebased px {:.1}% ({} events) | budget-hit {} | {}",
+                                report.pt_tiles,
+                                report.pt_tiles,
+                                report.hiprec_bits,
+                                if report.total_pixels > 0 {
+                                    report.pt_pixels as f64 / report.total_pixels as f64 * 100.0
+                                } else {
+                                    0.0
+                                },
+                                report.fallback_pct,
+                                report.sa_accepted_pixel_pct,
+                                report.sa_avg_skipped_iterations,
+                                report.sa_max_skipped_iterations,
+                                report.rebased_pixel_pct,
+                                report.rebase_count,
+                                report.rebase_exhausted_count,
+                                guidance,
+                            );
+                        }
+                    }
+                    self.view_state.iteration_cache = Some(iteration_cache);
+                }
                 Err(e) => {
                     self.status_message = format!("Render error: {}", e);
                     eprintln!("[ERROR] {}", e);
-                    // Keep previous frame on screen (buffer stays zeroed, which is fine
-                    // for a single failed frame - the texture won't be updated)
                     self.view_state.clear_redraw();
                     return;
                 }
             }
         }
 
-        self.finish_render(ctx, buffer);
+        let cache = self.view_state.iteration_cache.as_ref().unwrap();
+        buffer = colorize_iteration_cache_with_config(&config, cache);
+
+        self.finish_render(ctx, buffer, render_view.width, render_view.height);
     }
 
-    fn finish_render(&mut self, ctx: &egui::Context, buffer: Vec<u8>) {
+    fn finish_render(&mut self, ctx: &egui::Context, buffer: Vec<u8>, width: u32, height: u32) {
         // Convert to egui ColorImage
         let image_timer = Instant::now();
-        let width = self.view_state.view.width as usize;
-        let height = self.view_state.view.height as usize;
-        let color_image = egui::ColorImage::from_rgba_unmultiplied([width, height], &buffer);
+        let color_image = egui::ColorImage::from_rgba_unmultiplied([width as usize, height as usize], &buffer);
         let image_time = image_timer.elapsed();
 
         // Update or create texture
@@ -455,16 +446,39 @@ impl eframe::App for FractalApp {
             }
         }
         
+        let progressive_preview_supported = matches!(self.render.backend, RenderBackend::Perturbation | RenderBackend::CpuHiPrec);
+
         // Check if debounced input should trigger redraw
         if let Some(timer) = self.input.debounce_timer {
             if timer.elapsed() >= INPUT_DEBOUNCE_DELAY && self.input.pending_redraw {
+                self.render.progressive_preview_active = false;
+                self.render.progressive_preview_stamp = None;
                 self.view_state.needs_redraw = true;
                 self.input.pending_redraw = false;
                 self.input.debounce_timer = None;
             } else if self.input.pending_redraw {
+                if progressive_preview_supported && !self.mouse.is_dragging {
+                    let refresh_progressive = !self.render.progressive_preview_active
+                        || self.render.progressive_preview_stamp.map_or(true, |stamp| stamp != timer);
+                    if refresh_progressive {
+                        self.render.progressive_preview_active = true;
+                        self.render.progressive_preview_stamp = Some(timer);
+                        self.view_state.needs_redraw = true;
+                    }
+                }
                 // Keep requesting repaints until debounce delay is met
                 ctx.request_repaint_after(INPUT_DEBOUNCE_DELAY - timer.elapsed());
             }
+        } else if self.render.progressive_preview_active {
+            self.render.progressive_preview_active = false;
+            self.render.progressive_preview_stamp = None;
+            self.view_state.needs_redraw = true;
+        }
+
+        if !progressive_preview_supported && self.render.progressive_preview_active {
+            self.render.progressive_preview_active = false;
+            self.render.progressive_preview_stamp = None;
+            self.view_state.needs_redraw = true;
         }
         
         // Render fractal if needed
@@ -610,9 +624,15 @@ impl eframe::App for FractalApp {
                             ui.add_space(10.0);
 
                             // Current View
+                            let active_precision_bits = match self.render.backend {
+                                RenderBackend::CpuHiPrec => self.render.hiprec_bits,
+                                RenderBackend::Perturbation => self.render.pt_bits,
+                                _ => 64,
+                            };
                             gui::render_current_view_info(
                                 ui,
                                 &mut self.view_state.view,
+                                active_precision_bits,
                                 &mut self.view_state.needs_redraw,
                                 &mut self.status_message,
                                 &mut self.input.debounce_timer,
@@ -676,6 +696,7 @@ impl eframe::App for FractalApp {
                                 self.color.use_interior_color,
                                 self.color.interior_color,
                                 self.color.use_log_scale,
+                                self.color.color_offset,
                                 &mut self.input.export_scale,
                                 &mut self.export.directory,
                                 &mut self.export.filter,
@@ -743,6 +764,15 @@ impl eframe::App for FractalApp {
 
         // Main fractal display
         egui::CentralPanel::default().show(ctx, |ui| {
+            if self.render.progressive_preview_active {
+                ui.label(
+                    egui::RichText::new("Preview refining at 50% resolution while debounced edits settle")
+                        .small()
+                        .italics(),
+                );
+                ui.add_space(6.0);
+            }
+
             if let Some(texture) = &self.view_state.fractal_texture {
                 let available_size = ui.available_size();
                 let texture_size = texture.size_vec2();
@@ -790,16 +820,41 @@ impl eframe::App for FractalApp {
                         // Calculate zoom region
                         let center_rel = (center - rect.min) / scale;
                         let square_size_rel = self.mouse.zoom_square_size / scale;
-
-                        let center_x = center_rel.x as u32;
-                        let center_y = center_rel.y as u32;
+                        let x_frac = (center_rel.x / texture_size.x).clamp(0.0, 1.0) as f64;
+                        let y_frac = (center_rel.y / texture_size.y).clamp(0.0, 1.0) as f64;
 
                         // Calculate zoom factor based on square size relative to image size
                         let zoom_factor = texture_size.x / square_size_rel;
 
-                        self.view_state.view.zoom_at(center_x, center_y, zoom_factor as f64);
+                        match self.render.backend {
+                            RenderBackend::CpuHiPrec => {
+                                self.view_state.view.zoom_at_fraction_hiprec(
+                                    x_frac,
+                                    y_frac,
+                                    zoom_factor as f64,
+                                    self.render.hiprec_bits,
+                                );
+                            }
+                            RenderBackend::Perturbation => {
+                                self.view_state.view.zoom_at_fraction_hiprec(
+                                    x_frac,
+                                    y_frac,
+                                    zoom_factor as f64,
+                                    self.render.pt_bits,
+                                );
+                            }
+                            _ => {
+                                self.view_state.view.zoom_at_fraction(
+                                    x_frac,
+                                    y_frac,
+                                    zoom_factor as f64,
+                                );
+                            }
+                        }
+
+                        self.view_state.iteration_cache = None;
                         self.view_state.needs_redraw = true;
-                        self.status_message = format!("Zoomed to {:.2}x", self.view_state.view.zoom);
+                        self.status_message = format!("Zoomed to {}", self.view_state.view.zoom_display());
                     }
                     self.mouse.zoom_square_center = None;
                 }
@@ -878,7 +933,13 @@ impl FractalApp {
         let export_filter = self.export.filter;
         let export_supersample = self.input.parse_export_supersample();
         let render_backend = self.render.backend;
-        let hiprec_bits = self.render.hiprec_bits;
+        // Use pt_bits for Perturbation backend, hiprec_bits for HiPrec — they govern
+        // the same thing (fallback/orbit precision) in their respective backends.
+        let hiprec_bits = if matches!(render_backend, RenderBackend::Perturbation) {
+            self.render.pt_bits
+        } else {
+            self.render.hiprec_bits
+        };
         let max_threads = self.render.max_threads;
         let output_dir = self.export.directory.as_ref()
             .expect("Output directory should be set").clone();

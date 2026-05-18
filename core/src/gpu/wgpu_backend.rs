@@ -671,6 +671,7 @@ impl WgpuRenderer {
             "Cactus" => Some("Cactus"),
             "Marek Dragon" => Some("Marek Dragon"),
             "Lace Julia" => Some("Lace Julia"),
+            "Tetration" => Some("Tetration"),
             _ => None,
         }
     }
@@ -766,6 +767,7 @@ impl WgpuRenderer {
         load_timed!(renderer, "Cactus",               include_str!("shaders/cactus_kernel.wgsl"));
         load_timed!(renderer, "Marek Dragon",          include_str!("shaders/marek_dragon_kernel.wgsl"));
         load_timed!(renderer, "Lace Julia",             include_str!("shaders/lace_julia_kernel.wgsl"));
+        load_timed!(renderer, "Tetration",              include_str!("shaders/tetration_kernel.wgsl"));
 
         // Orbit accumulation shaders (different composition template)
         {

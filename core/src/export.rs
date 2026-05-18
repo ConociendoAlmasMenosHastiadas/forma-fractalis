@@ -32,6 +32,7 @@ fn create_png_metadata(
     use_interior_color: bool,
     interior_color: [u8; 3],
     use_log_scale: bool,
+    color_offset: u32,
     filter_type: FilterType,
     supersample: u32,
     scale: f32,
@@ -51,6 +52,15 @@ fn create_png_metadata(
     metadata.push(("View-CenterX".to_string(), view.center_x.to_string()));
     metadata.push(("View-CenterY".to_string(), view.center_y.to_string()));
     metadata.push(("View-Zoom".to_string(), view.zoom.to_string()));
+    if let Some(value) = view.precise_center_x.as_ref() {
+        metadata.push(("View-CenterX-Precise".to_string(), value.clone()));
+    }
+    if let Some(value) = view.precise_center_y.as_ref() {
+        metadata.push(("View-CenterY-Precise".to_string(), value.clone()));
+    }
+    if let Some(value) = view.precise_zoom.as_ref() {
+        metadata.push(("View-Zoom-Precise".to_string(), value.clone()));
+    }
     metadata.push(("View-Width".to_string(), view.width.to_string()));
     metadata.push(("View-Height".to_string(), view.height.to_string()));
     
@@ -69,6 +79,7 @@ fn create_png_metadata(
     if use_period {
         metadata.push(("Color-Period".to_string(), period.to_string()));
     }
+    metadata.push(("Color-Offset".to_string(), color_offset.to_string()));
     
     metadata.push(("Interior-Color-Enabled".to_string(), use_interior_color.to_string()));
     if use_interior_color {
@@ -110,6 +121,7 @@ fn create_png_metadata(
 /// * `use_interior_color` - Whether to use custom interior color
 /// * `interior_color` - RGB color for interior points
 /// * `use_log_scale` - Whether to apply logarithmic color scaling
+/// * `color_offset` - Colormap phase offset applied after period modulation
 /// * `filter_type` - Filter to apply for downsampling (None, Lanczos3, Gaussian)
 /// * `supersample` - Supersampling multiplier (1 = no supersample, 2 = 2x, etc.)
 /// * `scale` - Scaling factor (e.g., 3.0 for 3x the preview dimensions)
@@ -128,6 +140,7 @@ pub fn export_png(
     use_interior_color: bool,
     interior_color: [u8; 3],
     use_log_scale: bool,
+    color_offset: u32,
     filter_type: FilterType,
     supersample: u32,
     scale: f32,
@@ -137,6 +150,10 @@ pub fn export_png(
     hiprec_bits: u32,
     // Max rayon threads for CPU rendering. 0 = use all available.
     max_threads: usize,
+    // PT glitch threshold multiplier. Only used when backend == Perturbation.
+    pt_glitch_tolerance: f64,
+    // NxN PT tile grid. Only used when backend == Perturbation.
+    pt_tiles: u32,
     #[cfg(feature = "gpu")]
     gpu_renderer: Option<&mut crate::gpu::WgpuRenderer>,
 ) -> Result<String, String> {
@@ -165,9 +182,12 @@ pub fn export_png(
         .with_period(use_period, period)
         .with_interior_color(use_interior_color, interior_color)
         .with_log_scale(use_log_scale)
+        .with_color_offset(color_offset)
         .with_backend(backend)
         .with_hiprec_bits(hiprec_bits)
-        .with_max_threads(max_threads);
+        .with_max_threads(max_threads)
+        .with_pt_glitch_tolerance(pt_glitch_tolerance)
+        .with_pt_tiles(pt_tiles);
 
     // Render at supersample resolution
     let render_start = std::time::Instant::now();
@@ -249,6 +269,7 @@ pub fn export_png(
         use_interior_color,
         interior_color,
         use_log_scale,
+        color_offset,
         filter_type,
         supersample,
         scale,
@@ -329,6 +350,7 @@ pub fn export_png_with_config(
         config.color_config.use_interior_color,
         config.color_config.interior_color,
         config.color_config.use_log_scale,
+        config.color_config.color_offset,
         export_config.filter_type,
         export_config.supersample,
         export_config.scale,
@@ -336,6 +358,8 @@ pub fn export_png_with_config(
         backend,
         hiprec_bits,
         max_threads,
+        1.0,
+        1,
         gpu_renderer,
     )
 }
@@ -362,6 +386,7 @@ pub fn export_png_with_config(
         config.color_config.use_interior_color,
         config.color_config.interior_color,
         config.color_config.use_log_scale,
+        config.color_config.color_offset,
         export_config.filter_type,
         export_config.supersample,
         export_config.scale,
@@ -369,6 +394,8 @@ pub fn export_png_with_config(
         backend,
         hiprec_bits,
         max_threads,
+        1.0,
+        1,
     )
 }
 
@@ -397,11 +424,13 @@ mod tests {
         {
             export_png(
                 view, colormap, max_iterations, fractal, fractal_parameters,
-                use_period, period, use_interior_color, interior_color, use_log_scale,
+                use_period, period, use_interior_color, interior_color, use_log_scale, 0,
                 filter_type, supersample, scale, output_dir,
                 crate::gpu::RenderBackend::Cpu,  // Always use CPU for tests
                 128, // hiprec_bits (unused for Cpu backend)
                 0,   // max_threads (no limit)
+                1.0, // pt_glitch_tolerance (unused for Cpu backend)
+                1,   // pt_tiles (unused for Cpu backend)
                 None,
             )
         }
@@ -409,11 +438,13 @@ mod tests {
         {
             export_png(
                 view, colormap, max_iterations, fractal, fractal_parameters,
-                use_period, period, use_interior_color, interior_color, use_log_scale,
+                use_period, period, use_interior_color, interior_color, use_log_scale, 0,
                 filter_type, supersample, scale, output_dir,
                 crate::gpu::RenderBackend::Cpu,
                 128, // hiprec_bits (unused for Cpu backend)
                 0,   // max_threads (no limit)
+                1.0, // pt_glitch_tolerance (unused for Cpu backend)
+                1,   // pt_tiles (unused for Cpu backend)
             )
         }
     }
@@ -450,6 +481,9 @@ mod tests {
             center_x: 0.0,
             center_y: 0.0,
             zoom: 1.0,
+            precise_center_x: None,
+            precise_center_y: None,
+            precise_zoom: None,
             width: 1280,
             height: 720,
             max_iterations: 256,
@@ -460,6 +494,7 @@ mod tests {
             use_interior_color: true,
             interior_color: [0, 0, 0],
             use_log_scale: false,
+            color_offset: 0,
             export_filter: "Lanczos3".to_string(),
             export_supersample: 4,
             export_scale: 3.0,
@@ -509,6 +544,9 @@ mod tests {
                 center_x: 0.0,
                 center_y: 0.0,
                 zoom: 1.0,
+                precise_center_x: None,
+                precise_center_y: None,
+                precise_zoom: None,
                 width: 800,
                 height: 600,
                 max_iterations: 100,
@@ -519,6 +557,7 @@ mod tests {
                 use_interior_color: false,
                 interior_color: [0, 0, 0],
                 use_log_scale: false,
+                color_offset: 0,
                 export_filter: "None".to_string(),
                 export_supersample: 1,
                 export_scale: 1.0,
@@ -537,6 +576,9 @@ mod tests {
             center_x: 0.0,
             center_y: 0.0,
             zoom: 1.0,
+            precise_center_x: None,
+            precise_center_y: None,
+            precise_zoom: None,
             width: 800,
             height: 600,
             max_iterations: 100,
@@ -547,6 +589,7 @@ mod tests {
             use_interior_color: false,
             interior_color: [0, 0, 0],
             use_log_scale: false,
+            color_offset: 0,
             export_filter: "None".to_string(),
             export_supersample: 1,
             export_scale: 1.0,
@@ -572,6 +615,9 @@ mod tests {
                 center_x: 0.0,
                 center_y: 0.0,
                 zoom: 1.0,
+                precise_center_x: None,
+                precise_center_y: None,
+                precise_zoom: None,
                 width: 800,
                 height: 600,
                 max_iterations: 100,
@@ -582,6 +628,7 @@ mod tests {
                 use_interior_color: false,
                 interior_color: [0, 0, 0],
                 use_log_scale: false,
+                color_offset: 0,
                 export_filter: "None".to_string(),
                 export_supersample: 1,
                 export_scale: 1.0,
@@ -641,6 +688,9 @@ mod tests {
             center_x: -0.5,
             center_y: 0.0,
             zoom: 2.5,
+            precise_center_x: None,
+            precise_center_y: None,
+            precise_zoom: None,
             width: 800,
             height: 600,
             parameters: parameters.clone(),
@@ -696,6 +746,7 @@ mod tests {
         assert_eq!(metadata.use_interior_color, true);
         assert_eq!(metadata.interior_color, [255, 128, 64]);
         assert_eq!(metadata.use_log_scale, false);
+        assert_eq!(metadata.color_offset, 0);
         assert_eq!(metadata.export_filter, "None");
         assert_eq!(metadata.export_supersample, 1);
         assert_eq!(metadata.export_scale, 1.0);
@@ -731,6 +782,9 @@ mod tests {
                 center_x: -0.5,
                 center_y: 0.0,
                 zoom: 1.0,
+                precise_center_x: None,
+                precise_center_y: None,
+                precise_zoom: None,
                 width: 400,
                 height: 300,
                 parameters: params.clone(),
@@ -756,6 +810,9 @@ mod tests {
                 center_x: 0.0,
                 center_y: 0.0,
                 zoom: 1.0,
+                precise_center_x: None,
+                precise_center_y: None,
+                precise_zoom: None,
                 width: 400,
                 height: 300,
                 parameters: params.clone(),
@@ -781,6 +838,9 @@ mod tests {
                 center_x: -0.5,
                 center_y: -0.5,
                 zoom: 1.0,
+                precise_center_x: None,
+                precise_center_y: None,
+                precise_zoom: None,
                 width: 400,
                 height: 300,
                 parameters: params.clone(),
@@ -805,6 +865,9 @@ mod tests {
                 center_x: 0.0,
                 center_y: 0.0,
                 zoom: 1.0,
+                precise_center_x: None,
+                precise_center_y: None,
+                precise_zoom: None,
                 width: 400,
                 height: 300,
                 parameters: params.clone(),
@@ -832,6 +895,9 @@ mod tests {
                 center_x: 0.0,
                 center_y: 0.0,
                 zoom: 1.0,
+                precise_center_x: None,
+                precise_center_y: None,
+                precise_zoom: None,
                 width: 400,
                 height: 300,
                 parameters: params.clone(),
@@ -856,6 +922,9 @@ mod tests {
                 center_x: 0.0,
                 center_y: 0.0,
                 zoom: 1.0,
+                precise_center_x: None,
+                precise_center_y: None,
+                precise_zoom: None,
                 width: 400,
                 height: 300,
                 parameters: params.clone(),
@@ -880,6 +949,9 @@ mod tests {
                 center_x: 0.0,
                 center_y: 0.0,
                 zoom: 1.0,
+                precise_center_x: None,
+                precise_center_y: None,
+                precise_zoom: None,
                 width: 400,
                 height: 300,
                 parameters: params.clone(),
@@ -903,6 +975,9 @@ mod tests {
                 center_x: 0.0,
                 center_y: 0.0,
                 zoom: 1.0,
+                precise_center_x: None,
+                precise_center_y: None,
+                precise_zoom: None,
                 width: 400,
                 height: 300,
                 parameters: params.clone(),
@@ -926,6 +1001,9 @@ mod tests {
                 center_x: 0.0,
                 center_y: 0.0,
                 zoom: 1.0,
+                precise_center_x: None,
+                precise_center_y: None,
+                precise_zoom: None,
                 width: 400,
                 height: 300,
                 parameters: params.clone(),
@@ -949,6 +1027,9 @@ mod tests {
                 center_x: 0.0,
                 center_y: 0.0,
                 zoom: 1.0,
+                precise_center_x: None,
+                precise_center_y: None,
+                precise_zoom: None,
                 width: 400,
                 height: 300,
                 parameters: params.clone(),
@@ -972,6 +1053,9 @@ mod tests {
                 center_x: 0.0,
                 center_y: 0.0,
                 zoom: 1.0,
+                precise_center_x: None,
+                precise_center_y: None,
+                precise_zoom: None,
                 width: 400,
                 height: 300,
                 parameters: params.clone(),
@@ -997,6 +1081,9 @@ mod tests {
                 center_x: 0.0,
                 center_y: 0.0,
                 zoom: 1.0,
+                precise_center_x: None,
+                precise_center_y: None,
+                precise_zoom: None,
                 width: 400,
                 height: 300,
                 parameters: params.clone(),
@@ -1020,6 +1107,9 @@ mod tests {
                 center_x: 0.0,
                 center_y: 0.0,
                 zoom: 1.0,
+                precise_center_x: None,
+                precise_center_y: None,
+                precise_zoom: None,
                 width: 400,
                 height: 300,
                 parameters: params.clone(),
@@ -1089,6 +1179,9 @@ mod tests {
             center_x: 0.5,
             center_y: -0.3,
             zoom: 3.5,
+            precise_center_x: None,
+            precise_center_y: None,
+            precise_zoom: None,
             width: 640,
             height: 480,
             parameters: params.clone(),
@@ -1144,6 +1237,9 @@ mod tests {
             center_x: -0.5,
             center_y: 0.0,
             zoom: 1.0,
+            precise_center_x: None,
+            precise_center_y: None,
+            precise_zoom: None,
             width: 800,
             height: 600,
             parameters: mandelbrot_params.clone(),
@@ -1166,6 +1262,9 @@ mod tests {
             center_x: -1.75,
             center_y: -0.05,
             zoom: 0.1,
+            precise_center_x: None,
+            precise_center_y: None,
+            precise_zoom: None,
             width: 1024,
             height: 768,
             parameters: burning_ship_params.clone(),
@@ -1221,6 +1320,12 @@ pub struct FractalMetadata {
     pub center_x: f64,
     pub center_y: f64,
     pub zoom: f64,
+    #[serde(default)]
+    pub precise_center_x: Option<String>,
+    #[serde(default)]
+    pub precise_center_y: Option<String>,
+    #[serde(default)]
+    pub precise_zoom: Option<String>,
     pub width: u32,
     pub height: u32,
     pub max_iterations: u32,
@@ -1231,6 +1336,8 @@ pub struct FractalMetadata {
     pub use_interior_color: bool,
     pub interior_color: [u8; 3],
     pub use_log_scale: bool,
+    #[serde(default)]
+    pub color_offset: u32,
     pub export_filter: String,
     pub export_supersample: u32,
     pub export_scale: f32,
@@ -1286,14 +1393,17 @@ pub fn load_png_metadata<P: AsRef<Path>>(path: P) -> Result<FractalMetadata, Str
     let center_x = find_text("View-CenterX")
         .and_then(|s| s.parse().ok())
         .ok_or("Missing or invalid View-CenterX")?;
+    let precise_center_x = find_text("View-CenterX-Precise");
     
     let center_y = find_text("View-CenterY")
         .and_then(|s| s.parse().ok())
         .ok_or("Missing or invalid View-CenterY")?;
+    let precise_center_y = find_text("View-CenterY-Precise");
     
     let zoom = find_text("View-Zoom")
         .and_then(|s| s.parse().ok())
         .ok_or("Missing or invalid View-Zoom")?;
+    let precise_zoom = find_text("View-Zoom-Precise");
     
     // Parse view dimensions (with fallback to PNG dimensions for backward compatibility)
     let width = find_text("View-Width")
@@ -1337,6 +1447,9 @@ pub fn load_png_metadata<P: AsRef<Path>>(path: P) -> Result<FractalMetadata, Str
     let use_log_scale = find_text("Log-Scale-Enabled")
         .and_then(|s| s.parse().ok())
         .unwrap_or(false);
+    let color_offset = find_text("Color-Offset")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
     
     // Parse export settings
     let export_filter = find_text("Export-Filter")
@@ -1362,6 +1475,9 @@ pub fn load_png_metadata<P: AsRef<Path>>(path: P) -> Result<FractalMetadata, Str
         center_x,
         center_y,
         zoom,
+        precise_center_x,
+        precise_center_y,
+        precise_zoom,
         width,
         height,
         max_iterations,
@@ -1372,6 +1488,7 @@ pub fn load_png_metadata<P: AsRef<Path>>(path: P) -> Result<FractalMetadata, Str
         use_interior_color,
         interior_color,
         use_log_scale,
+        color_offset,
         export_filter,
         export_supersample,
         export_scale,
@@ -1423,6 +1540,9 @@ impl FractalMetadata {
         view.center_x = self.center_x;
         view.center_y = self.center_y;
         view.zoom = self.zoom;
+        view.precise_center_x = self.precise_center_x.clone();
+        view.precise_center_y = self.precise_center_y.clone();
+        view.precise_zoom = self.precise_zoom.clone();
         view
     }
 }

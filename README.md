@@ -2,7 +2,7 @@
 
 ![Julia Set Hero Banner](img_resources/banners/julia_set_4320x1080_4xLanczos31771181678.png)
 
-**Explore, create, and render stunning fractals in Rust.** An interactive fractal explorer with real-time rendering, advanced color mapping, CLI automation, and professional export capabilities.
+**Explore, create, and render stunning fractals in Rust.** An interactive fractal explorer with real-time rendering, perturbation-theory deep zoom, advanced color mapping, CLI automation, and professional export capabilities.
 
 > **Non-programmers:** Pre-built Windows executables available on the [Releases page](https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/releases)
 
@@ -16,8 +16,9 @@
 ![Mandelbrot Set](img_resources/banners/mandelbrot_4320x1080_4xLanczos31771181432.png)
 
 ### Interactive Exploration
-- **13 Fractal Types**: Mandelbrot, Julia, Burning Ship, Tippets Mandelbrot, Multifractal-Julia, Cactus, Marek Dragon, Tetration, Lemon, Zubieta, Sin Julia, Insideout Dragon, Lace Julia
+- **15 Fractal Types**: Mandelbrot, Julia, Burning Ship, Tippets Mandelbrot, Multifractal-Julia, Multi-Julia IFS, Cactus, Marek Dragon, Tetration, Lemon, Zubieta, Sin Julia, Insideout Dragon, ChaosSymmetry1, Lace Julia
 - **Real-time Rendering**: Smooth 60 FPS with multi-threaded computation
+- **Deep Zoom Backends**: CPU Hi-Prec BigFloat and Mandelbrot perturbation theory for extreme zoom workflows
 - **Click-to-Zoom**: Intuitive mouse controls for navigation
 - **Fractal Parameters**: Adjust Julia constants, powers, rotation angles with live sliders
 
@@ -132,6 +133,8 @@ forma-fractalis --profiling
 | ![Multi-Julia IFS v0.2.3 Julia Power showcase](img_resources/gallery_expanded/v0.2.3_julia_power.png) |
 | ![Multi-Julia IFS v0.2.4 showcase](img_resources/gallery_expanded/v0.2.4_multi_julia_ifs.png) |
 | ![ChaosSymmetry1 v0.2.5 showcase](img_resources/gallery_expanded/v0.2.5_chaos_symmetry1.png) |
+| ![Lace Julia v0.2.6 showcase](img_resources/gallery_expanded/v0.2.6_lace_julia.png) |
+| ![ChaosSymmetry1 alternate render](img_resources/gallery_expanded/chaossymmetry1_1280x720_2xGaussian1777355263.png) |
 
 </details>
 
@@ -200,15 +203,24 @@ The active backend is displayed in the status bar. GPU mode initializes when you
 ### Supported Fractals
 
 GPU acceleration currently supports:
-- Mandelbrot Set
-- Powerbrot (configurable power)
-- Zubieta
+- Mandelbrot Set / Powerbrot
 - Julia Set
-- Sin Julia
 - Burning Ship
+- Tippets Mandelbrot
+- Multifractal-Julia
+- Zubieta
+- Sin Julia
 - Insideout Dragon
+- Cactus
+- Marek Dragon
+- Lace Julia
+- Tetration
 
-Other fractals automatically use CPU rendering. GPU support will expand in future releases.
+Dedicated GPU orbit-accumulation backends are also available for:
+- Multi-Julia IFS
+- ChaosSymmetry1
+
+Perturbation Theory adds a separate deep-zoom backend for Mandelbrot views when f64 precision is no longer enough.
 
 ### Requirements
 
@@ -282,14 +294,20 @@ The core library can be used independently. See [core/README.md](core/README.md)
 
 ## Releases
 
-**Latest: v0.2.6** (April 30, 2026)
+**Latest: v0.2.7** (May 18, 2026)
 
-Lace Julia fractal (rational map, CPU f64/hi-prec/GPU f32), Marek Dragon GPU shader, escape radius slider on 6 fractals, "Open last exported image" button.
+Mandelbrot deep zoom showcase powered by perturbation theory, plus Tetration GPU support, Cactus CPU hi-prec, and precise deep-camera persistence for extreme zoom workflows.
 
-![v0.2.6 Release - Lace Julia fractal](img_resources/showcase/lace_julia_3840x2160_4xLanczos31777585168.png)
+![v0.2.7 Showcase - Mandelbrot deep zoom via perturbation theory](img_resources/showcase/mandelbrot_3840x2160_2xLanczos31779128919.png)
 
 <details>
 <summary><b>View release history...</b></summary>
+
+### v0.2.7 (May 18, 2026)
+- Perturbation Theory deep-zoom backend for Mandelbrot power=2, including tiled reference orbits, bounded rebasing, series warm starts, and denser retry before direct fallback
+- Tetration GPU compute shader support and GPU parity coverage in `gpu-test`
+- Cactus CPU hi-precision support across all supported bit widths
+- Precise deep-camera persistence and round-tripping for PNG/JSON metadata, plus unified PT preview/export pipeline behavior
 
 ### v0.2.6 (April 30, 2026)
 - Lace Julia fractal: z_{n+1} = (i·z_n^3 + 1010·z_n^6) / (c·i + 3301·z_n^7), colored by escape velocity

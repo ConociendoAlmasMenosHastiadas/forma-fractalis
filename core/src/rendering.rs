@@ -148,6 +148,12 @@ pub struct FractalIterations {
     pub center_y: f64,
     /// Zoom level (higher = more zoomed in).
     pub zoom: f64,
+    /// Optional higher-precision decimal shadow for the real center.
+    pub precise_center_x: Option<String>,
+    /// Optional higher-precision decimal shadow for the imaginary center.
+    pub precise_center_y: Option<String>,
+    /// Optional higher-precision decimal shadow for the zoom.
+    pub precise_zoom: Option<String>,
     /// Name of the fractal that produced this data (from `Fractal::name()`).
     pub fractal_name: String,
     /// Fractal-specific parameter snapshot (e.g. Julia `c`, power, escape radius).
@@ -159,6 +165,11 @@ pub struct FractalIterations {
     pub backend: RenderBackend,
     /// Software-float bit width used when `backend == CpuHiPrec`; 0 otherwise.
     pub hiprec_bits: u32,
+    /// PT glitch tolerance used when `backend == Perturbation`.
+    /// Stored as raw `f64::to_bits()` so equality is exact and stable.
+    pub pt_glitch_tolerance_bits: u64,
+    /// PT tile-grid size used when `backend == Perturbation`.
+    pub pt_tiles: u32,
 }
 
 impl FractalIterations {
@@ -174,18 +185,52 @@ impl FractalIterations {
         backend: RenderBackend,
         hiprec_bits: u32,
     ) -> Self {
-        Self {
+        Self::from_render_state(
             data,
-            width: config.view.width,
-            height: config.view.height,
-            max_iterations: config.max_iterations,
-            center_x: config.view.center_x,
-            center_y: config.view.center_y,
-            zoom: config.view.zoom,
-            fractal_name: fractal_name.into(),
-            fractal_parameters: config.fractal_parameters.clone(),
+            &config.view,
+            config.max_iterations,
+            fractal_name,
+            config.fractal_parameters.clone(),
             backend,
             hiprec_bits,
+            1.0,
+            1,
+        )
+    }
+
+    /// Build a `FractalIterations` from explicit render-state components.
+    ///
+    /// This is used by the unified rendering pipeline so preview caching can
+    /// capture GPU, PT, and hi-precision results without round-tripping through
+    /// the GUI-only state types.
+    pub fn from_render_state(
+        data: Vec<u32>,
+        view: &FractalView,
+        max_iterations: u32,
+        fractal_name: impl Into<String>,
+        fractal_parameters: HashMap<String, f64>,
+        backend: RenderBackend,
+        hiprec_bits: u32,
+        pt_glitch_tolerance: f64,
+        pt_tiles: u32,
+    ) -> Self {
+        Self {
+            data,
+            width: view.width,
+            height: view.height,
+            max_iterations,
+            center_x: view.center_x,
+            center_y: view.center_y,
+            zoom: view.zoom,
+            precise_center_x: view.precise_center_x.clone(),
+            precise_center_y: view.precise_center_y.clone(),
+            precise_zoom: view.precise_zoom.clone(),
+            fractal_name: fractal_name.into(),
+            fractal_parameters,
+            backend,
+            hiprec_bits,
+            pt_glitch_tolerance_bits: pt_glitch_tolerance.to_bits(),
+            pt_tiles: pt_tiles.max(1),
         }
     }
 
@@ -204,16 +249,50 @@ impl FractalIterations {
         backend: RenderBackend,
         hiprec_bits: u32,
     ) -> bool {
-        self.width == config.view.width
-            && self.height == config.view.height
-            && self.max_iterations == config.max_iterations
-            && (self.center_x - config.view.center_x).abs() < 1e-10
-            && (self.center_y - config.view.center_y).abs() < 1e-10
-            && (self.zoom - config.view.zoom).abs() < 1e-10
+        self.is_valid_for_render(
+            &config.view,
+            config.max_iterations,
+            fractal_name,
+            &config.fractal_parameters,
+            backend,
+            hiprec_bits,
+            1.0,
+            1,
+        )
+    }
+
+    /// Returns `true` if this cached result is still valid for the given render state.
+    ///
+    /// Unlike [`is_valid_for`](FractalIterations::is_valid_for), this includes
+    /// backend-specific knobs that live outside `FractalConfig`, such as PT tile
+    /// count and glitch tolerance.
+    pub fn is_valid_for_render(
+        &self,
+        view: &FractalView,
+        max_iterations: u32,
+        fractal_name: &str,
+        fractal_parameters: &HashMap<String, f64>,
+        backend: RenderBackend,
+        hiprec_bits: u32,
+        pt_glitch_tolerance: f64,
+        pt_tiles: u32,
+    ) -> bool {
+        self.width == view.width
+            && self.height == view.height
+            && self.max_iterations == max_iterations
+            && (self.center_x - view.center_x).abs() < 1e-10
+            && (self.center_y - view.center_y).abs() < 1e-10
+            && (self.zoom - view.zoom).abs() < 1e-10
+            && self.precise_center_x == view.precise_center_x
+            && self.precise_center_y == view.precise_center_y
+            && self.precise_zoom == view.precise_zoom
             && self.fractal_name == fractal_name
-            && self.fractal_parameters == config.fractal_parameters
+            && self.fractal_parameters == *fractal_parameters
             && self.backend == backend
-            && (backend != RenderBackend::CpuHiPrec || self.hiprec_bits == hiprec_bits)
+            && (!matches!(backend, RenderBackend::CpuHiPrec | RenderBackend::Perturbation) || self.hiprec_bits == hiprec_bits)
+            && (!matches!(backend, RenderBackend::Perturbation)
+                || (self.pt_glitch_tolerance_bits == pt_glitch_tolerance.to_bits()
+                    && self.pt_tiles == pt_tiles.max(1)))
     }
 }
 

@@ -130,6 +130,9 @@ impl Fractal for MultifractalJulia {
             center_x: 0.0,
             center_y: 0.0,
             zoom: 0.5,  // 0.5 zoom = 2x wider view (showing more of the complex plane)
+            precise_center_x: None,
+            precise_center_y: None,
+            precise_zoom: None,
             width,
             height,
             parameters: self.parameter_defaults(),

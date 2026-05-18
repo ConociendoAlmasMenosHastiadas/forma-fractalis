@@ -85,6 +85,22 @@ fn trigger_debounced_redraw(timer: &mut Option<Instant>, pending: &mut bool) {
     *pending = true;
 }
 
+pub fn format_zoom_display(zoom: f64) -> String {
+    if zoom.abs() > 100.0 {
+        format!("{:.2e}x", zoom)
+    } else {
+        format!("{:.2}x", zoom)
+    }
+}
+
+pub fn format_zoom_profile(zoom: f64) -> String {
+    if zoom.abs() > 100.0 {
+        format!("{:.10e}", zoom)
+    } else {
+        format!("{:.10}", zoom)
+    }
+}
+
 /// Render the performance/rendering backend section
 pub fn render_performance_section(
     ui: &mut egui::Ui,
@@ -110,6 +126,10 @@ pub fn render_performance_section(
         // Initialize GPU and trigger redraw when backend changes
         #[cfg(feature = "gpu")]
         if previous_backend != render_state.backend {
+            // Clear the PT reference orbit cache when switching away from Perturbation.
+            if matches!(previous_backend, crate::gpu::RenderBackend::Perturbation) {
+                render_state.reference_orbits.clear();
+            }
             if matches!(render_state.backend, crate::gpu::RenderBackend::Gpu) {
                 if let Err(e) = render_state.ensure_gpu_initialized() {
                     *status_message = format!("GPU initialization failed: {}", e);
@@ -127,6 +147,11 @@ pub fn render_performance_section(
         }
         #[cfg(not(feature = "gpu"))]
         if previous_backend != render_state.backend {
+            // Clear the PT reference orbit cache when switching away from Perturbation
+            // to free the BigFloat orbit memory.
+            if matches!(previous_backend, crate::gpu::RenderBackend::Perturbation) {
+                render_state.reference_orbits.clear();
+            }
             *status_message = format!("Switched to {} - re-rendering", render_state.backend.as_str());
             *needs_redraw = true;
         }
@@ -155,10 +180,88 @@ pub fn render_performance_section(
         });
     }
 
+    // PT precision selector: controls both reference orbit and glitch-fallback hi-prec bits
+    if matches!(render_state.backend, crate::gpu::RenderBackend::Perturbation) {
+        ui.horizontal(|ui| {
+            ui.label("PT Precision:");
+            let prev_bits = render_state.pt_bits;
+            egui::ComboBox::from_id_source("pt_bits")
+                .selected_text(format!("{}-bit", render_state.pt_bits))
+                .show_ui(ui, |ui| {
+                    for &bits in crate::gpu::HIPREC_BIT_OPTIONS {
+                        ui.selectable_value(
+                            &mut render_state.pt_bits,
+                            bits,
+                            format!("{}-bit", bits),
+                        );
+                    }
+                });
+            if render_state.pt_bits != prev_bits {
+                // Changing precision invalidates the cached reference orbits.
+                render_state.reference_orbits.clear();
+                *needs_redraw = true;
+                crate::perf_log!("[PT] Precision changed to {} bits - invalidating orbit cache", render_state.pt_bits);
+            }
+        });
+
+        // Tile count selector: more tiles = smaller dc per pixel = fewer glitches
+        ui.horizontal(|ui| {
+            ui.label("Tile count:");
+            let prev_tiles = render_state.pt_tiles;
+            egui::ComboBox::from_id_source("pt_tiles")
+                .selected_text(if render_state.pt_tiles == 1 {
+                    "1 (single orbit)".to_string()
+                } else {
+                    format!("{}x{}={} orbits", render_state.pt_tiles, render_state.pt_tiles,
+                        render_state.pt_tiles * render_state.pt_tiles)
+                })
+                .show_ui(ui, |ui| {
+                    for &t in &[1u32, 2, 3, 4] {
+                        let label = if t == 1 {
+                            "1 (single orbit)".to_string()
+                        } else {
+                            format!("{}x{}={} orbits", t, t, t * t)
+                        };
+                        ui.selectable_value(&mut render_state.pt_tiles, t, label);
+                    }
+                });
+            if render_state.pt_tiles != prev_tiles {
+                render_state.reference_orbits.clear();
+                *needs_redraw = true;
+                crate::perf_log!("[PT] Tile count changed to {}x{} - recomputing orbits", render_state.pt_tiles, render_state.pt_tiles);
+            }
+        });
+        ui.label(
+            egui::RichText::new("More tiles = smaller dc per pixel = fewer hi-prec fallbacks. Each tile pays one orbit compute.")
+                .small().italics().color(egui::Color32::GRAY),
+        );
+
+        // Glitch tolerance slider: higher = fewer hi-prec fallbacks, slightly less exact coloring
+        ui.horizontal(|ui| {
+            ui.label("Glitch tolerance:");
+            let prev_tol = render_state.pt_glitch_tolerance;
+            ui.add(
+                egui::Slider::new(&mut render_state.pt_glitch_tolerance, 1.0..=64.0)
+                    .logarithmic(true)
+                    .fixed_decimals(1),
+            );
+            if (render_state.pt_glitch_tolerance - prev_tol).abs() > f64::EPSILON {
+                *needs_redraw = true;
+            }
+        });
+        ui.label(
+            egui::RichText::new("1.0 = exact; higher = fewer fallbacks, faster, slightly less precise")
+                .small()
+                .italics()
+                .color(egui::Color32::GRAY),
+        );
+    }
+
     // Backend explanation
     let explanation = match render_state.backend {
         crate::gpu::RenderBackend::Cpu => "CPU: f64 precision, compatible with all fractals",
         crate::gpu::RenderBackend::CpuHiPrec => "CPU Hi-Prec: software bigfloat, slow but enables deep zoom",
+        crate::gpu::RenderBackend::Perturbation => "Perturbation: BigFloat reference orbit + f64 delta; glitches fall back to hi-prec; Mandelbrot power=2 only",
         #[cfg(feature = "gpu")]
         crate::gpu::RenderBackend::Gpu => "GPU: f32 precision (faster, shows precision artifacts at deep zoom)",
     };
@@ -191,6 +294,34 @@ pub fn render_performance_section(
         } else {
             ui.label(
                 egui::RichText::new(format!("Hi-Prec ready for '{}'", fractal.name()))
+                    .small()
+                    .color(egui::Color32::from_rgb(0, 180, 0)),
+            );
+        }
+    }
+
+    // Perturbation Theory warnings
+    if matches!(render_state.backend, crate::gpu::RenderBackend::Perturbation) {
+        let pt_supported = crate::perturbation::is_supported_fractal(
+            fractal,
+            &std::collections::HashMap::new(), // parameters checked at render time
+        );
+        // Check more precisely using a dummy power=2.0 for the name check
+        let pt_name_ok = fractal.name() == "Mandelbrot";
+        if !pt_name_ok {
+            ui.label(
+                egui::RichText::new(format!(
+                    "WARNING: Perturbation Theory only supports Mandelbrot (power=2). \
+                     Fractal '{}' will fail to render. Switch to CPU mode.",
+                    fractal.name()
+                ))
+                .small()
+                .color(egui::Color32::from_rgb(220, 60, 60)),
+            );
+        } else {
+            let _ = pt_supported; // suppress unused warning
+            ui.label(
+                egui::RichText::new("Perturbation Theory active. SA, fallback, rebasing, and low-zoom guidance are shown in the status bar.")
                     .small()
                     .color(egui::Color32::from_rgb(0, 180, 0)),
             );
@@ -469,16 +600,8 @@ where
 
     ui.add_space(10.0);
 
-    // Dynamic fractal parameters using FractalGUI trait
-    fractal_type.render_gui(
-        ui,
-        fractal_parameters,
-        input_state,
-        needs_redraw,
-    );
-
-    // Iterations input with multiply/divide buttons — hidden for orbit-accumulation fractals
-    // (those fractals expose their own Samples control in their parameter section above)
+    // Iterations input with multiply/divide buttons — shown first (hidden for orbit-accumulation
+    // fractals, which expose their own Samples control in their parameter section below)
     if !fractal_type.uses_orbit_accumulation() {
         ui.horizontal(|ui| {
             ui.label("Iterations:");
@@ -535,7 +658,17 @@ where
                 }
             }
         }
+        ui.add_space(5.0);
     }
+
+    // Dynamic fractal parameters using FractalGUI trait
+    fractal_type.render_gui(
+        ui,
+        fractal_parameters,
+        input_state,
+        needs_redraw,
+    );
+
     // Suppress unused variable warning when GPU feature is disabled
     #[cfg(not(feature = "gpu"))]
     let _ = render_backend;
@@ -545,6 +678,7 @@ where
 pub fn render_current_view_info(
     ui: &mut egui::Ui,
     view: &mut FractalView,
+    active_precision_bits: u32,
     needs_redraw: &mut bool,
     status_message: &mut String,
     _input_debounce_timer: &mut Option<Instant>,
@@ -552,9 +686,16 @@ pub fn render_current_view_info(
 ) {
     section_header(ui, "Current View");
 
-    ui.label(format!("X: {:.6}", view.center_x));
-    ui.label(format!("Y: {:.6}", view.center_y));
-    ui.label(format!("Zoom: {:.2}x", view.zoom));
+    let camera_mode = if view.has_precise_view() {
+        format!("Camera: precise ({}-bit)", active_precision_bits)
+    } else {
+        "Camera: f64".to_string()
+    };
+
+    ui.label(egui::RichText::new(camera_mode).small().italics());
+    ui.label(egui::RichText::new(format!("X: {}", view.center_x_display())).monospace());
+    ui.label(egui::RichText::new(format!("Y: {}", view.center_y_display())).monospace());
+    ui.label(egui::RichText::new(format!("Zoom: {}", view.zoom_display())).monospace());
     ui.label(format!("Size: {}×{}", view.width, view.height));
 
     ui.add_space(10.0);
@@ -718,6 +859,7 @@ pub fn render_actions_section(
     use_interior_color: bool,
     interior_color: [u8; 3],
     use_log_scale: bool,
+    color_offset: u32,
     export_scale_input: &mut String,
     export_directory: &mut Option<std::path::PathBuf>,
     export_filter: &mut crate::filtering::FilterType,
@@ -886,6 +1028,12 @@ pub fn render_actions_section(
             }
         }
 
+        let effective_bits = if matches!(render_state.backend, crate::gpu::RenderBackend::Perturbation) {
+            render_state.pt_bits
+        } else {
+            render_state.hiprec_bits
+        };
+
         // Export the image
         #[cfg(feature = "gpu")]
         let result = crate::export::export_png(
@@ -899,13 +1047,16 @@ pub fn render_actions_section(
             use_interior_color,
             interior_color,
             use_log_scale,
+            color_offset,
             *export_filter,
             supersample,
             scale,
             export_directory.as_ref(),
             render_state.backend,
-            render_state.hiprec_bits,
+            effective_bits,
             render_state.max_threads,
+            render_state.pt_glitch_tolerance,
+            render_state.pt_tiles,
             render_state.gpu_renderer.as_mut(),
         );
         
@@ -921,13 +1072,16 @@ pub fn render_actions_section(
             use_interior_color,
             interior_color,
             use_log_scale,
+            color_offset,
             *export_filter,
             supersample,
             scale,
             export_directory.as_ref(),
             render_state.backend,
-            render_state.hiprec_bits,
+            effective_bits,
             render_state.max_threads,
+            render_state.pt_glitch_tolerance,
+            render_state.pt_tiles,
         );
 
         match result {

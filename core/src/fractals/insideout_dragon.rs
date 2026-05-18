@@ -147,6 +147,9 @@ impl Fractal for InsideoutDragon {
             center_x: 0.0,
             center_y: 0.0,
             zoom: 0.25,  // Start zoomed out to see the full structure
+            precise_center_x: None,
+            precise_center_y: None,
+            precise_zoom: None,
             width,
             height,
             parameters,

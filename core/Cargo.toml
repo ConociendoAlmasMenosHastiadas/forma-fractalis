@@ -37,3 +37,7 @@ harness = false
 [[bench]]
 name = "gpu_bench"
 harness = false
+
+[[bench]]
+name = "perturbation_bench"
+harness = false
