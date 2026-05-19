@@ -134,7 +134,6 @@ forma-fractalis --profiling
 | ![Multi-Julia IFS v0.2.4 showcase](img_resources/gallery_expanded/v0.2.4_multi_julia_ifs.png) |
 | ![ChaosSymmetry1 v0.2.5 showcase](img_resources/gallery_expanded/v0.2.5_chaos_symmetry1.png) |
 | ![Lace Julia v0.2.6 showcase](img_resources/gallery_expanded/v0.2.6_lace_julia.png) |
-| ![ChaosSymmetry1 alternate render](img_resources/gallery_expanded/chaossymmetry1_1280x720_2xGaussian1777355263.png) |
 
 </details>
 
