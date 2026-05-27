@@ -1,3 +1,7 @@
+//! Multifractal Julia fractal.
+//!
+//! Reference: https://paulbourke.net/fractals/multimandel/
+
 use super::{Fractal, FractalView, Parameter};
 use num_complex::Complex64;
 use crate::number_utils::ABSOLUTE_EPSILON;

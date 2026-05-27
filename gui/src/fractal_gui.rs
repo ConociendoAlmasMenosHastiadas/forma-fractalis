@@ -13,7 +13,8 @@ use std::time::Instant;
 use crate::app_state::{InputState, CoordinateMode};
 use crate::fractals::{
     Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia,
-    Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS,
+    Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, SinhJulia,
+    MultiJuliaIFS,
     AdjProbJulia, ChaosSymmetry1, LaceJulia,
 };
 use crate::fractals::parameter_types::EscapeMode;
@@ -792,6 +793,192 @@ impl FractalGUI for SinJulia {
                 ui.label("Escape Radius:");
                 if ui.add(egui::TextEdit::singleline(&mut input_state.sin_julia_escape_radius).desired_width(100.0)).changed() {
                     if let Ok(val) = input_state.sin_julia_escape_radius.parse::<f64>() {
+                        if val > 0.0 {
+                            params.insert("escape_radius".to_string(), val);
+                            trigger_debounced_redraw(&mut input_state.debounce_timer, &mut input_state.pending_redraw);
+                        }
+                    }
+                }
+            });
+            ui.label(egui::RichText::new(
+                "Range: slider [4.0, 200.0], text input: any positive value"
+            ).small().weak());
+        });
+
+        ui.add_space(10.0);
+    }
+}
+
+// ── Sinh Julia ─────────────────────────────────────────────────────────────
+
+impl FractalGUI for SinhJulia {
+    fn render_parameters_gui(
+        &self,
+        ui: &mut egui::Ui,
+        params: &mut HashMap<String, f64>,
+        input_state: &mut InputState,
+        needs_redraw: &mut bool,
+    ) {
+        ui.label(egui::RichText::new("Sinh Julia Parameters").strong());
+        ui.add_space(5.0);
+
+        ui.horizontal(|ui| {
+            ui.label("Coordinate mode:");
+            if ui.radio_value(&mut input_state.sinh_julia_coord_mode, CoordinateMode::Rectangular, "Rectangular").clicked() {
+                *needs_redraw = true;
+            }
+            if ui.radio_value(&mut input_state.sinh_julia_coord_mode, CoordinateMode::Polar, "Polar").clicked() {
+                *needs_redraw = true;
+            }
+        });
+
+        ui.add_space(8.0);
+
+        match input_state.sinh_julia_coord_mode {
+            CoordinateMode::Rectangular => {
+                let mut c_real = params.get("c_real").copied().unwrap_or(-0.7);
+                ui.horizontal(|ui| {
+                    ui.label("Re{c}:");
+                    ui.add_space(5.0);
+                    if ui.add(egui::Slider::new(&mut c_real, -2.0..=2.0)
+                        .text("").step_by(0.001).fixed_decimals(3)).changed()
+                    {
+                        params.insert("c_real".to_string(), c_real);
+                        input_state.sinh_julia_c_real = format!("{:.15}", c_real);
+                        *needs_redraw = true;
+                    }
+                });
+
+                let mut c_imag = params.get("c_imag").copied().unwrap_or(0.27015);
+                ui.horizontal(|ui| {
+                    ui.label("Im{c}:");
+                    ui.add_space(5.0);
+                    if ui.add(egui::Slider::new(&mut c_imag, -2.0..=2.0)
+                        .text("").step_by(0.001).fixed_decimals(3)).changed()
+                    {
+                        params.insert("c_imag".to_string(), c_imag);
+                        input_state.sinh_julia_c_imag = format!("{:.15}", c_imag);
+                        *needs_redraw = true;
+                    }
+                });
+
+                ui.add_space(5.0);
+                ui.collapsing("Advanced: 15-Digit Precision", |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Re{c}:");
+                        if ui.add(egui::TextEdit::singleline(&mut input_state.sinh_julia_c_real).desired_width(150.0)).changed() {
+                            if let Ok(val) = input_state.sinh_julia_c_real.parse::<f64>() {
+                                params.insert("c_real".to_string(), val.clamp(-2.0, 2.0));
+                                trigger_debounced_redraw(&mut input_state.debounce_timer, &mut input_state.pending_redraw);
+                            }
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Im{c}:");
+                        if ui.add(egui::TextEdit::singleline(&mut input_state.sinh_julia_c_imag).desired_width(150.0)).changed() {
+                            if let Ok(val) = input_state.sinh_julia_c_imag.parse::<f64>() {
+                                params.insert("c_imag".to_string(), val.clamp(-2.0, 2.0));
+                                trigger_debounced_redraw(&mut input_state.debounce_timer, &mut input_state.pending_redraw);
+                            }
+                        }
+                    });
+                });
+            }
+            CoordinateMode::Polar => {
+                let c_real = params.get("c_real").copied().unwrap_or(-0.7);
+                let c_imag = params.get("c_imag").copied().unwrap_or(0.27015);
+
+                let mut magnitude = (c_real * c_real + c_imag * c_imag).sqrt();
+                let mut angle = c_imag.atan2(c_real);
+                if angle < 0.0 { angle += std::f64::consts::TAU; }
+
+                let mut changed = false;
+                ui.horizontal(|ui| {
+                    ui.label("|c|:");
+                    ui.add_space(13.0);
+                    if ui.add(egui::Slider::new(&mut magnitude, 0.0..=3.0)
+                        .text("").step_by(0.001).fixed_decimals(3)).changed() { changed = true; }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("ang(c):");
+                    if ui.add(egui::Slider::new(&mut angle, 0.0..=std::f64::consts::TAU)
+                        .text("").step_by(0.001).fixed_decimals(3)).changed() { changed = true; }
+                });
+
+                if changed {
+                    let new_real = magnitude * angle.cos();
+                    let new_imag = magnitude * angle.sin();
+                    params.insert("c_real".to_string(), new_real);
+                    params.insert("c_imag".to_string(), new_imag);
+                    input_state.sinh_julia_c_real = format!("{:.15}", new_real);
+                    input_state.sinh_julia_c_imag = format!("{:.15}", new_imag);
+                    input_state.sinh_julia_magnitude = format!("{:.15}", magnitude);
+                    input_state.sinh_julia_angle = format!("{:.15}", angle);
+                    *needs_redraw = true;
+                }
+
+                ui.add_space(5.0);
+                ui.collapsing("Advanced: 15-Digit Precision", |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("|c|:");
+                        if ui.add(egui::TextEdit::singleline(&mut input_state.sinh_julia_magnitude).desired_width(150.0)).changed() {
+                            if let Ok(mag) = input_state.sinh_julia_magnitude.parse::<f64>() {
+                                if let Ok(ang) = input_state.sinh_julia_angle.parse::<f64>() {
+                                    let m = mag.clamp(0.0, 3.0);
+                                    let (r, i) = (m * ang.cos(), m * ang.sin());
+                                    params.insert("c_real".to_string(), r);
+                                    params.insert("c_imag".to_string(), i);
+                                    input_state.sinh_julia_c_real = format!("{:.15}", r);
+                                    input_state.sinh_julia_c_imag = format!("{:.15}", i);
+                                    trigger_debounced_redraw(&mut input_state.debounce_timer, &mut input_state.pending_redraw);
+                                }
+                            }
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("ang(c):");
+                        if ui.add(egui::TextEdit::singleline(&mut input_state.sinh_julia_angle).desired_width(150.0)).changed() {
+                            if let Ok(ang) = input_state.sinh_julia_angle.parse::<f64>() {
+                                if let Ok(mag) = input_state.sinh_julia_magnitude.parse::<f64>() {
+                                    let m = mag.clamp(0.0, 3.0);
+                                    let (r, i) = (m * ang.cos(), m * ang.sin());
+                                    params.insert("c_real".to_string(), r);
+                                    params.insert("c_imag".to_string(), i);
+                                    input_state.sinh_julia_c_real = format!("{:.15}", r);
+                                    input_state.sinh_julia_c_imag = format!("{:.15}", i);
+                                    trigger_debounced_redraw(&mut input_state.debounce_timer, &mut input_state.pending_redraw);
+                                }
+                            }
+                        }
+                    });
+                });
+            }
+        }
+
+        ui.add_space(10.0);
+        ui.separator();
+        ui.add_space(5.0);
+
+        let mut escape_radius = params.get("escape_radius").copied().unwrap_or(50.0);
+        ui.horizontal(|ui| {
+            ui.label("Escape Radius:");
+            ui.add_space(5.0);
+            if ui.add(egui::Slider::new(&mut escape_radius, 4.0..=200.0)
+                .text("").step_by(1.0).fixed_decimals(1).logarithmic(true))
+                .changed()
+            {
+                params.insert("escape_radius".to_string(), escape_radius);
+                input_state.sinh_julia_escape_radius = format!("{:.1}", escape_radius);
+                *needs_redraw = true;
+            }
+        });
+
+        ui.add_space(5.0);
+        ui.collapsing("Advanced: Precise Escape Radius", |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Escape Radius:");
+                if ui.add(egui::TextEdit::singleline(&mut input_state.sinh_julia_escape_radius).desired_width(100.0)).changed() {
+                    if let Ok(val) = input_state.sinh_julia_escape_radius.parse::<f64>() {
                         if val > 0.0 {
                             params.insert("escape_radius".to_string(), val);
                             trigger_debounced_redraw(&mut input_state.debounce_timer, &mut input_state.pending_redraw);

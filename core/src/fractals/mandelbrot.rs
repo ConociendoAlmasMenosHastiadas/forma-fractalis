@@ -8,6 +8,8 @@
 //! - power = 3: Tricorn symmetry
 //! - power = 4: Quatric symmetry
 //! - power = 5: Quintic symmetry
+//!
+//! Reference: https://paulbourke.net/fractals/mandelbrot/
 
 use super::{Fractal, FractalView, Parameter};
 use num_complex::Complex64;

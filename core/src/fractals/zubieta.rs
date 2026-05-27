@@ -5,6 +5,8 @@
 //!
 //! This fractal requires division by z, so we need to guard against z=0.
 //! If at any iteration z becomes zero, we treat it as escaped.
+//!
+//! Reference: https://paulbourke.net/fractals/Zubieta/
 
 use super::{Fractal, FractalView, Parameter};
 use num_complex::Complex64;

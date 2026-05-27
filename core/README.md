@@ -92,6 +92,7 @@ let config = FractalConfig::from_metadata(&metadata);
 | Insideout Dragon | `"InsideoutDragon"` | |
 | Zubieta | `"Zubieta"` | |
 | Sin Julia | `"SinJulia"` | |
+| Sinh Julia | `"SinhJulia"` | |
 
 Implement the `Fractal` trait to define your own:
 

@@ -38,7 +38,9 @@ use wgpu::util::DeviceExt;
 /// - Julia Set: param_0 = c_real, param_1 = c_imag, param_2 = power (default 2.0)
 /// - Zubieta: param_0 = c_real, param_1 = c_imag, param_2 = escape_radius (default 2.0)
 /// - Sin Julia: param_0 = c_real, param_1 = c_imag, param_2 = escape_radius (default 50.0)
+/// - Sinh Julia: param_0 = c_real, param_1 = c_imag, param_2 = escape_radius (default 50.0)
 /// - Marek Dragon: param_0 = phi (rotation angle, 0 to 2*pi), param_1 = escape_radius (default 2.0)
+/// - Lemon: param_0 = denom_power (default 2.0), param_1 = convergence_exp (default 6.0)
 /// - Burning Ship: param_0 = escape_radius (default 2.0)
 /// - Tippets Mandelbrot: param_0 = escape_radius (default 2.0)
 /// - Lace Julia: param_0 = c_real, param_1 = c_imag, param_2 = escape_radius (default 2.0)
@@ -665,11 +667,13 @@ impl WgpuRenderer {
             "Insideout Dragon" => Some("Insideout Dragon"),
             "Zubieta" => Some("Zubieta"),
             "Sin Julia" => Some("Sin Julia"),
+            "Sinh Julia" => Some("Sinh Julia"),
             "Burning Ship" => Some("Burning Ship"),
             "Tippets Mandelbrot" => Some("Tippets Mandelbrot"),
             "Multifractal-Julia" => Some("Multifractal-Julia"),
             "Cactus" => Some("Cactus"),
             "Marek Dragon" => Some("Marek Dragon"),
+            "Lemon" => Some("Lemon"),
             "Lace Julia" => Some("Lace Julia"),
             "Tetration" => Some("Tetration"),
             _ => None,
@@ -761,11 +765,13 @@ impl WgpuRenderer {
         load_timed!(renderer, "Insideout Dragon",     include_str!("shaders/insideout_dragon_kernel.wgsl"));
         load_timed!(renderer, "Zubieta",              include_str!("shaders/zubieta_kernel.wgsl"));
         load_timed!(renderer, "Sin Julia",            include_str!("shaders/sin_julia_kernel.wgsl"));
+        load_timed!(renderer, "Sinh Julia",           include_str!("shaders/sinh_julia_kernel.wgsl"));
         load_timed!(renderer, "Burning Ship",         include_str!("shaders/burning_ship_kernel.wgsl"));
         load_timed!(renderer, "Tippets Mandelbrot",   include_str!("shaders/tippets_mandelbrot_kernel.wgsl"));
         load_timed!(renderer, "Multifractal-Julia",   include_str!("shaders/multifractal_julia_kernel.wgsl"));
         load_timed!(renderer, "Cactus",               include_str!("shaders/cactus_kernel.wgsl"));
         load_timed!(renderer, "Marek Dragon",          include_str!("shaders/marek_dragon_kernel.wgsl"));
+        load_timed!(renderer, "Lemon",                 include_str!("shaders/lemon_kernel.wgsl"));
         load_timed!(renderer, "Lace Julia",             include_str!("shaders/lace_julia_kernel.wgsl"));
         load_timed!(renderer, "Tetration",              include_str!("shaders/tetration_kernel.wgsl"));
 

@@ -1,7 +1,7 @@
 use eframe::egui;
 use forma_fractalis::{
     app_state::{ViewState, InputState, FractalState, ColorState, MouseState, ExportState, RenderState, AnimationState, FractalType},
-    fractals::{FractalView, Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS, AdjProbJulia, ChaosSymmetry1, LaceJulia}, 
+    fractals::{FractalView, Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, SinhJulia, MultiJuliaIFS, AdjProbJulia, ChaosSymmetry1, LaceJulia}, 
     gpu::RenderBackend,
     gui, cli,
     perf_log, enable_profiling,
@@ -177,6 +177,7 @@ impl FractalApp {
         let insideout_dragon = InsideoutDragon::new();
         let zubieta = Zubieta::new();
         let sin_julia = SinJulia::new();
+        let sinh_julia = SinhJulia::new();
         let multi_julia_ifs = MultiJuliaIFS::new();
         let adj_prob_julia = AdjProbJulia::new();
         let chaos_symmetry1 = ChaosSymmetry1::new();
@@ -195,6 +196,7 @@ impl FractalApp {
             FractalType::InsideoutDragon => &insideout_dragon,
             FractalType::Zubieta => &zubieta,
             FractalType::SinJulia => &sin_julia,
+            FractalType::SinhJulia => &sinh_julia,
             FractalType::MultiJuliaIFS => &multi_julia_ifs,
             FractalType::AdjProbJulia => &adj_prob_julia,
             FractalType::ChaosSymmetry1 => &chaos_symmetry1,
@@ -528,6 +530,7 @@ impl eframe::App for FractalApp {
                             let insideout_dragon = InsideoutDragon::new();
                             let zubieta = Zubieta::new();
                             let sin_julia = SinJulia::new();
+                            let sinh_julia = SinhJulia::new();
                             let multi_julia_ifs = MultiJuliaIFS::new();
                             let adj_prob_julia = AdjProbJulia::new();
                             let chaos_symmetry1 = ChaosSymmetry1::new();
@@ -546,6 +549,7 @@ impl eframe::App for FractalApp {
                                 FractalType::InsideoutDragon => &insideout_dragon,
                                 FractalType::Zubieta => &zubieta,
                                 FractalType::SinJulia => &sin_julia,
+                                FractalType::SinhJulia => &sinh_julia,
                                 FractalType::MultiJuliaIFS => &multi_julia_ifs,
                                 FractalType::AdjProbJulia => &adj_prob_julia,
                                 FractalType::ChaosSymmetry1 => &chaos_symmetry1,
@@ -1020,6 +1024,7 @@ impl FractalApp {
                 "Insideout Dragon" => Box::new(InsideoutDragon::new()),
                 "Zubieta" => Box::new(Zubieta::new()),
                 "Sin Julia" => Box::new(SinJulia::new()),
+                "Sinh Julia" => Box::new(SinhJulia::new()),
                 "Multi-Julia IFS" => Box::new(MultiJuliaIFS::new()),
                 "Adj Prob Julia" => Box::new(AdjProbJulia::new()),
                 "ChaosSymmetry1" => Box::new(ChaosSymmetry1::new()),

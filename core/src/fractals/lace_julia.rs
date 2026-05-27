@@ -11,6 +11,8 @@
 //! Guards:
 //! - z near 0 (pole in original formula): treated as escaped
 //! - denominator near 0: treated as escaped
+//!
+//! Reference: https://paulbourke.net/fractals/lace2/
 
 use super::{Fractal, FractalView, Parameter};
 use num_complex::Complex64;

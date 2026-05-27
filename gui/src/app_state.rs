@@ -14,6 +14,10 @@ use eframe::egui;
 use std::collections::HashMap;
 use std::time::Instant;
 
+fn default_max_threads() -> usize {
+    rayon::current_num_threads().saturating_sub(2).max(1)
+}
+
 /// Coordinate input mode for complex parameters
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CoordinateMode {
@@ -325,6 +329,12 @@ pub struct InputState {
     pub sin_julia_angle: String,
     pub sin_julia_coord_mode: CoordinateMode,
     pub sin_julia_escape_radius: String,
+    pub sinh_julia_c_real: String,
+    pub sinh_julia_c_imag: String,
+    pub sinh_julia_magnitude: String,
+    pub sinh_julia_angle: String,
+    pub sinh_julia_coord_mode: CoordinateMode,
+    pub sinh_julia_escape_radius: String,
     pub multi_julia_ifs: MultiJuliaIFSState,
     pub adj_prob_julia_threshold: String,
     pub adj_prob_julia_samples: String,
@@ -391,6 +401,12 @@ impl Default for InputState {
             sin_julia_angle: String::from("0.09966865249116204"),
             sin_julia_coord_mode: CoordinateMode::default(),
             sin_julia_escape_radius: String::from("50.0"),
+            sinh_julia_c_real: String::from("-0.7"),
+            sinh_julia_c_imag: String::from("0.27015"),
+            sinh_julia_magnitude: ((-0.7f64) * (-0.7f64) + 0.27015f64 * 0.27015f64).sqrt().to_string(),
+            sinh_julia_angle: 0.27015f64.atan2(-0.7f64).to_string(),
+            sinh_julia_coord_mode: CoordinateMode::default(),
+            sinh_julia_escape_radius: String::from("50.0"),
             multi_julia_ifs: MultiJuliaIFSState::default(),
             adj_prob_julia_threshold: String::from("0.5"),
             adj_prob_julia_samples: String::from("20"),
@@ -560,6 +576,21 @@ impl InputState {
     /// Parse Sin Julia escape radius parameter
     pub fn parse_sin_julia_escape_radius(&self) -> f64 {
         self.sin_julia_escape_radius.parse::<f64>().unwrap_or(50.0)
+    }
+
+    /// Parse Sinh Julia c_real parameter
+    pub fn parse_sinh_julia_c_real(&self) -> f64 {
+        self.sinh_julia_c_real.parse::<f64>().unwrap_or(-0.7)
+    }
+
+    /// Parse Sinh Julia c_imag parameter
+    pub fn parse_sinh_julia_c_imag(&self) -> f64 {
+        self.sinh_julia_c_imag.parse::<f64>().unwrap_or(0.27015)
+    }
+
+    /// Parse Sinh Julia escape radius parameter
+    pub fn parse_sinh_julia_escape_radius(&self) -> f64 {
+        self.sinh_julia_escape_radius.parse::<f64>().unwrap_or(50.0).max(0.01)
     }
 
     pub fn parse_adj_prob_julia_threshold(&self) -> f64 {
@@ -748,6 +779,15 @@ impl crate::gui::FractalTypeOps for FractalType {
                 params.insert("c_imag".to_string(), input.parse_sin_julia_c_imag());
                 params.insert("escape_radius".to_string(), input.parse_sin_julia_escape_radius());
             }
+            FractalType::SinhJulia => {
+                view.center_x = 0.0;
+                view.center_y = 0.0;
+                view.zoom = 0.7;
+                params.clear();
+                params.insert("c_real".to_string(), input.parse_sinh_julia_c_real());
+                params.insert("c_imag".to_string(), input.parse_sinh_julia_c_imag());
+                params.insert("escape_radius".to_string(), input.parse_sinh_julia_escape_radius());
+            }
             FractalType::MultiJuliaIFS => {
                 view.center_x = 0.0;
                 view.center_y = 0.0;
@@ -814,7 +854,7 @@ impl crate::gui::FractalTypeOps for FractalType {
         input_state: &mut InputState,
         needs_redraw: &mut bool,
     ) {
-        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS, AdjProbJulia, ChaosSymmetry1, LaceJulia};
+        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, SinhJulia, MultiJuliaIFS, AdjProbJulia, ChaosSymmetry1, LaceJulia};
         use crate::fractal_gui::FractalGUI;
 
         match self {
@@ -830,6 +870,7 @@ impl crate::gui::FractalTypeOps for FractalType {
             FractalType::InsideoutDragon => InsideoutDragon::new().render_parameters_gui(ui, params, input_state, needs_redraw),
             FractalType::Zubieta => Zubieta::new().render_parameters_gui(ui, params, input_state, needs_redraw),
             FractalType::SinJulia => SinJulia::new().render_parameters_gui(ui, params, input_state, needs_redraw),
+            FractalType::SinhJulia => SinhJulia::new().render_parameters_gui(ui, params, input_state, needs_redraw),
             FractalType::MultiJuliaIFS => MultiJuliaIFS::new().render_parameters_gui(ui, params, input_state, needs_redraw),
             FractalType::AdjProbJulia => AdjProbJulia::new().render_parameters_gui(ui, params, input_state, needs_redraw),
             FractalType::ChaosSymmetry1 => ChaosSymmetry1::new().render_parameters_gui(ui, params, input_state, needs_redraw),
@@ -1040,7 +1081,7 @@ impl Default for RenderState {
             pt_bits: crate::perturbation::PT_REFERENCE_BITS,
             pt_glitch_tolerance: 1.0,
             pt_tiles: 1,
-            max_threads: 18,
+            max_threads: default_max_threads(),
             hiprec_preview_saved: None,
             progressive_preview_active: false,
             progressive_preview_stamp: None,
@@ -1379,6 +1420,17 @@ impl From<&crate::export::FractalMetadata> for InputState {
             .copied()
             .unwrap_or(50.0);
 
+        // Extract Sinh Julia c values if present
+        let sinh_julia_c_real = meta.fractal_parameters.get("c_real")
+            .copied()
+            .unwrap_or(-0.7);
+        let sinh_julia_c_imag = meta.fractal_parameters.get("c_imag")
+            .copied()
+            .unwrap_or(0.27015);
+        let sinh_julia_escape_radius = meta.fractal_parameters.get("escape_radius")
+            .copied()
+            .unwrap_or(50.0);
+
         // Extract Adj Prob Julia parameters if present
         let adj_prob_julia_threshold = meta.fractal_parameters.get("threshold")
             .copied()
@@ -1441,6 +1493,12 @@ impl From<&crate::export::FractalMetadata> for InputState {
             sin_julia_angle: sin_julia_c_imag.atan2(sin_julia_c_real).to_string(),
             sin_julia_coord_mode: crate::app_state::CoordinateMode::default(),
             sin_julia_escape_radius: sin_julia_escape_radius.to_string(),
+            sinh_julia_c_real: sinh_julia_c_real.to_string(),
+            sinh_julia_c_imag: sinh_julia_c_imag.to_string(),
+            sinh_julia_magnitude: (sinh_julia_c_real * sinh_julia_c_real + sinh_julia_c_imag * sinh_julia_c_imag).sqrt().to_string(),
+            sinh_julia_angle: sinh_julia_c_imag.atan2(sinh_julia_c_real).to_string(),
+            sinh_julia_coord_mode: crate::app_state::CoordinateMode::default(),
+            sinh_julia_escape_radius: sinh_julia_escape_radius.to_string(),
             multi_julia_ifs: MultiJuliaIFSState::from_params(&meta.fractal_parameters),
             adj_prob_julia_threshold: adj_prob_julia_threshold.to_string(),
             adj_prob_julia_samples: format!("{:.0}", adj_prob_julia_samples),
@@ -1607,6 +1665,12 @@ mod tests {
         assert_eq!(input_state.period, "256");
         assert_eq!(input_state.export_scale, "2");
         assert_eq!(input_state.export_supersample, "4");
+    }
+
+    #[test]
+    fn test_renderstate_default_max_threads_uses_pool_headroom() {
+        let expected = rayon::current_num_threads().saturating_sub(2).max(1);
+        assert_eq!(RenderState::default().max_threads, expected);
     }
 
     #[test]

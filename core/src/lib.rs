@@ -80,6 +80,7 @@
 //! | [`fractals::MultifractalJulia`] | Multifractal-Julia | `power` |
 //! | [`fractals::Zubieta`] | Zubieta | `c_real`, `c_imag` |
 //! | [`fractals::SinJulia`] | Sin Julia | `c_real`, `c_imag`, `escape_radius` |
+//! | [`fractals::SinhJulia`] | Sinh Julia | `c_real`, `c_imag`, `escape_radius` |
 //! | [`fractals::Tetration`] | Tetration | `threshold` |
 //! | [`fractals::Cactus`] | Cactus | none |
 //! | [`fractals::Lemon`] | Lemon | `denom_power`, `convergence_exp` |

@@ -181,6 +181,7 @@ pub fn render_from_cli(args: &Commands) -> Result<(), String> {
             let insideout_dragon = InsideoutDragon::new();
             let zubieta = Zubieta::new();
             let sin_julia = SinJulia::new();
+            let sinh_julia = SinhJulia::new();
             let multi_julia_ifs = crate::fractals::MultiJuliaIFS::new();
             let adj_prob_julia = crate::fractals::AdjProbJulia::new();
             let chaos_symmetry1 = crate::fractals::ChaosSymmetry1::new();
@@ -199,6 +200,7 @@ pub fn render_from_cli(args: &Commands) -> Result<(), String> {
                 crate::app_state::FractalType::InsideoutDragon => &insideout_dragon,
                 crate::app_state::FractalType::Zubieta => &zubieta,
                 crate::app_state::FractalType::SinJulia => &sin_julia,
+                crate::app_state::FractalType::SinhJulia => &sinh_julia,
                 crate::app_state::FractalType::MultiJuliaIFS => &multi_julia_ifs,
                 crate::app_state::FractalType::AdjProbJulia => &adj_prob_julia,
                 crate::app_state::FractalType::ChaosSymmetry1 => &chaos_symmetry1,

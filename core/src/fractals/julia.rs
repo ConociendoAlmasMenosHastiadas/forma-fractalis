@@ -6,6 +6,8 @@
 //!
 //! Unlike Mandelbrot (where c varies and z starts at 0),
 //! Julia sets use a fixed c and z starts at each pixel position.
+//!
+//! Reference: https://paulbourke.net/fractals/juliaset/
 
 use super::{Fractal, FractalView, Parameter};
 use num_complex::Complex64;

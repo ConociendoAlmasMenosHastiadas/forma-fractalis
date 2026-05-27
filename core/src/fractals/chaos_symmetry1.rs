@@ -22,6 +22,8 @@
 //! This maps naturally onto the two-pass procedure described in the original
 //! reference: pass 1 (burn-in) settles the transient; pass 2 records density.
 //! The view bounds determine which region of the attractor is captured.
+//!
+//! Reference: https://paulbourke.net/fractals/symmetryinchaos/
 
 use super::{Fractal, FractalView, Parameter};
 use crate::orbit_accumulation::{complex_to_screen_hiprec, DensityBuffer, OrbitTarget};

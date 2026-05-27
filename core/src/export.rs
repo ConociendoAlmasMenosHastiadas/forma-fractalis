@@ -534,6 +534,7 @@ mod tests {
             ("Insideout Dragon", crate::fractals::FractalType::InsideoutDragon),
             ("Zubieta", crate::fractals::FractalType::Zubieta),
             ("Sin Julia", crate::fractals::FractalType::SinJulia),
+            ("Sinh Julia", crate::fractals::FractalType::SinhJulia),
             ("Multi-Julia IFS", crate::fractals::FractalType::MultiJuliaIFS),
         ];
         
@@ -769,7 +770,8 @@ mod tests {
         use crate::fractals::FractalType;
         use crate::fractals::{
             Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus,
-            MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, MultiJuliaIFS,
+            MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, SinhJulia,
+            MultiJuliaIFS,
         };
         
         let temp_dir = TempDir::new().unwrap();
@@ -1098,6 +1100,35 @@ mod tests {
             let loaded = load_png_metadata(result.unwrap()).unwrap();
             assert_eq!(loaded.fractal_type, "Sin Julia");
             assert_eq!(loaded.parse_fractal_type().unwrap(), FractalType::SinJulia);
+        }
+
+        // Test Sinh Julia
+        {
+            let mut params = HashMap::new();
+            params.insert("c_real".to_string(), -0.7);
+            params.insert("c_imag".to_string(), 0.27015);
+            params.insert("escape_radius".to_string(), 50.0);
+            let view = FractalView {
+                center_x: 0.0,
+                center_y: 0.0,
+                zoom: 1.0,
+                precise_center_x: None,
+                precise_center_y: None,
+                precise_zoom: None,
+                width: 400,
+                height: 300,
+                parameters: params.clone(),
+            };
+            let fractal = SinhJulia::new();
+            let result = export_png_test(
+                &view, &colormap, 100, &fractal, &params,
+                false, 256, false, [0, 0, 0], false,
+                FilterType::None, 1, 1.0, Some(&temp_dir.path().to_path_buf()),
+            );
+            assert!(result.is_ok(), "Sinh Julia export failed");
+            let loaded = load_png_metadata(result.unwrap()).unwrap();
+            assert_eq!(loaded.fractal_type, "Sinh Julia");
+            assert_eq!(loaded.parse_fractal_type().unwrap(), FractalType::SinhJulia);
         }
 
         // Test Multi-Julia IFS
@@ -1516,6 +1547,7 @@ impl FractalMetadata {
             "Insideout Dragon" => Ok(FractalType::InsideoutDragon),
             "Zubieta" => Ok(FractalType::Zubieta),
             "Sin Julia" => Ok(FractalType::SinJulia),
+            "Sinh Julia" => Ok(FractalType::SinhJulia),
             "Multi-Julia IFS" => Ok(FractalType::MultiJuliaIFS),
             "Adj Prob Julia" => Ok(FractalType::AdjProbJulia),
             "ChaosSymmetry1" => Ok(FractalType::ChaosSymmetry1),

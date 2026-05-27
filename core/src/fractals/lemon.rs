@@ -20,6 +20,8 @@
 //! This is a Newton-type fractal where the iteration seeks fixed points.
 //! Points that converge quickly are colored differently from those that
 //! converge slowly or not at all within the iteration limit.
+//!
+//! Reference: https://paulbourke.net/fractals/lemon/
 
 use super::{Fractal, FractalView, Parameter};
 use num_complex::Complex64;

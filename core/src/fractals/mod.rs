@@ -52,6 +52,7 @@ pub mod lemon;
 pub mod insideout_dragon;
 pub mod zubieta;
 pub mod sin_julia;
+pub mod sinh_julia;
 pub mod multi_julia_ifs;
 pub mod adj_prob_julia;
 pub mod chaos_symmetry1;
@@ -73,6 +74,7 @@ pub use lemon::Lemon;
 pub use insideout_dragon::InsideoutDragon;
 pub use zubieta::Zubieta;
 pub use sin_julia::SinJulia;
+pub use sinh_julia::SinhJulia;
 pub use multi_julia_ifs::MultiJuliaIFS;
 pub use adj_prob_julia::AdjProbJulia;
 pub use chaos_symmetry1::ChaosSymmetry1;
@@ -525,6 +527,7 @@ pub enum FractalType {
     InsideoutDragon,
     Zubieta,
     SinJulia,
+    SinhJulia,
     MultiJuliaIFS,
     AdjProbJulia,
     ChaosSymmetry1,
@@ -546,6 +549,7 @@ impl FractalType {
             FractalType::InsideoutDragon => "Insideout Dragon",
             FractalType::Zubieta => "Zubieta",
             FractalType::SinJulia => "Sin Julia",
+            FractalType::SinhJulia => "Sinh Julia",
             FractalType::MultiJuliaIFS => "Multi-Julia IFS",
             FractalType::AdjProbJulia => "Adj Prob Julia",
             FractalType::ChaosSymmetry1 => "ChaosSymmetry1",
@@ -571,6 +575,7 @@ impl FractalType {
             FractalType::InsideoutDragon => "z_{n+1} = z_n^2 + f(|z_n|) + i*g(|z_n|), z_0 = 1/c",
             FractalType::Zubieta => "z_{n+1} = z_n^2 + c/z_n",
             FractalType::SinJulia => "z_{n+1} = c * sin(z_n)",
+            FractalType::SinhJulia => "z_{n+1} = |Re(sinh(z_n)^4)| + i|Im(sinh(z_n)^4)| + c",
             FractalType::MultiJuliaIFS => "z_{n+1} = sqrt(z_n - c_i), i chosen by probability",
             FractalType::AdjProbJulia => "z_{n+1} = s*sqrt(|z_n-z_0|)*exp(i*arg(z_n)/2)",
             FractalType::ChaosSymmetry1 => "z_{n+1} = (a0+a1|z|^2+a2 Re(z^m)+a3 i)*z + a4*conj(z)^{m-1}",
@@ -591,6 +596,7 @@ impl FractalType {
             FractalType::Lemon,
             FractalType::Zubieta,
             FractalType::SinJulia,
+            FractalType::SinhJulia,
             FractalType::InsideoutDragon,
             FractalType::MultiJuliaIFS,
             FractalType::ChaosSymmetry1,
@@ -614,6 +620,7 @@ impl FractalType {
             FractalType::InsideoutDragon => Box::new(InsideoutDragon::new()),
             FractalType::Zubieta => Box::new(Zubieta::new()),
             FractalType::SinJulia => Box::new(SinJulia::new()),
+            FractalType::SinhJulia => Box::new(SinhJulia::new()),
             FractalType::MultiJuliaIFS => Box::new(MultiJuliaIFS::new()),
             FractalType::AdjProbJulia => Box::new(AdjProbJulia::new()),
             FractalType::ChaosSymmetry1 => Box::new(ChaosSymmetry1::new()),

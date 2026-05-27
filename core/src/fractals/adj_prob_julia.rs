@@ -13,6 +13,8 @@
 //! At R=0.5 each pixel traces its own Julia set (z^2 + z_0). The image is
 //! a superposition of every Julia set in the viewing window simultaneously.
 //! At R=0 or R=1 only one branch of the sqrt is taken, producing sparser images.
+//!
+//! Reference: https://paulbourke.net/fractals/reversejulia/
 
 use super::{Fractal, FractalView, Parameter};
 use crate::orbit_accumulation::{complex_sqrt, OrbitTarget};

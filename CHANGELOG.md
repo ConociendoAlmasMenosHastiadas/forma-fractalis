@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-05-26
+
+### Added
+- **Sinh Julia Fractal**: z_{n+1} = abs(Re(sinh(z_n)^4)) + i*abs(Im(sinh(z_n)^4)) + c
+  - CPU f64 path, CPU hi-precision BigFloat path, and GPU f32 compute shader
+  - Rectangular/polar c controls plus configurable escape radius
+- **Lemon GPU Support**: compute shader backend, GPU parity coverage, and convergence-specific tolerance handling for the new rational map
+- **Marek Dragon CPU Hi-Precision Support**: BigFloat rendering across the supported bit-width ladder
+
+### Changed
+- Release showcase updated to the Sinh Julia fractal for v0.2.8
+- Paul Bourke source citations added across older fractal implementations that lacked in-code attribution
+- Capability tracking updated for Lemon GPU, Marek Dragon hi-prec, and Sinh Julia full-stack support
+
+### Fixed
+- GUI default CPU thread count now scales from the active Rayon pool instead of using a hardcoded value
+
 ## [0.2.7] - 2026-05-18
 
 ### Added
@@ -904,7 +921,8 @@ let buffer = render_fractal_to_buffer(&fractal, &config)?;
 - **v0.1.1** (2026-01-12): Unified pipeline, filtering, supersampling
 - **v0.1.0** (2026-01-11): Initial release with Mandelbrot explorer
 
-[Unreleased]: https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/compare/v0.2.7...HEAD
+[Unreleased]: https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/compare/v0.2.8...HEAD
+[0.2.8]: https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/compare/v0.2.6...v0.2.7
 [0.1.4]: https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/ConociendoAlmasMenosHastiadas/forma-fractalis/compare/v0.1.2...v0.1.3

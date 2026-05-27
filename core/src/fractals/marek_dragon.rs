@@ -12,6 +12,7 @@
 
 use crate::fractals::{Fractal, FractalView};
 use crate::number_utils::TWO_PI;
+use astro_float::{BigFloat, Consts, RoundingMode};
 use num_complex::Complex64;
 use std::collections::HashMap;
 
@@ -78,6 +79,63 @@ impl Fractal for MarekDragon {
         "z_{n+1} = exp(iφ)*z_n + z_n^2"
     }
 
+    fn supports_hiprec(&self) -> bool {
+        true
+    }
+
+    fn iterate_hiprec(
+        &self,
+        c_real: &BigFloat,
+        c_imag: &BigFloat,
+        parameters: &HashMap<String, f64>,
+        max_iter: u32,
+        bits: u32,
+    ) -> u32 {
+        let phi = parameters.get("phi").copied().unwrap_or(0.0);
+        let escape_r = parameters.get("escape_radius").copied().unwrap_or(2.0);
+
+        let p = bits as usize;
+        let rm = RoundingMode::ToEven;
+        let mut cc = Consts::new().expect("BigFloat constants cache");
+
+        let phi_bf = BigFloat::from_f64(phi, p);
+        let rotation_re = phi_bf.cos(p, rm, &mut cc);
+        let rotation_im = phi_bf.sin(p, rm, &mut cc);
+        let escape_sq = BigFloat::from_f64(escape_r * escape_r, p);
+        let two = BigFloat::from_f64(2.0, p);
+
+        let mut zr = c_real.clone();
+        let mut zi = c_imag.clone();
+
+        for iter in 0..max_iter {
+            let zr2 = zr.mul(&zr, p, rm);
+            let zi2 = zi.mul(&zi, p, rm);
+            let norm_sq = zr2.add(&zi2, p, rm);
+
+            if norm_sq.cmp(&escape_sq).map_or(false, |value| value > 0) {
+                return iter;
+            }
+
+            let rot_zr = rotation_re.mul(&zr, p, rm).sub(&rotation_im.mul(&zi, p, rm), p, rm);
+            let rot_zi = rotation_re.mul(&zi, p, rm).add(&rotation_im.mul(&zr, p, rm), p, rm);
+
+            let square_zr = zr2.sub(&zi2, p, rm);
+            let square_zi = two.mul(&zr, p, rm).mul(&zi, p, rm);
+
+            let new_zr = rot_zr.add(&square_zr, p, rm);
+            let new_zi = rot_zi.add(&square_zi, p, rm);
+
+            if new_zr.is_nan() || new_zr.is_inf() || new_zi.is_nan() || new_zi.is_inf() {
+                return iter;
+            }
+
+            zr = new_zr;
+            zi = new_zi;
+        }
+
+        max_iter
+    }
+
     fn parameters(&self) -> Vec<crate::fractals::Parameter> {
         vec![
             crate::fractals::Parameter {
@@ -103,6 +161,11 @@ impl Fractal for MarekDragon {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn to_bf(re: f64, im: f64, bits: u32) -> (BigFloat, BigFloat) {
+        let p = bits as usize;
+        (BigFloat::from_f64(re, p), BigFloat::from_f64(im, p))
+    }
 
     #[test]
     fn test_marek_dragon_name() {
@@ -184,5 +247,67 @@ mod tests {
         let iters = fractal.iterate(0.0, 0.0, &params, 256);
         // Just verify it runs without panicking
         assert!(iters <= 256);
+    }
+
+    #[test]
+    fn test_marek_dragon_supports_hiprec() {
+        assert!(MarekDragon::new().supports_hiprec());
+    }
+
+    #[test]
+    fn test_marek_dragon_hiprec_interior_point() {
+        let fractal = MarekDragon::new();
+        let mut params = HashMap::new();
+        params.insert("phi".to_string(), 0.5);
+
+        let (cr, ci) = to_bf(0.0, 0.0, 128);
+        assert_eq!(fractal.iterate_hiprec(&cr, &ci, &params, 100, 128), 100);
+    }
+
+    #[test]
+    fn test_marek_dragon_hiprec_escaping_point() {
+        let fractal = MarekDragon::new();
+        let mut params = HashMap::new();
+        params.insert("phi".to_string(), 1.0);
+
+        let (cr, ci) = to_bf(10.0, 10.0, 128);
+        assert!(fractal.iterate_hiprec(&cr, &ci, &params, 100, 128) < 5);
+    }
+
+    #[test]
+    fn test_marek_dragon_hiprec_matches_f64_on_robust_points() {
+        let fractal = MarekDragon::new();
+        let cases = [
+            (0.0, 0.0, 0.0, 100),
+            (10.0, 10.0, 1.0, 100),
+            (0.5, 0.5, 0.0, 100),
+            (0.5, 0.5, std::f64::consts::PI / 2.0, 100),
+        ];
+
+        for (re, im, phi, max_iter) in cases {
+            let mut params = HashMap::new();
+            params.insert("phi".to_string(), phi);
+
+            let f64_iters = fractal.iterate(re, im, &params, max_iter);
+            let (cr, ci) = to_bf(re, im, 128);
+            let hiprec_iters = fractal.iterate_hiprec(&cr, &ci, &params, max_iter, 128);
+
+            assert_eq!(
+                f64_iters, hiprec_iters,
+                "f64 and hi-prec disagree at ({re}, {im}) with phi={phi}: f64={f64_iters}, hiprec={hiprec_iters}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_marek_dragon_hiprec_bit_widths_smoke() {
+        let fractal = MarekDragon::new();
+        let mut params = HashMap::new();
+        params.insert("phi".to_string(), 1.0);
+
+        for &bits in &[64u32, 128, 256, 512, 1024] {
+            let (cr, ci) = to_bf(10.0, 10.0, bits);
+            assert!(fractal.iterate_hiprec(&cr, &ci, &params, 100, bits) < 5);
+        }
     }
 }

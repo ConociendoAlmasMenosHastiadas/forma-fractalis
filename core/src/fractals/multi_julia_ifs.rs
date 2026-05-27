@@ -19,6 +19,8 @@
 //!   seed             Integer PRNG seed for this sub-orbit
 //!   samples          Number of orbit steps for this sub-orbit
 //!   burn_in          Number of initial steps to discard (default 50)
+//!
+//! Reference: https://paulbourke.net/fractals/multijulia/
 
 use super::{Fractal, FractalView, Parameter};
 use crate::orbit_accumulation::{complex_sqrt, complex_sqrt_hiprec, complex_to_screen_hiprec, OrbitTarget};

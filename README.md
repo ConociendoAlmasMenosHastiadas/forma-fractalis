@@ -16,7 +16,7 @@
 ![Mandelbrot Set](img_resources/banners/mandelbrot_4320x1080_4xLanczos31771181432.png)
 
 ### Interactive Exploration
-- **15 Fractal Types**: Mandelbrot, Julia, Burning Ship, Tippets Mandelbrot, Multifractal-Julia, Multi-Julia IFS, Cactus, Marek Dragon, Tetration, Lemon, Zubieta, Sin Julia, Insideout Dragon, ChaosSymmetry1, Lace Julia
+- **16 Fractal Types**: Mandelbrot, Julia, Burning Ship, Tippets Mandelbrot, Multifractal-Julia, Multi-Julia IFS, Cactus, Marek Dragon, Tetration, Lemon, Zubieta, Sin Julia, Sinh Julia, Insideout Dragon, ChaosSymmetry1, Lace Julia
 - **Real-time Rendering**: Smooth 60 FPS with multi-threaded computation
 - **Deep Zoom Backends**: CPU Hi-Prec BigFloat and Mandelbrot perturbation theory for extreme zoom workflows
 - **Click-to-Zoom**: Intuitive mouse controls for navigation
@@ -134,6 +134,7 @@ forma-fractalis --profiling
 | ![Multi-Julia IFS v0.2.4 showcase](img_resources/gallery_expanded/v0.2.4_multi_julia_ifs.png) |
 | ![ChaosSymmetry1 v0.2.5 showcase](img_resources/gallery_expanded/v0.2.5_chaos_symmetry1.png) |
 | ![Lace Julia v0.2.6 showcase](img_resources/gallery_expanded/v0.2.6_lace_julia.png) |
+| ![Mandelbrot v0.2.7 perturbation showcase](img_resources/gallery_expanded/v0.2.7_mandelbrot_perturbation.png) |
 
 </details>
 
@@ -207,8 +208,10 @@ GPU acceleration currently supports:
 - Burning Ship
 - Tippets Mandelbrot
 - Multifractal-Julia
+- Lemon
 - Zubieta
 - Sin Julia
+- Sinh Julia
 - Insideout Dragon
 - Cactus
 - Marek Dragon
@@ -293,14 +296,20 @@ The core library can be used independently. See [core/README.md](core/README.md)
 
 ## Releases
 
-**Latest: v0.2.7** (May 18, 2026)
+**Latest: v0.2.8** (May 26, 2026)
 
-Mandelbrot deep zoom showcase powered by perturbation theory, plus Tetration GPU support, Cactus CPU hi-prec, and precise deep-camera persistence for extreme zoom workflows.
+Sinh Julia becomes the release showcase fractal, while Lemon gains GPU support, Marek Dragon gains CPU hi-precision rendering, and older fractal implementations now carry in-code source citations.
 
-![v0.2.7 Showcase - Mandelbrot deep zoom via perturbation theory](img_resources/showcase/mandelbrot_3840x2160_2xLanczos31779128919.png)
+![v0.2.8 Showcase - Sinh Julia release fractal](img_resources/showcase/v0.2.8_sinh_julia.png)
 
 <details>
 <summary><b>View release history...</b></summary>
+
+### v0.2.8 (May 26, 2026)
+- Sinh Julia release fractal on all three active backends: CPU f64, CPU hi-precision BigFloat, and GPU f32 compute shader
+- Lemon GPU support completed, with parity coverage and convergence-specific tolerance handling
+- Marek Dragon CPU hi-precision support added across the supported bit-width ladder
+- In-code source citations added for older fractal implementations, and CPU thread defaults now scale from the active Rayon pool
 
 ### v0.2.7 (May 18, 2026)
 - Perturbation Theory deep-zoom backend for Mandelbrot power=2, including tiled reference orbits, bounded rebasing, series warm starts, and denser retry before direct fallback

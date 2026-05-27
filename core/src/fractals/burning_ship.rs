@@ -5,6 +5,8 @@
 //!
 //! The absolute value operation on components creates the distinctive
 //! "ship" shape with a prominent bow structure.
+//!
+//! Reference: https://paulbourke.net/fractals/burnship/
 
 use super::{Fractal, FractalView, Parameter};
 use num_complex::Complex64;
