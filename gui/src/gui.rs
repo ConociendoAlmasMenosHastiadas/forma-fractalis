@@ -27,14 +27,15 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Instant;
 
-/// Open a directory in the system file explorer
-fn open_directory_in_explorer(path: &Path) -> Result<(), String> {
+/// Open a file or directory with the platform default handler.
+fn open_path_in_shell(path: &Path) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("explorer")
+        std::process::Command::new("cmd")
+            .args(["/C", "start", ""])
             .arg(path)
             .spawn()
-            .map_err(|e| format!("Failed to open explorer: {}", e))?;
+            .map_err(|e| format!("Failed to open path: {}", e))?;
     }
     
     #[cfg(target_os = "macos")]
@@ -42,7 +43,7 @@ fn open_directory_in_explorer(path: &Path) -> Result<(), String> {
         std::process::Command::new("open")
             .arg(path)
             .spawn()
-            .map_err(|e| format!("Failed to open finder: {}", e))?;
+            .map_err(|e| format!("Failed to open path: {}", e))?;
     }
     
     #[cfg(target_os = "linux")]
@@ -50,7 +51,7 @@ fn open_directory_in_explorer(path: &Path) -> Result<(), String> {
         std::process::Command::new("xdg-open")
             .arg(path)
             .spawn()
-            .map_err(|e| format!("Failed to open file manager: {}", e))?;
+            .map_err(|e| format!("Failed to open path: {}", e))?;
     }
     
     Ok(())
@@ -101,32 +102,29 @@ pub fn format_zoom_profile(zoom: f64) -> String {
     }
 }
 
-/// Render the performance/rendering backend section
-pub fn render_performance_section(
+pub fn render_backend_section(
     ui: &mut egui::Ui,
     render_state: &mut crate::app_state::RenderState,
-    fractal: &dyn crate::fractals::Fractal,
     status_message: &mut String,
     needs_redraw: &mut bool,
 ) {
-    section_header(ui, "Performance");
+    section_header(ui, "Render Backend");
 
-    // Backend selection
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label("Rendering:");
         let previous_backend = render_state.backend;
 
-        // Radio buttons for backend selection
         for backend in crate::gpu::RenderBackend::all() {
-            if ui.radio_value(&mut render_state.backend, backend, backend.as_str()).clicked() {
-                // Radio button was clicked (handled below via previous_backend comparison)
+            if ui
+                .radio_value(&mut render_state.backend, backend, backend.as_str())
+                .clicked()
+            {
+                // Handled below through the backend comparison.
             }
         }
 
-        // Initialize GPU and trigger redraw when backend changes
         #[cfg(feature = "gpu")]
         if previous_backend != render_state.backend {
-            // Clear the PT reference orbit cache when switching away from Perturbation.
             if matches!(previous_backend, crate::gpu::RenderBackend::Perturbation) {
                 render_state.reference_orbits.clear();
             }
@@ -147,8 +145,6 @@ pub fn render_performance_section(
         }
         #[cfg(not(feature = "gpu"))]
         if previous_backend != render_state.backend {
-            // Clear the PT reference orbit cache when switching away from Perturbation
-            // to free the BigFloat orbit memory.
             if matches!(previous_backend, crate::gpu::RenderBackend::Perturbation) {
                 render_state.reference_orbits.clear();
             }
@@ -156,13 +152,24 @@ pub fn render_performance_section(
             *needs_redraw = true;
         }
     });
+}
+
+/// Render the performance/rendering details section
+pub fn render_performance_section(
+    ui: &mut egui::Ui,
+    render_state: &mut crate::app_state::RenderState,
+    fractal: &dyn crate::fractals::Fractal,
+    _status_message: &mut String,
+    needs_redraw: &mut bool,
+) {
+    section_header(ui, "Performance");
 
     // Hi-Prec bit-width selector: only shown when CpuHiPrec is the selected backend
     if matches!(render_state.backend, crate::gpu::RenderBackend::CpuHiPrec) {
         ui.horizontal(|ui| {
             ui.label("Precision:");
             let prev_bits = render_state.hiprec_bits;
-            egui::ComboBox::from_id_source("hiprec_bits")
+            egui::ComboBox::from_id_salt("hiprec_bits")
                 .selected_text(format!("{}-bit", render_state.hiprec_bits))
                 .show_ui(ui, |ui| {
                     for &bits in crate::gpu::HIPREC_BIT_OPTIONS {
@@ -185,7 +192,7 @@ pub fn render_performance_section(
         ui.horizontal(|ui| {
             ui.label("PT Precision:");
             let prev_bits = render_state.pt_bits;
-            egui::ComboBox::from_id_source("pt_bits")
+            egui::ComboBox::from_id_salt("pt_bits")
                 .selected_text(format!("{}-bit", render_state.pt_bits))
                 .show_ui(ui, |ui| {
                     for &bits in crate::gpu::HIPREC_BIT_OPTIONS {
@@ -208,7 +215,7 @@ pub fn render_performance_section(
         ui.horizontal(|ui| {
             ui.label("Tile count:");
             let prev_tiles = render_state.pt_tiles;
-            egui::ComboBox::from_id_source("pt_tiles")
+            egui::ComboBox::from_id_salt("pt_tiles")
                 .selected_text(if render_state.pt_tiles == 1 {
                     "1 (single orbit)".to_string()
                 } else {
@@ -570,7 +577,7 @@ where
     // Fractal type selector
     ui.label("Type:");
     let current_name = fractal_type.get_name();
-    egui::ComboBox::from_id_source("fractal_type")
+    egui::ComboBox::from_id_salt("fractal_type")
         .selected_text(current_name)
         .width(ui.available_width() - 4.0)
         .show_ui(ui, |ui| {
@@ -711,6 +718,287 @@ pub fn render_current_view_info(
         *needs_redraw = true;
         *status_message = String::from("Reset to defaults");
     }
+}
+
+fn format_toolbar_zoom(zoom: f64) -> String {
+    if zoom.abs() > 100.0 {
+        format!("{:.4e}x", zoom)
+    } else {
+        format!("{:.4}x", zoom)
+    }
+}
+
+fn format_toolbar_status(status_message: &str) -> String {
+    const MAX_CHARS: usize = 84;
+
+    let total_chars = status_message.chars().count();
+    if total_chars <= MAX_CHARS {
+        return status_message.to_string();
+    }
+
+    let head_chars = (MAX_CHARS.saturating_sub(3)) / 2;
+    let tail_chars = MAX_CHARS.saturating_sub(3 + head_chars);
+    let prefix: String = status_message.chars().take(head_chars).collect();
+    let suffix: String = status_message
+        .chars()
+        .skip(total_chars.saturating_sub(tail_chars))
+        .collect();
+
+    format!("{}...{}", prefix, suffix)
+}
+
+pub fn render_view_toolbar(
+    ui: &mut egui::Ui,
+    view: &mut FractalView,
+    width_input: &mut String,
+    height_input: &mut String,
+    preview_zoom: &mut f32,
+    needs_redraw: &mut bool,
+    status_message: &mut String,
+    input_debounce_timer: &mut Option<Instant>,
+    pending_redraw: &mut bool,
+) {
+    ui.group(|ui| {
+        ui.scope(|ui| {
+            let toolbar_label_size = 12.5;
+            let toolbar_button_size = 12.0;
+            let label_width = 34.0;
+            let field_width = 60.0;
+            let cross_width = 18.0;
+            let reset_width = 62.0;
+            let size_region_width = label_width + field_width + cross_width + field_width;
+            let inter_region_spacing = 10.0;
+            let view_region_width = (ui.available_width()
+                - size_region_width
+                - reset_width
+                - inter_region_spacing * 2.0)
+                .max(220.0);
+
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 4.0;
+
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = inter_region_spacing;
+
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(size_region_width, 20.0),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            ui.spacing_mut().item_spacing.x = 0.0;
+
+                            ui.add_sized(
+                                [label_width, 20.0],
+                                egui::Label::new(egui::RichText::new("Size:").size(toolbar_label_size)),
+                            );
+
+                            if ui
+                                .add_sized([field_width, 20.0], egui::TextEdit::singleline(width_input))
+                                .changed()
+                            {
+                                if let Ok(val) = width_input.parse::<u32>() {
+                                    view.width = val.max(100);
+                                    trigger_debounced_redraw(input_debounce_timer, pending_redraw);
+                                }
+                            }
+
+                            ui.add_sized(
+                                [cross_width, 20.0],
+                                egui::Label::new(egui::RichText::new("x").size(toolbar_label_size)),
+                            );
+
+                            if ui
+                                .add_sized([field_width, 20.0], egui::TextEdit::singleline(height_input))
+                                .changed()
+                            {
+                                if let Ok(val) = height_input.parse::<u32>() {
+                                    view.height = val.max(100);
+                                    trigger_debounced_redraw(input_debounce_timer, pending_redraw);
+                                }
+                            }
+                        },
+                    );
+
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(view_region_width, 20.0),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            let toolbar_text = format!(
+                                "x: {:.6}    y: {:.6}    zoom: {}",
+                                view.center_x,
+                                view.center_y,
+                                format_toolbar_zoom(view.zoom),
+                            );
+                            ui.label(
+                                egui::RichText::new(toolbar_text)
+                                    .size(toolbar_label_size)
+                                    .monospace(),
+                            );
+                        },
+                    );
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .add_sized(
+                                [reset_width, 20.0],
+                                egui::Button::new(
+                                    egui::RichText::new("Reset View").size(toolbar_button_size),
+                                ),
+                            )
+                            .clicked()
+                        {
+                            view.reset();
+                            *needs_redraw = true;
+                            *status_message = String::from("Reset to defaults");
+                        }
+                    });
+                });
+
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = inter_region_spacing;
+
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(size_region_width, 18.0),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            ui.spacing_mut().item_spacing.x = 0.0;
+
+                            ui.add_space(label_width);
+
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 2.0;
+
+                                if ui
+                                    .add_sized(
+                                        [29.0, 18.0],
+                                        egui::Button::new(egui::RichText::new("×2").size(toolbar_button_size)),
+                                    )
+                                    .clicked()
+                                {
+                                    if let Ok(val) = width_input.parse::<u32>() {
+                                        let new_val = val * 2;
+                                        *width_input = new_val.to_string();
+                                        view.width = new_val.max(100);
+                                        *needs_redraw = true;
+                                    }
+                                }
+
+                                if ui
+                                    .add_sized(
+                                        [29.0, 18.0],
+                                        egui::Button::new(egui::RichText::new("÷2").size(toolbar_button_size)),
+                                    )
+                                    .clicked()
+                                {
+                                    if let Ok(val) = width_input.parse::<u32>() {
+                                        let new_val = val / 2;
+                                        *width_input = new_val.to_string();
+                                        view.width = new_val.max(100);
+                                        *needs_redraw = true;
+                                    }
+                                }
+                            });
+
+                            if ui
+                                .add_sized(
+                                    [cross_width, 18.0],
+                                    egui::Button::new(
+                                        egui::RichText::new("↔")
+                                            .size(toolbar_button_size + 1.0),
+                                    ),
+                                )
+                                .on_hover_text("Swap width and height")
+                                .clicked()
+                            {
+                                std::mem::swap(width_input, height_input);
+                                std::mem::swap(&mut view.width, &mut view.height);
+                                *needs_redraw = true;
+                            }
+
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 2.0;
+
+                                if ui
+                                    .add_sized(
+                                        [29.0, 18.0],
+                                        egui::Button::new(egui::RichText::new("×2").size(toolbar_button_size)),
+                                    )
+                                    .clicked()
+                                {
+                                    if let Ok(val) = height_input.parse::<u32>() {
+                                        let new_val = val * 2;
+                                        *height_input = new_val.to_string();
+                                        view.height = new_val.max(100);
+                                        *needs_redraw = true;
+                                    }
+                                }
+
+                                if ui
+                                    .add_sized(
+                                        [29.0, 18.0],
+                                        egui::Button::new(egui::RichText::new("÷2").size(toolbar_button_size)),
+                                    )
+                                    .clicked()
+                                {
+                                    if let Ok(val) = height_input.parse::<u32>() {
+                                        let new_val = val / 2;
+                                        *height_input = new_val.to_string();
+                                        view.height = new_val.max(100);
+                                        *needs_redraw = true;
+                                    }
+                                }
+                            });
+                        },
+                    );
+
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(view_region_width, 18.0),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            ui.spacing_mut().item_spacing.x = 6.0;
+                            ui.label(egui::RichText::new("Preview:").size(toolbar_label_size));
+                            ui.add_sized(
+                                [90.0, 0.0],
+                                egui::Slider::new(preview_zoom, 0.1_f32..=1.0_f32)
+                                    .step_by(0.05)
+                                    .fixed_decimals(2)
+                                    .show_value(false),
+                            );
+                            ui.label(
+                                egui::RichText::new(format!("{:.2}x", *preview_zoom))
+                                    .size(toolbar_label_size)
+                                    .monospace(),
+                            );
+                            if ui
+                                .add_sized(
+                                    [34.0, 18.0],
+                                    egui::Button::new(egui::RichText::new("1:1").size(toolbar_button_size)),
+                                )
+                                .clicked()
+                            {
+                                *preview_zoom = 1.0;
+                            }
+                        },
+                    );
+
+                    ui.add_space(reset_width);
+                });
+
+                ui.allocate_ui_with_layout(
+                    egui::vec2(ui.available_width(), 14.0),
+                    egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                    |ui| {
+                        let toolbar_status = format_toolbar_status(status_message);
+                        ui.label(
+                            egui::RichText::new(toolbar_status)
+                                .size(toolbar_label_size - 0.5)
+                                .italics()
+                                .weak(),
+                        );
+                    },
+                );
+            });
+        });
+    });
 }
 
 /// Render the color scheme and color stops section
@@ -943,7 +1231,7 @@ pub fn render_actions_section(
             
             if ui.button("📂 Open Directory").clicked() {
                 if let Some(dir) = export_directory {
-                    let result = open_directory_in_explorer(dir);
+                    let result = open_path_in_shell(dir);
                     *status_message = match result {
                         Ok(_) => format!("Opened directory: {}", dir.display()),
                         Err(e) => format!("Failed to open directory: {}", e),
@@ -973,7 +1261,7 @@ pub fn render_actions_section(
     // Filter selection
     ui.horizontal(|ui| {
         ui.label("Filter:");
-        egui::ComboBox::from_id_source("export_filter")
+        egui::ComboBox::from_id_salt("export_filter")
             .selected_text(export_filter.as_str())
             .show_ui(ui, |ui| {
                 for filter in crate::filtering::FilterType::ALL.iter() {
@@ -1101,7 +1389,7 @@ pub fn render_actions_section(
     let open_button = egui::Button::new("Open Last Export");
     if ui.add_enabled(can_open, open_button).clicked() {
         if let Some(path) = last_export_path {
-            if let Err(e) = open::that(path.as_path()) {
+            if let Err(e) = open_path_in_shell(path.as_path()) {
                 *status_message = format!("Failed to open file: {}", e);
             }
         }
@@ -1121,6 +1409,7 @@ pub fn render_export_json_button(
     color_state: &crate::app_state::ColorState,
     input_state: &crate::app_state::InputState,
     export_state: &crate::app_state::ExportState,
+    render_state: &crate::app_state::RenderState,
     status_message: &mut String,
 ) {
     ui.add_space(10.0);
@@ -1143,6 +1432,7 @@ pub fn render_export_json_button(
                 color_state,
                 input_state,
                 export_state,
+                render_state,
                 &path,
             ) {
                 Ok(saved_path) => {
@@ -1171,6 +1461,7 @@ pub fn render_zoom_square(
         zoom_rect,
         0.0,
         egui::Stroke::new(2.0, egui::Color32::from_rgb(255, 0, 255)), // Magenta
+        egui::StrokeKind::Middle,
     );
 }
 
@@ -1203,7 +1494,7 @@ pub fn render_animation_section(
     // Animation type selector
     ui.horizontal(|ui| {
         ui.label("Type:");
-        egui::ComboBox::from_id_source("anim_type")
+        egui::ComboBox::from_id_salt("anim_type")
             .selected_text(animation_state.animation_type.as_str())
             .show_ui(ui, |ui| {
                 ui.selectable_value(&mut animation_state.animation_type, AnimationType::Zoom, "Zoom Sequence");

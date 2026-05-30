@@ -90,7 +90,7 @@ fn main() -> Result<(), String> {
     let config = RenderConfig::new(view.clone(), &colormap, iterations, &fractal)
         .with_fractal_parameters(params)
         .with_backend(RenderBackend::Perturbation)
-        .with_hiprec_bits(bits)
+        .with_pt_bits(bits)
         .with_pt_tiles(tiles);
 
     println!(

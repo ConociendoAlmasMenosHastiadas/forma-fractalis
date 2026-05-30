@@ -399,6 +399,7 @@ fn render_frame(
         .with_log_scale(use_log_scale)
         .with_backend(render_backend)
         .with_hiprec_bits(hiprec_bits)
+        .with_pt_bits(hiprec_bits)
         .with_max_threads(max_threads);
     
     // Render at supersample resolution

@@ -350,6 +350,12 @@ pub struct InputState {
     pub chaos_symmetry1_a2: String,
     pub chaos_symmetry1_a3: String,
     pub chaos_symmetry1_a4: String,
+    pub wallpaper_a: String,
+    pub wallpaper_b: String,
+    pub wallpaper_c: String,
+    pub wallpaper_samples: String,
+    pub wallpaper_burn_in: String,
+    pub wallpaper_use_log_density: bool,
     pub lace_julia_c_real: String,
     pub lace_julia_c_imag: String,
     pub lace_julia_magnitude: String,
@@ -422,6 +428,12 @@ impl Default for InputState {
             chaos_symmetry1_a2: String::from("0"),
             chaos_symmetry1_a3: String::from("0"),
             chaos_symmetry1_a4: String::from("0.5"),
+            wallpaper_a: crate::fractals::Wallpaper::DEFAULT_A.to_string(),
+            wallpaper_b: crate::fractals::Wallpaper::DEFAULT_B.to_string(),
+            wallpaper_c: crate::fractals::Wallpaper::DEFAULT_C.to_string(),
+            wallpaper_samples: crate::fractals::Wallpaper::DEFAULT_SAMPLES.to_string(),
+            wallpaper_burn_in: crate::fractals::Wallpaper::DEFAULT_BURN_IN.to_string(),
+            wallpaper_use_log_density: true,
             lace_julia_c_real: String::from("0.0"),
             lace_julia_c_imag: String::from("0.5"),
             lace_julia_magnitude: String::from("0.5"),
@@ -636,6 +648,41 @@ impl InputState {
     pub fn parse_chaos_symmetry1_a4(&self) -> f64 {
         self.chaos_symmetry1_a4.parse::<f64>().unwrap_or(0.5).clamp(-1.0, 1.0)
     }
+
+    pub fn parse_wallpaper_a(&self) -> f64 {
+        self.wallpaper_a
+            .parse::<f64>()
+            .unwrap_or(crate::fractals::Wallpaper::DEFAULT_A)
+            .clamp(0.0, 100.0)
+    }
+
+    pub fn parse_wallpaper_b(&self) -> f64 {
+        self.wallpaper_b
+            .parse::<f64>()
+            .unwrap_or(crate::fractals::Wallpaper::DEFAULT_B)
+            .clamp(0.0, 100.0)
+    }
+
+    pub fn parse_wallpaper_c(&self) -> f64 {
+        self.wallpaper_c
+            .parse::<f64>()
+            .unwrap_or(crate::fractals::Wallpaper::DEFAULT_C)
+            .clamp(0.0, 100.0)
+    }
+
+    pub fn parse_wallpaper_samples(&self) -> f64 {
+        self.wallpaper_samples
+            .parse::<f64>()
+            .unwrap_or(crate::fractals::Wallpaper::DEFAULT_SAMPLES as f64)
+            .max(1.0)
+    }
+
+    pub fn parse_wallpaper_burn_in(&self) -> f64 {
+        self.wallpaper_burn_in
+            .parse::<f64>()
+            .unwrap_or(crate::fractals::Wallpaper::DEFAULT_BURN_IN as f64)
+            .max(0.0)
+    }
 }
 
 /// Re-export `FractalIterations` from core for use throughout the GUI.
@@ -675,6 +722,7 @@ impl crate::gui::FractalTypeOps for FractalType {
             FractalType::MultiJuliaIFS
             | FractalType::ChaosSymmetry1
             | FractalType::AdjProbJulia
+            | FractalType::Wallpaper
         )
     }
 
@@ -835,6 +883,18 @@ impl crate::gui::FractalTypeOps for FractalType {
                 params.insert("seed".to_string(), input.parse_chaos_symmetry1_seed());
                 params.insert("use_log_density".to_string(), if input.chaos_symmetry1_use_log_density { 1.0 } else { 0.0 });
             }
+            FractalType::Wallpaper => {
+                view.center_x = 0.0;
+                view.center_y = 0.0;
+                view.zoom = 0.75;
+                params.clear();
+                params.insert("a".to_string(), input.parse_wallpaper_a());
+                params.insert("b".to_string(), input.parse_wallpaper_b());
+                params.insert("c".to_string(), input.parse_wallpaper_c());
+                params.insert("samples".to_string(), input.parse_wallpaper_samples());
+                params.insert("burn_in".to_string(), input.parse_wallpaper_burn_in());
+                params.insert("use_log_density".to_string(), if input.wallpaper_use_log_density { 1.0 } else { 0.0 });
+            }
             FractalType::LaceJulia => {
                 view.center_x = 0.0;
                 view.center_y = 0.0;
@@ -854,7 +914,7 @@ impl crate::gui::FractalTypeOps for FractalType {
         input_state: &mut InputState,
         needs_redraw: &mut bool,
     ) {
-        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, SinhJulia, MultiJuliaIFS, AdjProbJulia, ChaosSymmetry1, LaceJulia};
+        use crate::fractals::{Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, SinhJulia, MultiJuliaIFS, AdjProbJulia, ChaosSymmetry1, Wallpaper, LaceJulia};
         use crate::fractal_gui::FractalGUI;
 
         match self {
@@ -874,6 +934,7 @@ impl crate::gui::FractalTypeOps for FractalType {
             FractalType::MultiJuliaIFS => MultiJuliaIFS::new().render_parameters_gui(ui, params, input_state, needs_redraw),
             FractalType::AdjProbJulia => AdjProbJulia::new().render_parameters_gui(ui, params, input_state, needs_redraw),
             FractalType::ChaosSymmetry1 => ChaosSymmetry1::new().render_parameters_gui(ui, params, input_state, needs_redraw),
+            FractalType::Wallpaper => Wallpaper::new().render_parameters_gui(ui, params, input_state, needs_redraw),
             FractalType::LaceJulia => LaceJulia::new().render_parameters_gui(ui, params, input_state, needs_redraw),
         }
     }
@@ -1448,6 +1509,25 @@ impl From<&crate::export::FractalMetadata> for InputState {
             .copied()
             .unwrap_or(1.0) > 0.5;
 
+        let wallpaper_a = meta.fractal_parameters.get("a")
+            .copied()
+            .unwrap_or(crate::fractals::Wallpaper::DEFAULT_A);
+        let wallpaper_b = meta.fractal_parameters.get("b")
+            .copied()
+            .unwrap_or(crate::fractals::Wallpaper::DEFAULT_B);
+        let wallpaper_c = meta.fractal_parameters.get("c")
+            .copied()
+            .unwrap_or(crate::fractals::Wallpaper::DEFAULT_C);
+        let wallpaper_samples = meta.fractal_parameters.get("samples")
+            .copied()
+            .unwrap_or(crate::fractals::Wallpaper::DEFAULT_SAMPLES as f64);
+        let wallpaper_burn_in = meta.fractal_parameters.get("burn_in")
+            .copied()
+            .unwrap_or(crate::fractals::Wallpaper::DEFAULT_BURN_IN as f64);
+        let wallpaper_use_log_density = meta.fractal_parameters.get("use_log_density")
+            .copied()
+            .unwrap_or(1.0) > 0.5;
+
         // Extract Lace Julia parameters if present
         let lace_julia_c_real = meta.fractal_parameters.get("c_real")
             .copied()
@@ -1514,6 +1594,12 @@ impl From<&crate::export::FractalMetadata> for InputState {
             chaos_symmetry1_a2: String::from("0"),
             chaos_symmetry1_a3: String::from("0"),
             chaos_symmetry1_a4: String::from("0.5"),
+            wallpaper_a: wallpaper_a.to_string(),
+            wallpaper_b: wallpaper_b.to_string(),
+            wallpaper_c: wallpaper_c.to_string(),
+            wallpaper_samples: format!("{:.0}", wallpaper_samples),
+            wallpaper_burn_in: format!("{:.0}", wallpaper_burn_in),
+            wallpaper_use_log_density,
             lace_julia_c_real: lace_julia_c_real.to_string(),
             lace_julia_c_imag: lace_julia_c_imag.to_string(),
             lace_julia_magnitude: (lace_julia_c_real * lace_julia_c_real + lace_julia_c_imag * lace_julia_c_imag).sqrt().to_string(),
@@ -1539,6 +1625,35 @@ impl From<&crate::export::FractalMetadata> for ExportState {
             filter: meta.parse_filter_type(),
             last_export_path: None,
         }
+    }
+}
+
+impl From<&crate::export::FractalMetadata> for RenderState {
+    fn from(meta: &crate::export::FractalMetadata) -> Self {
+        let mut state = Self::default();
+        state.backend = meta.parse_render_backend();
+        state.hiprec_bits = if meta.hiprec_bits == 0 {
+            crate::gpu::HIPREC_DEFAULT_BITS
+        } else {
+            meta.hiprec_bits
+        };
+        state.pt_bits = if meta.pt_bits == 0 {
+            crate::perturbation::PT_REFERENCE_BITS
+        } else {
+            meta.pt_bits
+        };
+        state.max_threads = if meta.max_threads == 0 {
+            default_max_threads()
+        } else {
+            meta.max_threads
+        };
+        state.pt_glitch_tolerance = if meta.pt_glitch_tolerance > 0.0 {
+            meta.pt_glitch_tolerance
+        } else {
+            1.0
+        };
+        state.pt_tiles = meta.pt_tiles.max(1);
+        state
     }
 }
 
@@ -1574,6 +1689,12 @@ mod tests {
             export_filter: "None".to_string(),
             export_supersample: 1,
             export_scale: 1.0,
+            render_backend: crate::gpu::RenderBackend::Cpu.as_str().to_string(),
+            hiprec_bits: crate::gpu::HIPREC_DEFAULT_BITS,
+            pt_bits: crate::perturbation::PT_REFERENCE_BITS,
+            max_threads: 0,
+            pt_glitch_tolerance: 1.0,
+            pt_tiles: 1,
             version: Some("0.1.7".to_string()),
             metadata_version: Some("1.0".to_string()),
             created_timestamp: Some(0),
@@ -1617,6 +1738,12 @@ mod tests {
             export_filter: "None".to_string(),
             export_supersample: 1,
             export_scale: 1.0,
+            render_backend: crate::gpu::RenderBackend::Cpu.as_str().to_string(),
+            hiprec_bits: crate::gpu::HIPREC_DEFAULT_BITS,
+            pt_bits: crate::perturbation::PT_REFERENCE_BITS,
+            max_threads: 0,
+            pt_glitch_tolerance: 1.0,
+            pt_tiles: 1,
             version: Some("0.1.7".to_string()),
             metadata_version: Some("1.0".to_string()),
             created_timestamp: Some(0),
@@ -1653,6 +1780,12 @@ mod tests {
             export_filter: "Lanczos3".to_string(),
             export_supersample: 4,
             export_scale: 2.0,
+            render_backend: crate::gpu::RenderBackend::Cpu.as_str().to_string(),
+            hiprec_bits: crate::gpu::HIPREC_DEFAULT_BITS,
+            pt_bits: crate::perturbation::PT_REFERENCE_BITS,
+            max_threads: 0,
+            pt_glitch_tolerance: 1.0,
+            pt_tiles: 1,
             version: Some("0.1.7".to_string()),
             metadata_version: Some("1.0".to_string()),
             created_timestamp: Some(0),
@@ -1698,6 +1831,12 @@ mod tests {
             export_filter: "None".to_string(),
             export_supersample: 1,
             export_scale: 1.0,
+            render_backend: crate::gpu::RenderBackend::Cpu.as_str().to_string(),
+            hiprec_bits: crate::gpu::HIPREC_DEFAULT_BITS,
+            pt_bits: crate::perturbation::PT_REFERENCE_BITS,
+            max_threads: 0,
+            pt_glitch_tolerance: 1.0,
+            pt_tiles: 1,
             version: Some("0.1.7".to_string()),
             metadata_version: Some("1.0".to_string()),
             created_timestamp: Some(0),
@@ -1736,6 +1875,14 @@ mod tests {
         let mut export_state = ExportState::default();
         export_state.filter = FilterType::Lanczos3;
 
+        let mut render_state = RenderState::default();
+        render_state.backend = crate::gpu::RenderBackend::Perturbation;
+        render_state.hiprec_bits = 136;
+        render_state.pt_bits = 152;
+        render_state.max_threads = 3;
+        render_state.pt_glitch_tolerance = 2.0;
+        render_state.pt_tiles = 3;
+
         // Convert to metadata
         let metadata = crate::export_helpers::metadata_from_app_state(
             &fractal_state,
@@ -1743,6 +1890,7 @@ mod tests {
             &color_state,
             &input_state,
             &export_state,
+            &render_state,
         );
 
         // Convert back to state
@@ -1751,6 +1899,7 @@ mod tests {
         let color_state2 = ColorState::from(&metadata);
         let input_state2 = InputState::from(&metadata);
         let export_state2 = ExportState::from(&metadata);
+        let render_state2 = RenderState::from(&metadata);
 
         // Verify round-trip
         assert_eq!(fractal_state2.fractal_type, FractalType::Julia);
@@ -1760,6 +1909,12 @@ mod tests {
         assert_eq!(color_state2.color_offset, 9);
         assert_eq!(input_state2.iterations, "512");
         assert_eq!(export_state2.filter, FilterType::Lanczos3);
+        assert_eq!(render_state2.backend, crate::gpu::RenderBackend::Perturbation);
+        assert_eq!(render_state2.hiprec_bits, 136);
+        assert_eq!(render_state2.pt_bits, 152);
+        assert_eq!(render_state2.max_threads, 3);
+        assert_eq!(render_state2.pt_glitch_tolerance, 2.0);
+        assert_eq!(render_state2.pt_tiles, 3);
     }
 
     #[test]
@@ -1825,6 +1980,7 @@ mod tests {
         let view_state = ViewState::new(1280, 720);
         let color_state = ColorState::default();
         let export_state = ExportState::default();
+        let render_state = RenderState::default();
 
         // Convert to metadata
         let metadata = crate::export_helpers::metadata_from_app_state(
@@ -1833,6 +1989,7 @@ mod tests {
             &color_state,
             &input_state,
             &export_state,
+            &render_state,
         );
 
         // Verify metadata saved the fractal type

@@ -2,9 +2,41 @@
 
 This document tracks performance benchmarks across different versions of forma-fractalis to monitor regressions and improvements.
 
-## Format
+Benchmark matrices vary by release. Early entries focus on the classic CPU quartet (Mandelbrot, Julia, Burning Ship, Tippets Mandelbrot), while later entries add workspace/API measurements, GPU comparisons, and deep-zoom PT/Hi-Prec sweeps.
 
-Each benchmark tests all 4 fractal types (Mandelbrot, Julia, BurningShip, Tippets Mandelbrot) at 3 resolutions (SD/HD/FHD) with 5 iteration counts (256, 512, 1024, 2048, 4096). Each test runs 10 iterations and reports average/min/max times.
+## Version 0.2.9 (May 2026)
+
+### Changes Affecting Performance
+- GUI upgraded to eframe/egui 0.33 (GUI-only migration; core render paths unchanged)
+- Hi-Prec and PT precision ladders expanded to 8-bit increments through 256, with 512 and 1024 retained for extreme cases
+- `core/examples/pt_mode_benchmark.rs` gained a reusable `--bits` sweep for representative deep-scene profiling
+
+### Benchmark Environment
+- CPU: AMD Ryzen 9 9950X3D 16-Core Processor
+- OS: Windows
+- Rust: `rustc 1.95.0 (59807616e 2026-04-14)`
+- Command: `cargo bench -p forma-fractalis-core --bench fractal_bench`
+
+### Representative Deep-Zoom Result
+- Boundary scene, 320x180 timing grid, bits `128`, `136`, `144`, `160`, `192`, `256`
+- Perturbation Theory matched the HiPrec-256 quality patch 100.0% across the sampled comparison area
+- PT outperformed direct Hi-Prec by roughly `1.09x` to `1.16x`
+- `136` to `144` bits delivered most of the runtime win without the coarse `128 -> 256` jump
+
+### Classic CPU Regression Check — HD (1280x720) @ 1024 Iterations
+| Fractal | v0.2.5 | v0.2.9 | Delta |
+|---------|--------|--------|-------|
+| Mandelbrot | 20.92ms | 7.19ms | -65.6% |
+| Julia | 10.62ms | 4.08ms | -61.6% |
+| Burning Ship | 23.15ms | 9.39ms | -59.4% |
+| Tippets | 45.28ms | 14.50ms | -68.0% |
+
+### Summary
+- No render-speed regression was observed after the eframe 0.33 migration; the current classic CPU path is materially faster than the recorded v0.2.5 baseline.
+- HD preview targets still have wide headroom: `3.34ms` to `5.42ms` at 256 iterations, `4.08ms` to `14.50ms` at 1024 iterations, and `4.15ms` to `49.35ms` at 4096 iterations.
+- Because this benchmark exercises the core rendering crate directly, the most likely explanation is cumulative core/rendering improvements since the older snapshots rather than any GUI-specific migration effect.
+
+---
 
 ## Version 0.1.4 (January 2026)
 
@@ -180,11 +212,9 @@ FractalConfig API overhead vs direct: ~0.2-1.2ms — negligible.
 
 
 
-### Test Environment
-- CPU: (Your CPU - update this)
-- OS: Windows
-- Rust: 1.x (update with actual version)
-- Build: Release with optimizations
+## Version 0.1.3 Baseline (Historical Full Dataset)
+
+Environment metadata for this archived run was not recorded, but the results remain useful as the pre-v0.1.4 comparison baseline referenced above.
 
 ### HD (1280x720) Results - Most Common Use Case
 
@@ -271,26 +301,6 @@ FractalConfig API overhead vs direct: ~0.2-1.2ms — negligible.
 **Thermal Notes:**
 - Some variance at highest iteration counts may be due to CPU thermal throttling
 - Tippets @ HD/4096 shows wider variance (152-186ms range)
-
----
-
-## Version Comparison Template
-
-When adding new version results, use this format:
-
-### Version X.Y.Z (Month Year)
-
-#### Changes Affecting Performance
-- List any changes that might impact performance
-- E.g., "Added GPU acceleration", "Optimized complex number handling"
-
-#### HD (1280x720) @ 1024 Iterations Comparison
-| Fractal | v0.1.3 | vX.Y.Z | Delta |
-|---------|--------|--------|-------|
-| Mandelbrot | 19.03ms | XXms | +/-X% |
-| Julia | 8.94ms | XXms | +/-X% |
-| BurningShip | 20.43ms | XXms | +/-X% |
-| Tippets | 42.33ms | XXms | +/-X% |
 
 ---
 

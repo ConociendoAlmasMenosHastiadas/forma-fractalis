@@ -1,7 +1,7 @@
 use eframe::egui;
 use forma_fractalis::{
     app_state::{ViewState, InputState, FractalState, ColorState, MouseState, ExportState, RenderState, AnimationState, FractalType},
-    fractals::{FractalView, Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, SinhJulia, MultiJuliaIFS, AdjProbJulia, ChaosSymmetry1, LaceJulia}, 
+    fractals::{FractalView, Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, SinhJulia, MultiJuliaIFS, AdjProbJulia, ChaosSymmetry1, Wallpaper, LaceJulia}, 
     gpu::RenderBackend,
     gui, cli,
     perf_log, enable_profiling,
@@ -44,7 +44,8 @@ fn main() -> Result<(), eframe::Error> {
         Box::new(|cc| {
             // Enable high DPI scaling
             cc.egui_ctx.set_pixels_per_point(1.0);
-            Box::<FractalApp>::default()
+            configure_egui_style(&cc.egui_ctx);
+            Ok(Box::<FractalApp>::default())
         }),
     )
 }
@@ -56,6 +57,15 @@ const INPUT_DEBOUNCE_DELAY: Duration = Duration::from_millis(500);
 /// Preview downscale used while debounced edits are still settling on slower backends.
 const PROGRESSIVE_PREVIEW_SCALE: f32 = 0.5;
 const PROGRESSIVE_PREVIEW_MIN_DIMENSION: u32 = 100;
+
+fn configure_egui_style(ctx: &egui::Context) {
+    let mut style = (*ctx.style()).clone();
+    style.text_styles.insert(
+        egui::TextStyle::Small,
+        egui::FontId::new(12.5, egui::FontFamily::Proportional),
+    );
+    ctx.set_style(style);
+}
 
 fn progressive_preview_view(view: &FractalView) -> Option<FractalView> {
     let width = ((view.width as f32) * PROGRESSIVE_PREVIEW_SCALE)
@@ -181,6 +191,7 @@ impl FractalApp {
         let multi_julia_ifs = MultiJuliaIFS::new();
         let adj_prob_julia = AdjProbJulia::new();
         let chaos_symmetry1 = ChaosSymmetry1::new();
+        let wallpaper = Wallpaper::new();
         let lace_julia = LaceJulia::new();
         
         let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
@@ -200,6 +211,7 @@ impl FractalApp {
             FractalType::MultiJuliaIFS => &multi_julia_ifs,
             FractalType::AdjProbJulia => &adj_prob_julia,
             FractalType::ChaosSymmetry1 => &chaos_symmetry1,
+            FractalType::Wallpaper => &wallpaper,
             FractalType::LaceJulia => &lace_julia,
         };
 
@@ -244,7 +256,8 @@ impl FractalApp {
         .with_log_scale(self.color.use_log_scale)
         .with_color_offset(self.color.color_offset)
         .with_backend(self.render.backend)
-        .with_hiprec_bits(effective_bits)
+        .with_hiprec_bits(self.render.hiprec_bits)
+        .with_pt_bits(self.render.pt_bits)
         .with_max_threads(self.render.max_threads)
         .with_pt_glitch_tolerance(self.render.pt_glitch_tolerance)
         .with_pt_tiles(self.render.pt_tiles);
@@ -292,7 +305,7 @@ impl FractalApp {
                                 "PT {}x{} {}b | delta {:.1}% | hi-prec {:.1}% | SA {:.1}% avg {:.1} max {} | rebased px {:.1}% ({} events) | budget-hit {} | {}",
                                 report.pt_tiles,
                                 report.pt_tiles,
-                                report.hiprec_bits,
+                                report.pt_bits,
                                 if report.total_pixels > 0 {
                                     report.pt_pixels as f64 / report.total_pixels as f64 * 100.0
                                 } else {
@@ -488,10 +501,54 @@ impl eframe::App for FractalApp {
             self.render_fractal(ctx);
         }
 
-        // Left sidebar with controls
-        egui::SidePanel::left("controls")
-            .default_width(350.0)
-            .resizable(false)
+        let mandelbrot = Mandelbrot::new();
+        let julia = Julia::new();
+        let burning_ship = BurningShip::new();
+        let tippets_mandelbrot = TippetsMandelbrot::new();
+        let multifractal_julia = MultifractalJulia::new();
+        let cactus = Cactus::new();
+        let marek_dragon = MarekDragon::new();
+        let tetration = Tetration::new();
+        let lemon = Lemon::new();
+        let insideout_dragon = InsideoutDragon::new();
+        let zubieta = Zubieta::new();
+        let sin_julia = SinJulia::new();
+        let sinh_julia = SinhJulia::new();
+        let multi_julia_ifs = MultiJuliaIFS::new();
+        let adj_prob_julia = AdjProbJulia::new();
+        let chaos_symmetry1 = ChaosSymmetry1::new();
+        let wallpaper = Wallpaper::new();
+        let lace_julia = LaceJulia::new();
+
+        let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
+            FractalType::Mandelbrot => &mandelbrot,
+            FractalType::Julia => &julia,
+            FractalType::BurningShip => &burning_ship,
+            FractalType::TippetsMandelbrot => &tippets_mandelbrot,
+            FractalType::MultifractalJulia => &multifractal_julia,
+            FractalType::Cactus => &cactus,
+            FractalType::MarekDragon => &marek_dragon,
+            FractalType::Tetration => &tetration,
+            FractalType::Lemon => &lemon,
+            FractalType::InsideoutDragon => &insideout_dragon,
+            FractalType::Zubieta => &zubieta,
+            FractalType::SinJulia => &sin_julia,
+            FractalType::SinhJulia => &sinh_julia,
+            FractalType::MultiJuliaIFS => &multi_julia_ifs,
+            FractalType::AdjProbJulia => &adj_prob_julia,
+            FractalType::ChaosSymmetry1 => &chaos_symmetry1,
+            FractalType::Wallpaper => &wallpaper,
+            FractalType::LaceJulia => &lace_julia,
+        };
+
+        let prev_backend = self.render.backend;
+
+        // Left sidebar with fractal controls
+        egui::SidePanel::left("fractal_controls")
+            .default_width(340.0)
+            .min_width(300.0)
+            .max_width(400.0)
+            .resizable(true)
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
@@ -501,63 +558,17 @@ impl eframe::App for FractalApp {
                             ui.heading("Controls");
                             ui.add_space(10.0);
 
-                            // Preview Window Dimensions
-                            gui::render_dimensions_section(
+                            gui::render_backend_section(
                                 ui,
-                                &mut self.input.width,
-                                &mut self.input.height,
-                                &mut self.view_state.view,
+                                &mut self.render,
+                                &mut self.status_message,
                                 &mut self.view_state.needs_redraw,
-                                &mut self.input.debounce_timer,
-                                &mut self.input.pending_redraw,
-                                &mut self.view_state.preview_zoom,
                             );
 
                             ui.add_space(15.0);
                             ui.separator();
                             ui.add_space(10.0);
 
-                            // Create fractal instance for GUI and export
-                            let mandelbrot = Mandelbrot::new();
-                            let julia = Julia::new();
-                            let burning_ship = BurningShip::new();
-                            let tippets_mandelbrot = TippetsMandelbrot::new();
-                            let multifractal_julia = MultifractalJulia::new();
-                            let cactus = Cactus::new();
-                            let marek_dragon = MarekDragon::new();
-                            let tetration = Tetration::new();
-                            let lemon = Lemon::new();
-                            let insideout_dragon = InsideoutDragon::new();
-                            let zubieta = Zubieta::new();
-                            let sin_julia = SinJulia::new();
-                            let sinh_julia = SinhJulia::new();
-                            let multi_julia_ifs = MultiJuliaIFS::new();
-                            let adj_prob_julia = AdjProbJulia::new();
-                            let chaos_symmetry1 = ChaosSymmetry1::new();
-                            let lace_julia = LaceJulia::new();
-                            
-                            let fractal: &dyn forma_fractalis::fractals::Fractal = match self.fractal.fractal_type {
-                                FractalType::Mandelbrot => &mandelbrot,
-                                FractalType::Julia => &julia,
-                                FractalType::BurningShip => &burning_ship,
-                                FractalType::TippetsMandelbrot => &tippets_mandelbrot,
-                                FractalType::MultifractalJulia => &multifractal_julia,
-                                FractalType::Cactus => &cactus,
-                                FractalType::MarekDragon => &marek_dragon,
-                                FractalType::Tetration => &tetration,
-                                FractalType::Lemon => &lemon,
-                                FractalType::InsideoutDragon => &insideout_dragon,
-                                FractalType::Zubieta => &zubieta,
-                                FractalType::SinJulia => &sin_julia,
-                                FractalType::SinhJulia => &sinh_julia,
-                                FractalType::MultiJuliaIFS => &multi_julia_ifs,
-                                FractalType::AdjProbJulia => &adj_prob_julia,
-                                FractalType::ChaosSymmetry1 => &chaos_symmetry1,
-                                FractalType::LaceJulia => &lace_julia,
-                            };
-
-                            // Performance / Rendering Backend
-                            let prev_backend = self.render.backend;
                             gui::render_performance_section(
                                 ui,
                                 &mut self.render,
@@ -565,48 +576,6 @@ impl eframe::App for FractalApp {
                                 &mut self.status_message,
                                 &mut self.view_state.needs_redraw,
                             );
-                            // Auto-scale preview ÷2 when entering CpuHiPrec, ×2 when leaving.
-                            // Export scale is doubled/halved to keep final output dimensions constant.
-                            let now_hiprec = matches!(self.render.backend, RenderBackend::CpuHiPrec);
-                            let was_hiprec = matches!(prev_backend, RenderBackend::CpuHiPrec);
-                            if !was_hiprec && now_hiprec {
-                                // Entering hi-prec: save originals, halve preview dims,
-                                // set display zoom to 0.5 so image occupies half the panel,
-                                // and double export scale to keep final output size constant.
-                                let saved_w = self.view_state.view.width;
-                                let saved_h = self.view_state.view.height;
-                                let saved_scale = self.input.export_scale.clone();
-                                let saved_zoom = self.view_state.preview_zoom;
-                                self.render.hiprec_preview_saved = Some((saved_w, saved_h, saved_scale, saved_zoom));
-
-                                let new_w = (saved_w / 2).max(100);
-                                let new_h = (saved_h / 2).max(100);
-                                self.view_state.view.width = new_w;
-                                self.view_state.view.height = new_h;
-                                self.input.width = new_w.to_string();
-                                self.input.height = new_h.to_string();
-
-                                // Display at 0.5x panel fill so the preview physically
-                                // occupies the same screen area as the halved texture —
-                                // avoiding the "chunky upscale" appearance.
-                                self.view_state.preview_zoom = 0.5;
-
-                                let orig_scale = self.input.export_scale.parse::<f64>().unwrap_or(3.0).max(0.1);
-                                self.input.export_scale = format!("{:.4}", orig_scale * 2.0);
-
-                                self.view_state.needs_redraw = true;
-                            } else if was_hiprec && !now_hiprec {
-                                // Leaving hi-prec: restore saved originals
-                                if let Some((saved_w, saved_h, saved_scale, saved_zoom)) = self.render.hiprec_preview_saved.take() {
-                                    self.view_state.view.width = saved_w;
-                                    self.view_state.view.height = saved_h;
-                                    self.input.width = saved_w.to_string();
-                                    self.input.height = saved_h.to_string();
-                                    self.input.export_scale = saved_scale;
-                                    self.view_state.preview_zoom = saved_zoom;
-                                }
-                                self.view_state.needs_redraw = true;
-                            }
 
                             ui.add_space(15.0);
                             ui.separator();
@@ -626,52 +595,46 @@ impl eframe::App for FractalApp {
                             ui.add_space(15.0);
                             ui.separator();
                             ui.add_space(10.0);
+                        });
+                    });
+            });
 
-                            // Current View
-                            let active_precision_bits = match self.render.backend {
-                                RenderBackend::CpuHiPrec => self.render.hiprec_bits,
-                                RenderBackend::Perturbation => self.render.pt_bits,
-                                _ => 64,
-                            };
-                            gui::render_current_view_info(
+        // Right sidebar with rendering, color, and export controls
+        egui::SidePanel::right("render_controls")
+            .default_width(360.0)
+            .min_width(320.0)
+            .max_width(430.0)
+            .resizable(true)
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.set_max_width(ui.available_width() - 10.0);
+                        ui.vertical(|ui| {
+                            ui.heading("Color & Export");
+                            ui.add_space(10.0);
+
+                            gui::render_colormap_section(
                                 ui,
-                                &mut self.view_state.view,
-                                active_precision_bits,
+                                &mut self.color.available_colormaps,
+                                &mut self.color.selected_colormap_name,
+                                &mut self.color.colormap,
                                 &mut self.view_state.needs_redraw,
                                 &mut self.status_message,
+                                &mut self.color.use_period,
+                                &mut self.input.period,
+                                &mut self.color.use_interior_color,
+                                &mut self.color.interior_color,
+                                &mut self.color.interior_picker,
+                                &mut self.color.use_log_scale,
+                                &mut self.color.color_offset,
                                 &mut self.input.debounce_timer,
                                 &mut self.input.pending_redraw,
                             );
 
-                            ui.add_space(15.0);
-                            ui.separator();
                             ui.add_space(10.0);
 
-                            // Color Scheme & Stops
-                            {
-                                gui::render_colormap_section(
-                                    ui,
-                                    &mut self.color.available_colormaps,
-                                    &mut self.color.selected_colormap_name,
-                                    &mut self.color.colormap,
-                                    &mut self.view_state.needs_redraw,
-                                    &mut self.status_message,
-                                    &mut self.color.use_period,
-                                    &mut self.input.period,
-                                    &mut self.color.use_interior_color,
-                                    &mut self.color.interior_color,
-                                    &mut self.color.interior_picker,
-                                    &mut self.color.use_log_scale,
-                                    &mut self.color.color_offset,
-                                    &mut self.input.debounce_timer,
-                                    &mut self.input.pending_redraw,
-                                );
-                            }
-
-                            ui.add_space(10.0);
-
-                            // Advanced Color Editor (always visible)
-                        if forma_fractalis::colorschemes_gui::render_color_editor_section(
+                            if forma_fractalis::colorschemes_gui::render_color_editor_section(
                                 ui,
                                 &mut self.color.colormap,
                                 &mut self.color.color_editor,
@@ -684,10 +647,9 @@ impl eframe::App for FractalApp {
                             ui.separator();
                             ui.add_space(10.0);
 
-                            // Actions
                             let max_iterations = self.input.parse_iterations();
                             let period = self.input.parse_period();
-                            
+
                             gui::render_actions_section(
                                 ui,
                                 &self.view_state.view,
@@ -711,7 +673,6 @@ impl eframe::App for FractalApp {
                                 &mut self.view_state.needs_redraw,
                             );
 
-                            // Export JSON button
                             gui::render_export_json_button(
                                 ui,
                                 &self.fractal,
@@ -719,6 +680,7 @@ impl eframe::App for FractalApp {
                                 &self.color,
                                 &self.input,
                                 &self.export,
+                                &self.render,
                                 &mut self.status_message,
                             );
 
@@ -726,45 +688,71 @@ impl eframe::App for FractalApp {
                             ui.separator();
                             ui.add_space(10.0);
 
-                            // Animation Generation
-                            {
-                                let action = gui::render_animation_section(
-                                    ui,
-                                    &mut self.animation,
-                                    &self.view_state,
-                                    &self.color,
-                                    &self.fractal,
-                                    max_iterations,
-                                    &self.input.export_scale,
-                                    &self.export.filter,
-                                    &self.input.export_supersample,
-                                    self.export.directory.as_ref(),
-                                    &mut self.status_message,
-                                );
-                                
-                                match action {
-                                    gui::AnimationAction::Start => {
-                                        self.start_animation_generation(ctx.clone(), max_iterations, period, fractal);
-                                    }
-                                    gui::AnimationAction::Cancel => {
-                                        if let Some(token) = &self.animation_cancel {
-                                            token.store(true, Ordering::Relaxed);
-                                            perf_log!("[ANIM] Cancellation requested by user");
-                                        }
-                                    }
-                                    gui::AnimationAction::None => {}
+                            let action = gui::render_animation_section(
+                                ui,
+                                &mut self.animation,
+                                &self.view_state,
+                                &self.color,
+                                &self.fractal,
+                                max_iterations,
+                                &self.input.export_scale,
+                                &self.export.filter,
+                                &self.input.export_supersample,
+                                self.export.directory.as_ref(),
+                                &mut self.status_message,
+                            );
+
+                            match action {
+                                gui::AnimationAction::Start => {
+                                    self.start_animation_generation(ctx.clone(), max_iterations, period, fractal);
                                 }
+                                gui::AnimationAction::Cancel => {
+                                    if let Some(token) = &self.animation_cancel {
+                                        token.store(true, Ordering::Relaxed);
+                                        perf_log!("[ANIM] Cancellation requested by user");
+                                    }
+                                }
+                                gui::AnimationAction::None => {}
                             }
 
-                            ui.add_space(15.0);
-                            ui.separator();
-                            ui.add_space(10.0);
-
-                            // Status
-                            ui.label(egui::RichText::new(&self.status_message).small().italics());
                         });
                     });
             });
+
+        // Auto-scale preview ÷2 when entering CpuHiPrec, ×2 when leaving.
+        // Export scale is doubled/halved to keep final output dimensions constant.
+        let now_hiprec = matches!(self.render.backend, RenderBackend::CpuHiPrec);
+        let was_hiprec = matches!(prev_backend, RenderBackend::CpuHiPrec);
+        if !was_hiprec && now_hiprec {
+            let saved_w = self.view_state.view.width;
+            let saved_h = self.view_state.view.height;
+            let saved_scale = self.input.export_scale.clone();
+            let saved_zoom = self.view_state.preview_zoom;
+            self.render.hiprec_preview_saved = Some((saved_w, saved_h, saved_scale, saved_zoom));
+
+            let new_w = (saved_w / 2).max(100);
+            let new_h = (saved_h / 2).max(100);
+            self.view_state.view.width = new_w;
+            self.view_state.view.height = new_h;
+            self.input.width = new_w.to_string();
+            self.input.height = new_h.to_string();
+            self.view_state.preview_zoom = 0.5;
+
+            let orig_scale = self.input.export_scale.parse::<f64>().unwrap_or(3.0).max(0.1);
+            self.input.export_scale = format!("{:.4}", orig_scale * 2.0);
+
+            self.view_state.needs_redraw = true;
+        } else if was_hiprec && !now_hiprec {
+            if let Some((saved_w, saved_h, saved_scale, saved_zoom)) = self.render.hiprec_preview_saved.take() {
+                self.view_state.view.width = saved_w;
+                self.view_state.view.height = saved_h;
+                self.input.width = saved_w.to_string();
+                self.input.height = saved_h.to_string();
+                self.input.export_scale = saved_scale;
+                self.view_state.preview_zoom = saved_zoom;
+            }
+            self.view_state.needs_redraw = true;
+        }
 
         // Main fractal display
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -778,7 +766,11 @@ impl eframe::App for FractalApp {
             }
 
             if let Some(texture) = &self.view_state.fractal_texture {
-                let available_size = ui.available_size();
+                let toolbar_height = 92.0;
+                let available_size = egui::vec2(
+                    ui.available_width(),
+                    (ui.available_height() - toolbar_height).max(0.0),
+                );
                 let texture_size = texture.size_vec2();
                 // fit_scale fills the panel; multiply by preview_zoom (0.1–1.0) to shrink.
                 // This lets the user (or the HiPrec auto-scale) reduce the display size so
@@ -797,28 +789,34 @@ impl eframe::App for FractalApp {
                 let secondary_down = pointer_state.secondary_down();
 
                 // Handle scroll wheel for zoom square resize (only when dragging with primary)
-                let scroll_delta = ui.input(|i| i.scroll_delta.y);
+                let scroll_delta = ui.input(|i| i.raw_scroll_delta.y);
                 if scroll_delta != 0.0 && self.mouse.is_dragging {
                     self.mouse.zoom_square_size = (self.mouse.zoom_square_size + scroll_delta * 2.0)
                         .max(20.0);
                     self.status_message = format!("Zoom size: {:.0}px", self.mouse.zoom_square_size);
                 }
 
-                // Handle left-click drag for zoom rectangle
-                // Only start dragging if primary button is pressed (not secondary)
-                if response.drag_started() && primary_down && !secondary_down {
-                    self.mouse.is_dragging = true;
-                    self.mouse.zoom_square_center = response.interact_pointer_pos();
+                let zoom_released = response.drag_stopped_by(egui::PointerButton::Primary)
+                    || response.clicked_by(egui::PointerButton::Primary);
+
+                // Enter zoom mode as soon as the primary button goes down on the preview.
+                // eframe 0.33 only reports drag_started after the pointer moves past the drag threshold,
+                // which breaks repeated click-to-zoom at a fixed location.
+                if response.is_pointer_button_down_on() && primary_down && !secondary_down {
+                    if !self.mouse.is_dragging {
+                        self.mouse.is_dragging = true;
+                        self.mouse.zoom_square_center = response.interact_pointer_pos();
+                    }
                 }
 
                 // Update square position while dragging (only for primary button)
-                if self.mouse.is_dragging && primary_down {
+                if self.mouse.is_dragging && primary_down && !secondary_down {
                     if let Some(pos) = response.interact_pointer_pos() {
                         self.mouse.zoom_square_center = Some(pos);
                     }
                 }
 
-                if response.drag_released() && self.mouse.is_dragging {
+                if zoom_released && self.mouse.is_dragging {
                     self.mouse.is_dragging = false;
                     if let Some(center) = self.mouse.zoom_square_center {
                         // Calculate zoom region
@@ -881,6 +879,19 @@ impl eframe::App for FractalApp {
                         gui::render_zoom_square(ui, center, self.mouse.zoom_square_size, aspect_ratio);
                     }
                 }
+
+                ui.add_space(8.0);
+                gui::render_view_toolbar(
+                    ui,
+                    &mut self.view_state.view,
+                    &mut self.input.width,
+                    &mut self.input.height,
+                    &mut self.view_state.preview_zoom,
+                    &mut self.view_state.needs_redraw,
+                    &mut self.status_message,
+                    &mut self.input.debounce_timer,
+                    &mut self.input.pending_redraw,
+                );
             } else {
                 ui.centered_and_justified(|ui| {
                     ui.spinner();
@@ -1028,6 +1039,7 @@ impl FractalApp {
                 "Multi-Julia IFS" => Box::new(MultiJuliaIFS::new()),
                 "Adj Prob Julia" => Box::new(AdjProbJulia::new()),
                 "ChaosSymmetry1" => Box::new(ChaosSymmetry1::new()),
+                "Wallpaper" => Box::new(Wallpaper::new()),
                 "Lace Julia" => Box::new(LaceJulia::new()),
                 _ => Box::new(Mandelbrot::new()), // Fallback
             };

@@ -15,7 +15,7 @@ use crate::fractals::{
     Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia,
     Cactus, MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, SinhJulia,
     MultiJuliaIFS,
-    AdjProbJulia, ChaosSymmetry1, LaceJulia,
+    AdjProbJulia, ChaosSymmetry1, Wallpaper, LaceJulia,
 };
 use crate::fractals::parameter_types::EscapeMode;
 
@@ -1130,7 +1130,7 @@ impl FractalGUI for MultiJuliaIFS {
                                         .text("")
                                         .step_by(0.001)
                                         .fixed_decimals(3)
-                                        .clamp_to_range(false),
+                                        .clamping(egui::SliderClamping::Never),
                                 )
                                 .changed()
                             {
@@ -1150,7 +1150,7 @@ impl FractalGUI for MultiJuliaIFS {
                                         .text("")
                                         .step_by(0.001)
                                         .fixed_decimals(3)
-                                        .clamp_to_range(false),
+                                        .clamping(egui::SliderClamping::Never),
                                 )
                                 .changed()
                             {
@@ -1214,7 +1214,7 @@ impl FractalGUI for MultiJuliaIFS {
                                         .text("")
                                         .step_by(0.001)
                                         .fixed_decimals(3)
-                                        .clamp_to_range(false),
+                                        .clamping(egui::SliderClamping::Never),
                                 )
                                 .changed()
                             {
@@ -1237,7 +1237,7 @@ impl FractalGUI for MultiJuliaIFS {
                                     .text("")
                                     .step_by(0.001)
                                     .fixed_decimals(3)
-                                    .clamp_to_range(false),
+                                    .clamping(egui::SliderClamping::Never),
                                 )
                                 .changed()
                             {
@@ -1835,6 +1835,138 @@ impl FractalGUI for AdjProbJulia {
         params.insert("use_log_density".to_string(), if input_state.adj_prob_julia_use_log_density { 1.0 } else { 0.0 });
 
         ui.add_space(10.0);
+    }
+}
+
+// ── ChaosSymmetry1 ────────────────────────────────────────────────────────
+
+impl FractalGUI for Wallpaper {
+    fn render_parameters_gui(
+        &self,
+        ui: &mut egui::Ui,
+        params: &mut HashMap<String, f64>,
+        input_state: &mut InputState,
+        needs_redraw: &mut bool,
+    ) {
+        {
+            let p_a = params.get("a").copied().unwrap_or(0.1);
+            let p_b = params.get("b").copied().unwrap_or(0.1);
+            let p_c = params.get("c").copied().unwrap_or(10.0);
+            let p_samples = params.get("samples").copied().unwrap_or(24.0);
+            let p_burn_in = params.get("burn_in").copied().unwrap_or(40.0);
+            let p_log = params.get("use_log_density").copied().unwrap_or(1.0) > 0.5;
+
+            if (input_state.parse_wallpaper_a() - p_a).abs() > 1e-9 {
+                input_state.wallpaper_a = format!("{:.6}", p_a);
+            }
+            if (input_state.parse_wallpaper_b() - p_b).abs() > 1e-9 {
+                input_state.wallpaper_b = format!("{:.6}", p_b);
+            }
+            if (input_state.parse_wallpaper_c() - p_c).abs() > 1e-9 {
+                input_state.wallpaper_c = format!("{:.6}", p_c);
+            }
+            if input_state.parse_wallpaper_samples() != p_samples {
+                input_state.wallpaper_samples = format!("{:.0}", p_samples);
+            }
+            if input_state.parse_wallpaper_burn_in() != p_burn_in {
+                input_state.wallpaper_burn_in = format!("{:.0}", p_burn_in);
+            }
+            if input_state.wallpaper_use_log_density != p_log {
+                input_state.wallpaper_use_log_density = p_log;
+            }
+        }
+
+        ui.label(egui::RichText::new("Wallpaper Parameters").strong());
+        ui.label(
+            egui::RichText::new(
+                "x_{n+1} = y_n - sign(x_n)*sqrt(abs(b*x_n-c)), y_{n+1} = a - x_n"
+            )
+            .small()
+            .weak(),
+        );
+        ui.label(egui::RichText::new("Each screen pixel is its own seed; recorded orbits build the density image.").small().weak());
+        ui.add_space(6.0);
+        ui.separator();
+        ui.add_space(4.0);
+        ui.label(egui::RichText::new("Tip: Ctrl+click any slider to type an exact value").small().weak());
+        ui.add_space(4.0);
+
+        let render_param = |ui: &mut egui::Ui,
+                            label: &str,
+                            field: &mut String,
+                            value: &mut f64,
+                            range: std::ops::RangeInclusive<f64>,
+                            needs_redraw: &mut bool,
+                            params: &mut HashMap<String, f64>,
+                            key: &str| {
+            ui.horizontal(|ui| {
+                ui.label(label);
+                if ui.add(egui::TextEdit::singleline(field).desired_width(90.0)).changed() {
+                    if let Ok(parsed) = field.parse::<f64>() {
+                        *value = parsed.clamp(*range.start(), *range.end());
+                        params.insert(key.to_string(), *value);
+                        *needs_redraw = true;
+                    }
+                }
+            });
+            let orig_w = ui.style().spacing.slider_width;
+            ui.style_mut().spacing.slider_width = ui.available_width() - 20.0;
+            if ui.add(egui::Slider::new(value, range.clone()).show_value(false).step_by(0.001)).changed() {
+                params.insert(key.to_string(), *value);
+                *field = format!("{:.6}", *value);
+                *needs_redraw = true;
+            }
+            ui.style_mut().spacing.slider_width = orig_w;
+            ui.add_space(4.0);
+        };
+
+        let mut a = params.get("a").copied().unwrap_or(0.1);
+        render_param(ui, "a:", &mut input_state.wallpaper_a, &mut a, 0.0..=100.0, needs_redraw, params, "a");
+        ui.label(egui::RichText::new("Shift term in y_{n+1} = a - x_n").small().weak());
+
+        let mut b = params.get("b").copied().unwrap_or(0.1);
+        render_param(ui, "b:", &mut input_state.wallpaper_b, &mut b, 0.0..=100.0, needs_redraw, params, "b");
+        ui.label(egui::RichText::new("Scale inside the square-root term").small().weak());
+
+        let mut c = params.get("c").copied().unwrap_or(10.0);
+        render_param(ui, "c:", &mut input_state.wallpaper_c, &mut c, 0.0..=100.0, needs_redraw, params, "c");
+        ui.label(egui::RichText::new("Offset inside sqrt(abs(b*x_n-c))").small().weak());
+
+        ui.add_space(6.0);
+        ui.separator();
+        ui.add_space(4.0);
+
+        let mut samples = input_state.parse_wallpaper_samples();
+        ui.horizontal(|ui| {
+            ui.label("Samples/seed:");
+            if ui.add(egui::Slider::new(&mut samples, 1.0..=crate::fractals::Wallpaper::MAX_SAMPLES as f64).text("").step_by(1.0).fixed_decimals(0)).changed() {
+                input_state.wallpaper_samples = format!("{:.0}", samples);
+                *needs_redraw = true;
+            }
+        });
+        ui.label(egui::RichText::new("Recorded orbit steps for each screen seed after burn-in").small().weak());
+
+        let mut burn_in = input_state.parse_wallpaper_burn_in();
+        ui.horizontal(|ui| {
+            ui.label("Burn-in:");
+            if ui.add(egui::Slider::new(&mut burn_in, 0.0..=512.0).text("").step_by(1.0).fixed_decimals(0)).changed() {
+                input_state.wallpaper_burn_in = format!("{:.0}", burn_in);
+                *needs_redraw = true;
+            }
+        });
+        ui.label(egui::RichText::new("Initial steps discarded before accumulating density").small().weak());
+
+        if ui.checkbox(&mut input_state.wallpaper_use_log_density, "Log density normalization").changed() {
+            *needs_redraw = true;
+        }
+        ui.label(egui::RichText::new("Compresses the density range for a more readable image").small().weak());
+
+        params.insert("a".to_string(), input_state.parse_wallpaper_a());
+        params.insert("b".to_string(), input_state.parse_wallpaper_b());
+        params.insert("c".to_string(), input_state.parse_wallpaper_c());
+        params.insert("samples".to_string(), input_state.parse_wallpaper_samples());
+        params.insert("burn_in".to_string(), input_state.parse_wallpaper_burn_in());
+        params.insert("use_log_density".to_string(), if input_state.wallpaper_use_log_density { 1.0 } else { 0.0 });
     }
 }
 

@@ -47,10 +47,9 @@ Desktop.ini
 # GPU test temp images
 /temp/
 
-plans/
+# Local external reference clone; do not commit as a gitlink/submodule
+/references/chromator/
 
 AGENTS.md
-
-references/
 
 scratch/

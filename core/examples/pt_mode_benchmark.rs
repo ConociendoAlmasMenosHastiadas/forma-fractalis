@@ -20,6 +20,9 @@
 //!   cargo run --release -p forma-fractalis-core --example pt_mode_benchmark -- --scene boundary
 //!   cargo run --release -p forma-fractalis-core --example pt_mode_benchmark -- --scene period2
 //!   cargo run --release -p forma-fractalis-core --example pt_mode_benchmark -- --scene all
+//!
+//! Sweep precision values with a single representative scene:
+//!   cargo run --release -p forma-fractalis-core --example pt_mode_benchmark -- --scene boundary --bits 128,136,144,160,192,256
 
 use forma_fractalis_core::{
     fractals::{FractalView, Mandelbrot},
@@ -74,10 +77,17 @@ const ALL_SCENES: [Scene; 3] = [SCRATCH_SCENE, BOUNDARY_SCENE, PERIOD2_SCENE];
 
 const MAX_THREADS: usize = 18;
 const MAX_ITER: u32 = 4096;
-const PT_BITS: u32 = 256;
-const PT_FALLBACK_BITS: u32 = 256;
-const HIPREC_BITS: u32 = 128;
-const GT_BITS: u32 = 256;
+const DEFAULT_PT_BITS: u32 = 256;
+const DEFAULT_PT_FALLBACK_BITS: u32 = 256;
+const DEFAULT_HIPREC_BITS: u32 = 128;
+const DEFAULT_GT_BITS: u32 = 256;
+
+#[derive(Clone, Copy)]
+struct BitConfig {
+    hiprec_bits: u32,
+    pt_bits: u32,
+    pt_fallback_bits: u32,
+}
 
 fn mandelbrot_params() -> HashMap<String, f64> {
     let mut p = HashMap::new();
@@ -104,6 +114,42 @@ fn selected_scenes(args: &[String]) -> Result<Vec<Scene>, String> {
             "unknown scene '{other}'. Valid values: scratch, boundary, period2, all"
         )),
     }
+}
+
+fn parse_bit_configs(args: &[String]) -> Result<Vec<BitConfig>, String> {
+    let Some(bits_flag_index) = args.iter().position(|arg| arg == "--bits") else {
+        return Ok(vec![BitConfig {
+            hiprec_bits: DEFAULT_HIPREC_BITS,
+            pt_bits: DEFAULT_PT_BITS,
+            pt_fallback_bits: DEFAULT_PT_FALLBACK_BITS,
+        }]);
+    };
+
+    let Some(bits_csv) = args.get(bits_flag_index + 1) else {
+        return Err("--bits requires a comma-separated list such as 128,136,144,160,192,256".to_string());
+    };
+
+    let mut configs = Vec::new();
+    for raw in bits_csv.split(',') {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let bits = trimmed.parse::<u32>().map_err(|_| {
+            format!("invalid bit value '{trimmed}' in --bits; expected unsigned integers")
+        })?;
+        configs.push(BitConfig {
+            hiprec_bits: bits,
+            pt_bits: bits,
+            pt_fallback_bits: bits,
+        });
+    }
+
+    if configs.is_empty() {
+        return Err("--bits did not contain any usable bit values".to_string());
+    }
+
+    Ok(configs)
 }
 
 fn make_view(scene: Scene, width: u32, height: u32) -> FractalView {
@@ -166,6 +212,14 @@ fn main() {
             std::process::exit(2);
         }
     };
+    let bit_configs = match parse_bit_configs(&args) {
+        Ok(configs) => configs,
+        Err(e) => {
+            eprintln!("ERROR: {}", e);
+            std::process::exit(2);
+        }
+    };
+    let gt_bits = DEFAULT_GT_BITS;
 
     let (warmup_runs, bench_runs, timing_w, timing_h, hp_timing_w, hp_timing_h, quality_w, quality_h) = if quick {
         (1usize, 2usize, 160u32, 90u32, 64u32, 36u32, 24u32, 24u32)
@@ -184,8 +238,28 @@ fn main() {
     println!();
     println!("  Scenes       : {}", scenes.iter().map(|s| s.key).collect::<Vec<_>>().join(", "));
     println!("  Max iter     : {}", MAX_ITER);
-    println!("  PT bits      : orbit {} / fallback {}", PT_BITS, PT_FALLBACK_BITS);
-    println!("  HiPrec bits  : timing {} / ground truth {}", HIPREC_BITS, GT_BITS);
+    if bit_configs.len() == 1 {
+        println!(
+            "  PT bits      : orbit {} / fallback {}",
+            bit_configs[0].pt_bits,
+            bit_configs[0].pt_fallback_bits
+        );
+        println!(
+            "  HiPrec bits  : timing {} / ground truth {}",
+            bit_configs[0].hiprec_bits,
+            gt_bits
+        );
+    } else {
+        println!(
+            "  Bit sweep    : {}",
+            bit_configs
+                .iter()
+                .map(|config| config.hiprec_bits.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        println!("  Ground truth : HiPrec {}-bit patch", gt_bits);
+    }
     println!("  Timing grid  : {}x{}", timing_w, timing_h);
     println!("  HiPrec grid  : {}x{} (scaled to timing grid)", hp_timing_w, hp_timing_h);
     println!("  Quality patch: {}x{}", quality_w, quality_h);
@@ -194,9 +268,9 @@ fn main() {
     println!("  Mode         : {}", if quick { "QUICK" } else { "FULL" });
 
     section("SECTION 1  Deep Scene Matrix");
-    println!("  Measures CPU f64, HiPrec-128, and scene-tuned tiled PT at deep zoom.");
+    println!("  Measures CPU f64, HiPrec, and scene-tuned tiled PT at deep zoom.");
     println!("  HiPrec timing is measured on a smaller grid and scaled to the timing grid.");
-    println!("  Quality is measured against a HiPrec-256 patch for each scene.");
+    println!("  Quality is measured against a HiPrec-{} patch for each scene.", gt_bits);
 
     for scene in scenes {
         let view = make_view(scene, timing_w, timing_h);
@@ -215,7 +289,7 @@ fn main() {
         );
         hr(112);
 
-        let gt = compute_iterations_hiprec(&q_view, MAX_ITER, &fractal, &params, GT_BITS, MAX_THREADS)
+        let gt = compute_iterations_hiprec(&q_view, MAX_ITER, &fractal, &params, gt_bits, MAX_THREADS)
             .expect("HiPrec ground truth must succeed");
 
         let cpu_ms = timed_median(
@@ -244,86 +318,102 @@ fn main() {
             cpu_note,
         );
 
-        let hp_ms = timed_median(
-            || {
-                let _ = compute_iterations_hiprec(&hp_view, MAX_ITER, &fractal, &params, HIPREC_BITS, MAX_THREADS);
-            },
-            warmup_runs,
-            bench_runs,
-        );
-        let hp_effective_ms = hp_ms * hp_pixel_ratio;
-        let hp_q = compute_iterations_hiprec(&q_view, MAX_ITER, &fractal, &params, HIPREC_BITS, MAX_THREADS)
+        for config in &bit_configs {
+            let hp_ms = timed_median(
+                || {
+                    let _ = compute_iterations_hiprec(
+                        &hp_view,
+                        MAX_ITER,
+                        &fractal,
+                        &params,
+                        config.hiprec_bits,
+                        MAX_THREADS,
+                    );
+                },
+                warmup_runs,
+                bench_runs,
+            );
+            let hp_effective_ms = hp_ms * hp_pixel_ratio;
+            let hp_q = compute_iterations_hiprec(
+                &q_view,
+                MAX_ITER,
+                &fractal,
+                &params,
+                config.hiprec_bits,
+                MAX_THREADS,
+            )
             .expect("HiPrec quality patch must succeed");
-        let (hp_bad, hp_total) = pixel_diff(&hp_q, &gt);
-        let hp_match = 100.0 - hp_bad as f64 / hp_total as f64 * 100.0;
-        println!(
-            "  {:<18}  {:>10}  {:>10}  {:>10.2}  {:>10}  {:>11.1}%  scaled from {}x{}",
-            format!("HiPrec-{}b", HIPREC_BITS),
-            "n/a",
-            "n/a",
-            hp_effective_ms,
-            "n/a",
-            hp_match,
-            hp_timing_w,
-            hp_timing_h,
-        );
+            let (hp_bad, hp_total) = pixel_diff(&hp_q, &gt);
+            let hp_match = 100.0 - hp_bad as f64 / hp_total as f64 * 100.0;
+            println!(
+                "  {:<18}  {:>10}  {:>10}  {:>10.2}  {:>10}  {:>11.1}%  scaled from {}x{}",
+                format!("HiPrec-{}b", config.hiprec_bits),
+                "n/a",
+                "n/a",
+                hp_effective_ms,
+                "n/a",
+                hp_match,
+                hp_timing_w,
+                hp_timing_h,
+            );
 
-        let pt_tiles = scene.pt_tiles as usize;
-        let pt_orbit_ms = timed_median(
-            || {
-                let _ = ReferenceOrbit::compute_tile_orbits(&view, scene.pt_tiles, MAX_ITER, PT_BITS);
-            },
-            warmup_runs,
-            bench_runs,
-        );
-        let orbits = ReferenceOrbit::compute_tile_orbits(&view, scene.pt_tiles, MAX_ITER, PT_BITS);
-        let orbits_ref = &orbits;
-        let pt_render_ms = timed_median(
-            || {
-                let _ = render_perturbation_tiled(
-                    &view,
-                    orbits_ref,
-                    pt_tiles,
-                    pt_tiles,
-                    &fractal,
-                    &params,
-                    MAX_ITER,
-                    PT_FALLBACK_BITS,
-                    MAX_THREADS,
-                    1.0,
-                );
-            },
-            warmup_runs,
-            bench_runs,
-        );
-        let pt_total_ms = pt_orbit_ms + pt_render_ms;
+            let pt_tiles = scene.pt_tiles as usize;
+            let pt_orbit_ms = timed_median(
+                || {
+                    let _ = ReferenceOrbit::compute_tile_orbits(&view, scene.pt_tiles, MAX_ITER, config.pt_bits);
+                },
+                warmup_runs,
+                bench_runs,
+            );
+            let orbits = ReferenceOrbit::compute_tile_orbits(&view, scene.pt_tiles, MAX_ITER, config.pt_bits);
+            let orbits_ref = &orbits;
+            let pt_render_ms = timed_median(
+                || {
+                    let _ = render_perturbation_tiled(
+                        &view,
+                        orbits_ref,
+                        pt_tiles,
+                        pt_tiles,
+                        &fractal,
+                        &params,
+                        MAX_ITER,
+                        config.pt_fallback_bits,
+                        MAX_THREADS,
+                        1.0,
+                    );
+                },
+                warmup_runs,
+                bench_runs,
+            );
+            let pt_total_ms = pt_orbit_ms + pt_render_ms;
 
-        let q_orbits = ReferenceOrbit::compute_tile_orbits(&q_view, scene.pt_tiles, MAX_ITER, PT_BITS);
-        let pt_q = render_perturbation_tiled(
-            &q_view,
-            &q_orbits,
-            pt_tiles,
-            pt_tiles,
-            &fractal,
-            &params,
-            MAX_ITER,
-            PT_FALLBACK_BITS,
-            MAX_THREADS,
-            1.0,
-        );
-        let (pt_bad, pt_total) = pixel_diff(&pt_q.iterations, &gt);
-        let pt_match = 100.0 - pt_bad as f64 / pt_total as f64 * 100.0;
-        let pt_glitch = pt_q.glitch_count as f64 / pt_total as f64 * 100.0;
-        println!(
-            "  {:<18}  {:>10.2}  {:>10.2}  {:>10.2}  {:>9.2}%  {:>11.1}%  {}",
-            format!("PT-{}b {}x{}", PT_BITS, scene.pt_tiles, scene.pt_tiles),
-            pt_orbit_ms,
-            pt_render_ms,
-            pt_total_ms,
-            pt_glitch,
-            pt_match,
-            speedup_label(pt_total_ms, hp_effective_ms),
-        );
+            let q_orbits = ReferenceOrbit::compute_tile_orbits(&q_view, scene.pt_tiles, MAX_ITER, config.pt_bits);
+            let pt_q = render_perturbation_tiled(
+                &q_view,
+                &q_orbits,
+                pt_tiles,
+                pt_tiles,
+                &fractal,
+                &params,
+                MAX_ITER,
+                config.pt_fallback_bits,
+                MAX_THREADS,
+                1.0,
+            );
+            let (pt_bad, pt_total) = pixel_diff(&pt_q.iterations, &gt);
+            let pt_match = 100.0 - pt_bad as f64 / pt_total as f64 * 100.0;
+            let pt_glitch = pt_q.glitch_count as f64 / pt_total as f64 * 100.0;
+            println!(
+                "  {:<18}  {:>10.2}  {:>10.2}  {:>10.2}  {:>9.2}%  {:>11.1}%  {}",
+                format!("PT-{}b {}x{}", config.pt_bits, scene.pt_tiles, scene.pt_tiles),
+                pt_orbit_ms,
+                pt_render_ms,
+                pt_total_ms,
+                pt_glitch,
+                pt_match,
+                speedup_label(pt_total_ms, hp_effective_ms),
+            );
+        }
     }
 
     section("SECTION 2  Reading The Results");

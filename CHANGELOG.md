@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-05-30
+
+### Added
+- **Wallpaper Fractal**: Paul Bourke's wallpaper attractor on all three active backends: CPU f64, CPU hi-precision BigFloat, and GPU orbit-density compute shader
+- **Tetration CPU Hi-Precision Support**: BigFloat rendering across the supported bit-width ladder with focused interior, escape, agreement, and bit-width coverage
+
+### Changed
+- eframe/egui upgraded from 0.25 to 0.33, including the required app-creator, widget/input, and painter/image migrations
+- Hi-Prec and perturbation-theory precision selectors now use 8-bit increments through 256 bits, with metadata, CLI, and GUI round-tripping for non-power-of-two values
+- GUI layout split into left-side fractal controls plus right-side render/color/export controls, with the view toolbar moved below the preview
+- Compatible dependency refreshes landed for key direct crates, the direct `open` dependency was removed, and the final pre-0.3.0 repo cleanup kept the workspace aligned with only the live `core/` and `gui/` packages
+- Release showcase updated to the Wallpaper fractal for v0.2.9
+
+### Fixed
+- Stationary click-to-zoom now starts on pointer-down again after the egui 0.33 input migration instead of waiting for a drag-threshold crossing
+- Wallpaper defaults, reset/import fallbacks, and the default camera framing now stay aligned with Paul Bourke example #1, and the per-seed sample ceiling now reaches 1000 without GUI/core drift
+
 ## [0.2.8] - 2026-05-26
 
 ### Added

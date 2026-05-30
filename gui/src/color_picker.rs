@@ -152,7 +152,12 @@ pub fn show_color_picker(
     );
     ui.painter().rect_filled(swatch_rect, 4.0, preview_color);
     ui.painter()
-        .rect_stroke(swatch_rect, 4.0, egui::Stroke::new(1.0, egui::Color32::GRAY));
+        .rect_stroke(
+            swatch_rect,
+            4.0,
+            egui::Stroke::new(1.0, egui::Color32::GRAY),
+            egui::StrokeKind::Middle,
+        );
 
     ui.add_space(4.0);
 
@@ -216,10 +221,7 @@ fn draw_sv_plane(
                 ));
             }
         }
-        let image = egui::ColorImage {
-            size: [tex_size, tex_size],
-            pixels,
-        };
+        let image = egui::ColorImage::new([tex_size, tex_size], pixels);
         let tex_name = format!("sv_plane_{}", id_salt);
         let tex = ui
             .ctx()
@@ -286,10 +288,7 @@ fn draw_hue_bar(
                 (cb * 255.0) as u8,
             ));
         }
-        let image = egui::ColorImage {
-            size: [tex_width, 1],
-            pixels,
-        };
+        let image = egui::ColorImage::new([tex_width, 1], pixels);
         let tex_name = format!("hue_bar_{}", id_salt);
         state.hue_texture =
             Some(ui.ctx().load_texture(tex_name, image, egui::TextureOptions::LINEAR));

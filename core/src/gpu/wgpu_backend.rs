@@ -87,6 +87,13 @@ struct GpuOrbitParams {
     cum_prob: [f32; 8],
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum PipelineDispatch {
+    Fractal2d,
+    OrbitSubOrbits1d,
+    OrbitPixelSeeds2d,
+}
+
 /// WGPU-based GPU renderer
 pub struct WgpuRenderer {
     device: wgpu::Device,
@@ -98,6 +105,7 @@ pub struct WgpuRenderer {
 struct ComputePipeline {
     pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
+    dispatch: PipelineDispatch,
 }
 
 impl WgpuRenderer {
@@ -195,6 +203,7 @@ impl WgpuRenderer {
             ComputePipeline {
                 pipeline,
                 bind_group_layout,
+                dispatch: PipelineDispatch::Fractal2d,
             },
         );
         
@@ -477,10 +486,18 @@ impl WgpuRenderer {
         common.replace("// {{ORBIT_KERNEL}}", kernel_source)
     }
 
-    /// Load and compile an orbit accumulation compute shader by name
-    fn load_orbit_shader(&mut self, name: &str, kernel_source: &str) -> Result<(), String> {
-        let full_source = Self::compose_orbit_shader(kernel_source);
+    /// Compose a complete per-screen-seed orbit accumulation WGSL shader.
+    fn compose_orbit_pixel_shader(kernel_source: &str) -> String {
+        let common = include_str!("shaders/orbit_pixel_common.wgsl");
+        common.replace("// {{ORBIT_PIXEL_KERNEL}}", kernel_source)
+    }
 
+    fn load_orbit_pipeline(
+        &mut self,
+        name: &str,
+        full_source: String,
+        dispatch: PipelineDispatch,
+    ) -> Result<(), String> {
         let label_shader = format!("{} Orbit Shader", name);
         let label_layout = format!("{} Orbit Bind Group Layout", name);
         let label_pipeline_layout = format!("{} Orbit Pipeline Layout", name);
@@ -494,9 +511,6 @@ impl WgpuRenderer {
         let bind_group_layout = self.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some(&label_layout),
             entries: &[
-                // Storage buffer (read-only) for orbit params.
-                // Using storage rather than uniform avoids the WGSL requirement
-                // that array<f32, N> elements have 16-byte stride in uniform space.
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::COMPUTE,
@@ -507,7 +521,6 @@ impl WgpuRenderer {
                     },
                     count: None,
                 },
-                // Storage buffer for atomic density histogram
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStages::COMPUTE,
@@ -539,10 +552,23 @@ impl WgpuRenderer {
             ComputePipeline {
                 pipeline,
                 bind_group_layout,
+                dispatch,
             },
         );
 
         Ok(())
+    }
+
+    /// Load and compile an orbit accumulation compute shader by name
+    fn load_orbit_shader(&mut self, name: &str, kernel_source: &str) -> Result<(), String> {
+        let full_source = Self::compose_orbit_shader(kernel_source);
+        self.load_orbit_pipeline(name, full_source, PipelineDispatch::OrbitSubOrbits1d)
+    }
+
+    /// Load and compile a per-screen-seed orbit accumulation compute shader by name.
+    fn load_orbit_pixel_shader(&mut self, name: &str, kernel_source: &str) -> Result<(), String> {
+        let full_source = Self::compose_orbit_pixel_shader(kernel_source);
+        self.load_orbit_pipeline(name, full_source, PipelineDispatch::OrbitPixelSeeds2d)
     }
 
     /// Render orbit density on GPU, returning raw u32 counts (NOT normalized).
@@ -622,7 +648,20 @@ impl WgpuRenderer {
             });
             pass.set_pipeline(&cp.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
-            pass.dispatch_workgroups(1, 1, 1); // 1 workgroup of 64 threads
+
+            match cp.dispatch {
+                PipelineDispatch::OrbitSubOrbits1d => {
+                    pass.dispatch_workgroups(1, 1, 1);
+                }
+                PipelineDispatch::OrbitPixelSeeds2d => {
+                    let workgroups_x = (width + 7) / 8;
+                    let workgroups_y = (height + 7) / 8;
+                    pass.dispatch_workgroups(workgroups_x, workgroups_y, 1);
+                }
+                PipelineDispatch::Fractal2d => {
+                    return Err(format!("Pipeline '{}' is not an orbit pipeline", pipeline_name));
+                }
+            }
         }
 
         // Copy density → staging
@@ -685,6 +724,7 @@ impl WgpuRenderer {
         match fractal_name {
             "Multi-Julia IFS"  => Some("Multi-Julia IFS Orbit"),
             "ChaosSymmetry1"   => Some("ChaosSymmetry1 Orbit"),
+            "Wallpaper"        => Some("Wallpaper Orbit"),
             _ => None,
         }
     }
@@ -786,6 +826,11 @@ impl WgpuRenderer {
             renderer.load_orbit_shader("ChaosSymmetry1 Orbit", include_str!("shaders/chaos_symmetry1_orbit_kernel.wgsl"))?;
             perf_log!("[GPU-INIT] Compiled orbit shader 'ChaosSymmetry1 Orbit': {:.2?}", t.elapsed());
         }
+        {
+            let t = std::time::Instant::now();
+            renderer.load_orbit_pixel_shader("Wallpaper Orbit", include_str!("shaders/wallpaper_orbit_kernel.wgsl"))?;
+            perf_log!("[GPU-INIT] Compiled orbit shader 'Wallpaper Orbit': {:.2?}", t.elapsed());
+        }
 
         let total_compile = shader_compile_start.elapsed();
         println!("[GPU-INIT] All {} shaders compiled in {:.2?}",
@@ -857,6 +902,30 @@ impl FractalRenderer for WgpuRenderer {
                 _pad1: 0,
                 _pad2: 0,
                 map_re: [a0, a1, a2, a3, a4, 0.0, 0.0, 0.0],
+                map_im: [0.0; 8],
+                cum_prob: [0.0; 8],
+            }
+        } else if fractal_name == "Wallpaper" {
+            let samples_per_seed = fractal_params.get("samples").copied().unwrap_or(24.0) as u32;
+            let burn_in = fractal_params.get("burn_in").copied().unwrap_or(40.0) as u32;
+            let a = fractal_params.get("a").copied().unwrap_or(0.1) as f32;
+            let b = fractal_params.get("b").copied().unwrap_or(0.1) as f32;
+            let c = fractal_params.get("c").copied().unwrap_or(10.0) as f32;
+
+            GpuOrbitParams {
+                center_x,
+                center_y,
+                zoom,
+                width,
+                height,
+                samples_per_thread: samples_per_seed,
+                burn_in,
+                seed_base: 0,
+                num_maps: 0,
+                _pad0: 0,
+                _pad1: 0,
+                _pad2: 0,
+                map_re: [a, b, c, 0.0, 0.0, 0.0, 0.0, 0.0],
                 map_im: [0.0; 8],
                 cum_prob: [0.0; 8],
             }

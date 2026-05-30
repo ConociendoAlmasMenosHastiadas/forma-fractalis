@@ -21,7 +21,7 @@ png.workspace = true
 # GPU acceleration dependencies (optional, enabled by default)
 wgpu = { version = "0.19", optional = true }
 pollster = { version = "0.3", optional = true }
-bytemuck = { version = "1.14", features = ["derive"], optional = true }
+bytemuck = { version = "1.25", features = ["derive"], optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true

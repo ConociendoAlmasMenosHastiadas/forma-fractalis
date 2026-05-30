@@ -10,6 +10,7 @@ pub fn metadata_from_app_state(
     color_state: &ColorState,
     input_state: &InputState,
     export_state: &ExportState,
+    render_state: &RenderState,
 ) -> FractalMetadata {
     FractalMetadata {
         fractal_type: fractal_state.fractal_type.as_str().to_string(),
@@ -34,6 +35,12 @@ pub fn metadata_from_app_state(
         export_filter: export_state.filter.as_str().to_string(),
         export_supersample: input_state.parse_export_supersample(),
         export_scale: input_state.parse_export_scale() as f32,
+        render_backend: render_state.backend.as_str().to_string(),
+        hiprec_bits: render_state.hiprec_bits,
+        pt_bits: render_state.pt_bits,
+        max_threads: render_state.max_threads,
+        pt_glitch_tolerance: render_state.pt_glitch_tolerance,
+        pt_tiles: render_state.pt_tiles,
         version: Some(env!("CARGO_PKG_VERSION").to_string()),
         metadata_version: Some("1.0".to_string()),
         created_timestamp: Some(
@@ -72,8 +79,8 @@ pub fn export_png_from_state(
     let filter_type = export_state.filter;
     let output_dir = export_state.directory.as_ref();
     let backend = render_state.backend;
-    // For Perturbation mode, the pipeline uses hiprec_bits for both the reference
-    // orbit and the glitch fallback. Pass pt_bits so export resolution matches.
+    // For Perturbation mode, pass the dedicated PT precision so export uses the
+    // exact bits selected in the PT UI instead of the CpuHiPrec setting.
     let effective_bits = if matches!(backend, crate::gpu::RenderBackend::Perturbation) {
         render_state.pt_bits
     } else {
@@ -144,6 +151,7 @@ pub fn export_settings_json(
     color_state: &ColorState,
     input_state: &InputState,
     export_state: &ExportState,
+    render_state: &RenderState,
     output_path: &Path,
 ) -> Result<String, String> {
     let metadata = metadata_from_app_state(
@@ -152,6 +160,7 @@ pub fn export_settings_json(
         color_state,
         input_state,
         export_state,
+        render_state,
     );
 
     let json = serde_json::to_string_pretty(&metadata)

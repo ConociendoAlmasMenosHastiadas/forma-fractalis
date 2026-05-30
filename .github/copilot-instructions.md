@@ -4,6 +4,7 @@
 - Use this file as the single always-on Copilot instruction file for the repo.
 - Keep detailed, task-specific procedures in `.github/skills/`.
 - Most active code lives in the Cargo workspace members `core/` and `gui/`.
+- The workspace root is a virtual manifest, not a Rust package. Do not create or maintain a top-level `src/` mirror; live compile-path code belongs under `core/` or `gui/`.
 
 ## Workflow
 - Most work is driven by active release plans in `plans/v*.md`; if a task maps to a plan, update progress and implementation notes while you work.
@@ -34,6 +35,7 @@
 ## Build and Test
 - Default validation: `cargo check --workspace` and `cargo test --lib`.
 - After dependency updates, rerun both commands.
+- For classic CPU render regression checks, use `cargo bench -p forma-fractalis-core --bench fractal_bench` and record the result in `BENCHMARKS.md`.
 - After WGSL or GPU backend changes, run the GPU parity workflow before considering the work done.
 - Use `build_scripts/windows-build.ps1` only for Windows release packaging.
 

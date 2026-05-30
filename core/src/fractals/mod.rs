@@ -56,6 +56,7 @@ pub mod sinh_julia;
 pub mod multi_julia_ifs;
 pub mod adj_prob_julia;
 pub mod chaos_symmetry1;
+pub mod wallpaper;
 pub mod lace_julia;
 
 // Parameter system extensions
@@ -78,8 +79,19 @@ pub use sinh_julia::SinhJulia;
 pub use multi_julia_ifs::MultiJuliaIFS;
 pub use adj_prob_julia::AdjProbJulia;
 pub use chaos_symmetry1::ChaosSymmetry1;
+pub use wallpaper::Wallpaper;
 pub use lace_julia::LaceJulia;
 pub use parameter_types::EscapeMode;
+
+/// Controls how orbit-accumulation work is partitioned in the shared backend.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrbitParallelism {
+    /// Split work into independent sub-orbits, typically for stochastic attractors.
+    SubOrbits,
+    /// Split work into non-overlapping row chunks, typically for deterministic
+    /// per-screen-seed orbit maps.
+    RowChunks,
+}
 
 /// Represents the view parameters for rendering any fractal
 /// This replaces the old MandelbrotView with a more generic structure
@@ -490,6 +502,15 @@ pub trait Fractal: Sync {
         )
     }
 
+    /// Controls how the shared orbit backend partitions work for this fractal.
+    ///
+    /// The default `SubOrbits` mode matches stochastic attractors where each
+    /// work item can generate an independent orbit. Deterministic fractals that
+    /// seed one orbit per screen pixel should override this to `RowChunks`.
+    fn orbit_parallelism(&self) -> OrbitParallelism {
+        OrbitParallelism::SubOrbits
+    }
+
     /// Hi-precision orbit accumulation using BigFloat arithmetic.
     ///
     /// Only called when `uses_orbit_accumulation()` and `supports_hiprec()` both return `true`
@@ -531,6 +552,7 @@ pub enum FractalType {
     MultiJuliaIFS,
     AdjProbJulia,
     ChaosSymmetry1,
+    Wallpaper,
     LaceJulia,
 }
 
@@ -553,6 +575,7 @@ impl FractalType {
             FractalType::MultiJuliaIFS => "Multi-Julia IFS",
             FractalType::AdjProbJulia => "Adj Prob Julia",
             FractalType::ChaosSymmetry1 => "ChaosSymmetry1",
+            FractalType::Wallpaper => "Wallpaper",
             FractalType::LaceJulia => "Lace Julia",
         }
     }
@@ -579,6 +602,7 @@ impl FractalType {
             FractalType::MultiJuliaIFS => "z_{n+1} = sqrt(z_n - c_i), i chosen by probability",
             FractalType::AdjProbJulia => "z_{n+1} = s*sqrt(|z_n-z_0|)*exp(i*arg(z_n)/2)",
             FractalType::ChaosSymmetry1 => "z_{n+1} = (a0+a1|z|^2+a2 Re(z^m)+a3 i)*z + a4*conj(z)^{m-1}",
+            FractalType::Wallpaper => "x_{n+1} = y_n - sign(x_n)*sqrt(abs(b*x_n-c)), y_{n+1} = a - x_n",
             FractalType::LaceJulia => "z_{n+1} = (i*z_n^3 + 1010*z_n^6) / (c*i + 3301*z_n^7)",
         }
     }
@@ -600,6 +624,7 @@ impl FractalType {
             FractalType::InsideoutDragon,
             FractalType::MultiJuliaIFS,
             FractalType::ChaosSymmetry1,
+            FractalType::Wallpaper,
             FractalType::LaceJulia,
             // AdjProbJulia mothballed in v0.2.5 — needs formula investigation; see plans/v0.3.7.md
         ]
@@ -624,6 +649,7 @@ impl FractalType {
             FractalType::MultiJuliaIFS => Box::new(MultiJuliaIFS::new()),
             FractalType::AdjProbJulia => Box::new(AdjProbJulia::new()),
             FractalType::ChaosSymmetry1 => Box::new(ChaosSymmetry1::new()),
+            FractalType::Wallpaper => Box::new(Wallpaper::new()),
             FractalType::LaceJulia => Box::new(LaceJulia::new()),
         }
     }

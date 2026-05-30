@@ -43,7 +43,7 @@ pub struct PtRenderReport {
     pub min_orbit_len: usize,
     pub orbit_exhausted: bool,
     pub low_zoom_warning: bool,
-    pub hiprec_bits: u32,
+    pub pt_bits: u32,
     pub max_iterations: u32,
 }
 
@@ -85,6 +85,9 @@ pub struct RenderConfig<'a> {
     pub backend: RenderBackend,
     /// Bit width used when backend == CpuHiPrec. One of: 64, 128, 256, 512, 1024.
     pub hiprec_bits: u32,
+    /// Bit width used when backend == Perturbation for reference orbits and
+    /// hi-precision fallback pixels.
+    pub pt_bits: u32,
     /// Maximum rayon threads for CPU rendering. 0 = use all available (rayon default).
     /// Values 1..N limit parallelism to reduce CPU load during background work.
     pub max_threads: usize,
@@ -119,6 +122,7 @@ impl<'a> RenderConfig<'a> {
             fractal_parameters: HashMap::new(),
             backend: RenderBackend::default(),
             hiprec_bits: crate::gpu::HIPREC_DEFAULT_BITS,
+            pt_bits: crate::perturbation::PT_REFERENCE_BITS,
             max_threads: 0,
             pt_glitch_tolerance: 1.0,
             pt_tiles: 1,
@@ -134,6 +138,12 @@ impl<'a> RenderConfig<'a> {
     /// Builder pattern: set hi-precision bit width (used when backend == CpuHiPrec)
     pub fn with_hiprec_bits(mut self, bits: u32) -> Self {
         self.hiprec_bits = bits;
+        self
+    }
+
+    /// Builder pattern: set PT precision bits (used when backend == Perturbation)
+    pub fn with_pt_bits(mut self, bits: u32) -> Self {
+        self.pt_bits = bits;
         self
     }
 
@@ -217,10 +227,10 @@ fn target_view_for(config: &RenderConfig, target: RenderTarget) -> FractalView {
 }
 
 fn effective_cache_bits(config: &RenderConfig) -> u32 {
-    if matches!(config.backend, RenderBackend::CpuHiPrec | RenderBackend::Perturbation) {
-        config.hiprec_bits
-    } else {
-        0
+    match config.backend {
+        RenderBackend::CpuHiPrec => config.hiprec_bits,
+        RenderBackend::Perturbation => config.pt_bits,
+        _ => 0,
     }
 }
 
@@ -307,14 +317,14 @@ fn finalize_pt_iteration_cache(
         min_orbit_len,
         orbit_exhausted,
         low_zoom_warning: result.low_zoom_warning,
-        hiprec_bits: config.hiprec_bits,
+        pt_bits: config.pt_bits,
         max_iterations: config.max_iterations,
     });
 
     perf_log!(
         "[PT] Pixels: {} total | {} PT delta ({:.1}%) | {} {}-bit hi-prec ({:.2}%) | SA px={} ({:.2}%) avg skip={:.1} max={} guards(e={}, c={}) | rebased px={} ({:.2}%) | rebases={} | budget-hit fallback={} | tiles={}x{} | shortest orbit len={}",
         total_pixels, pt_pixels, 100.0 - hiprec_pct,
-        hiprec_pixels, config.hiprec_bits, hiprec_pct,
+        hiprec_pixels, config.pt_bits, hiprec_pct,
         result.sa_accepted_pixel_count, sa_accepted_pixel_pct,
         sa_avg_skipped_iterations, result.sa_max_skipped_iterations,
         result.sa_rejected_escape_margin_count, result.sa_rejected_correction_count,
@@ -376,7 +386,7 @@ fn log_preview_render(
             "[PERF] PT Render {}x{} @ {}bit/{} iter tiles={}x{}: total={:.2?} (compute={:.2?}, color={:.2?})",
             iterations.width,
             iterations.height,
-            config.hiprec_bits,
+            config.pt_bits,
             config.max_iterations,
             pt_tiles,
             pt_tiles,
@@ -534,7 +544,7 @@ pub fn compute_iteration_cache_with_config(
             &target_view,
             pt_tiles,
             config.max_iterations,
-            config.hiprec_bits,
+            config.pt_bits,
         );
 
         let result = render_perturbation_tiled(
@@ -545,7 +555,7 @@ pub fn compute_iteration_cache_with_config(
             config.fractal,
             &config.fractal_parameters,
             config.max_iterations,
-            config.hiprec_bits,
+            config.pt_bits,
             config.max_threads,
             config.pt_glitch_tolerance,
         );
@@ -666,7 +676,7 @@ pub fn compute_iteration_cache_with_config(
             &target_view,
             pt_tiles,
             config.max_iterations,
-            config.hiprec_bits,
+            config.pt_bits,
         );
 
         let result = render_perturbation_tiled(
@@ -677,7 +687,7 @@ pub fn compute_iteration_cache_with_config(
             config.fractal,
             &config.fractal_parameters,
             config.max_iterations,
-            config.hiprec_bits,
+            config.pt_bits,
             config.max_threads,
             config.pt_glitch_tolerance,
         );
@@ -774,6 +784,7 @@ mod tests {
             .with_period(true, 128)
             .with_interior_color(true, [255, 0, 0])
             .with_log_scale(true)
+            .with_pt_bits(88)
             .with_backend(crate::gpu::RenderBackend::Cpu);
 
         assert!(config.use_period);
@@ -781,6 +792,7 @@ mod tests {
         assert!(config.use_interior_color);
         assert_eq!(config.interior_color, [255, 0, 0]);
         assert!(config.use_log_scale);
+        assert_eq!(config.pt_bits, 88);
         assert!(matches!(config.backend, crate::gpu::RenderBackend::Cpu));
     }
 
@@ -837,7 +849,7 @@ mod tests {
         let mandelbrot = Mandelbrot::new();
         let config = RenderConfig::new(view, &colormap, 128, &mandelbrot)
             .with_backend(crate::gpu::RenderBackend::Perturbation)
-            .with_hiprec_bits(64)
+            .with_pt_bits(64)
             .with_max_threads(1)
             .with_pt_tiles(2);
 
@@ -847,6 +859,32 @@ mod tests {
         let buffer = render_with_config(&config, RenderTarget::Preview).expect("PT render failed");
 
         assert_eq!(buffer.len(), 64 * 64 * 4);
+    }
+
+    #[test]
+    fn test_perturbation_backend_uses_pt_bits_not_hiprec_bits() {
+        let mut view = FractalView::new(48, 48);
+        view.center_x = -0.75;
+        view.center_y = 0.1;
+        view.zoom = 1.0e6;
+
+        let colormap = ColorMap::default_scheme();
+        let mandelbrot = Mandelbrot::new();
+        let config = RenderConfig::new(view, &colormap, 128, &mandelbrot)
+            .with_backend(crate::gpu::RenderBackend::Perturbation)
+            .with_hiprec_bits(256)
+            .with_pt_bits(64)
+            .with_max_threads(1)
+            .with_pt_tiles(2);
+
+        #[cfg(feature = "gpu")]
+        let _ = render_with_config(&config, RenderTarget::Preview, None).expect("PT render failed");
+        #[cfg(not(feature = "gpu"))]
+        let _ = render_with_config(&config, RenderTarget::Preview).expect("PT render failed");
+
+        let report = latest_pt_report().expect("PT report should be populated after a PT render");
+        assert_eq!(report.pt_bits, 64);
+        assert_ne!(report.pt_bits, 256);
     }
 
     #[test]

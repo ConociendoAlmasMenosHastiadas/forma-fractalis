@@ -82,11 +82,16 @@ pub fn render_gradient_preview(
         mesh.add_colored_rect(strip_rect, color32);
     }
 
-    ui.painter().add(egui::Shape::Mesh(mesh));
+    ui.painter().add(egui::Shape::Mesh(mesh.into()));
 
     // Draw border
     ui.painter()
-        .rect_stroke(rect, 0.0, egui::Stroke::new(1.0, egui::Color32::GRAY));
+        .rect_stroke(
+            rect,
+            0.0,
+            egui::Stroke::new(1.0, egui::Color32::GRAY),
+            egui::StrokeKind::Middle,
+        );
 
     // Handle mouse dragging
     let pointer_pos = ui.input(|i| i.pointer.interact_pos());
@@ -155,14 +160,16 @@ pub fn render_gradient_preview(
 
         // Show tooltip on hover
         if marker_response.hovered() {
-            egui::show_tooltip_at_pointer(ui.ctx(), marker_id.with("tooltip"), |ui| {
+            egui::Tooltip::for_widget(&marker_response)
+                .at_pointer()
+                .show(|ui| {
                 ui.label(format!("Position: {:.3}", stop.position));
                 if i > 0 && i < stops_clone.len() - 1 {
                     ui.label("Drag to adjust");
                 } else {
                     ui.label("Fixed position");
                 }
-            });
+                });
         }
     }
 
@@ -196,7 +203,12 @@ pub fn render_color_stops_list(
                 egui::Color32::from_rgb(stop.color.r, stop.color.g, stop.color.b),
             );
             ui.painter()
-                .rect_stroke(color_rect, 2.0, egui::Stroke::new(1.0, egui::Color32::GRAY));
+                .rect_stroke(
+                    color_rect,
+                    2.0,
+                    egui::Stroke::new(1.0, egui::Color32::GRAY),
+                    egui::StrokeKind::Middle,
+                );
 
             // RGB values
             ui.label(format!(

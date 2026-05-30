@@ -15,7 +15,9 @@ use crate::fractals::{
     Fractal,
     Mandelbrot, Julia, BurningShip, InsideoutDragon, Zubieta, SinJulia, TippetsMandelbrot,
     SinhJulia, MultifractalJulia, Cactus, MarekDragon, Lemon, LaceJulia, Tetration,
+    MultiJuliaIFS, ChaosSymmetry1, Wallpaper,
 };
+use crate::orbit_accumulation::{compute_orbit_density, DensityBuffer};
 use crate::rendering::compute_iterations;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -161,11 +163,10 @@ pub fn run_gpu_tests(config: &GpuTestConfig) -> Result<Vec<GpuTestResult>, Strin
 
 /// Render one fractal with GPU and CPU, compare raw iteration counts, and save images.
 ///
-/// Comparison is done on the raw `Vec<u32>` iteration counts before colormap application.
-/// This avoids the colormap amplification problem where a 1-iteration f32/f64 difference
-/// maps to a large luminance difference.  A pixel is a "mismatch" when GPU and CPU differ
-/// by more than 1 iteration.  Up to 5% of pixels may differ within that tolerance.
-/// A completely wrong shader formula would fail because the MAJORITY of pixels differ.
+/// Escape-time fractals are compared on raw iteration counts before colormap application.
+/// Orbit-accumulation fractals are compared on the normalized density bins used by the
+/// production rendering pipeline. This avoids mismatches caused only by differing raw-count
+/// scales while still treating coordinate-mapping or formula drift as correctness bugs.
 #[cfg(feature = "gpu")]
 fn test_one_fractal(
     fractal: &dyn Fractal,
@@ -179,11 +180,8 @@ fn test_one_fractal(
 
     let view = fractal.default_view(config.width, config.height);
     let colormap = scala_chromatica::ColorMap::default_scheme();
-    let params: HashMap<String, f64> = fractal
-        .parameters()
-        .iter()
-        .map(|p| (p.name.clone(), p.default))
-        .collect();
+    let params = gpu_test_params(fractal, &view);
+    let use_log_density = params.get("use_log_density").copied().unwrap_or(1.0) > 0.5;
 
     // Build GPU config (positional param vec)
     let param_values: Vec<f64> = fractal
@@ -201,9 +199,32 @@ fn test_one_fractal(
         fractal_params: param_values,
     };
 
-    // GPU render — raw iteration counts
     let gpu_start = Instant::now();
-    let gpu_result = gpu_renderer.render_iterations(&gpu_config, fractal);
+    let gpu_result = if fractal.uses_orbit_accumulation() {
+        if !gpu_renderer.supports_orbit_density(fractal.name()) {
+            Err(format!(
+                "GPU orbit-density rendering not supported for fractal: {}",
+                fractal.name()
+            ))
+        } else {
+            gpu_renderer
+                .render_orbit_density(
+                    view.width,
+                    view.height,
+                    &params,
+                    fractal.name(),
+                    view.center_x as f32,
+                    view.center_y as f32,
+                    view.zoom as f32,
+                )
+                .map(|raw_density| {
+                    DensityBuffer::from_raw(view.width, view.height, raw_density)
+                        .normalize(config.iterations, use_log_density)
+                })
+        }
+    } else {
+        gpu_renderer.render_iterations(&gpu_config, fractal)
+    };
     let gpu_time_ms = gpu_start.elapsed().as_secs_f64() * 1000.0;
 
     let gpu_iters = match gpu_result {
@@ -221,9 +242,12 @@ fn test_one_fractal(
         }
     };
 
-    // CPU render — raw iteration counts (same function the production CPU path calls)
     let cpu_start = Instant::now();
-    let cpu_iters = compute_iterations(&view, config.iterations, fractal, &params);
+    let cpu_iters = if fractal.uses_orbit_accumulation() {
+        compute_orbit_density(&view, fractal, &params, config.iterations, 0)
+    } else {
+        compute_iterations(&view, config.iterations, fractal, &params)
+    };
     let cpu_time_ms = cpu_start.elapsed().as_secs_f64() * 1000.0;
 
     // Save RGBA images for visual inspection (colormap applied to each iteration set)
@@ -248,32 +272,14 @@ fn test_one_fractal(
     let _ = save_rgba_png(&apply_colors(&cpu_iters), config.width, config.height,
         &config.output_dir.join(format!("{}_cpu.png", slug)));
 
-    // Compare raw iteration counts: allow ±1 per pixel (f32/f64 boundary differences),
-    // with up to 5% of pixels permitted to exceed that tolerance.
-    //
-    // Per-fractal overrides: some fractals have structural divergence between GPU and CPU
-    // that is not a shader bug and cannot be eliminated.
-    //
-    // Multifractal-Julia: CPU uses exact HashMap cycle detection (f64 bit-pattern match);
-    // GPU uses Brent's algorithm with f32 epsilon. Boundary pixels where the cycle fires at
-    // slightly different iterations cause ~10% divergence. The overall shape is correct —
-    // confirmed visually. Tolerance raised to 15% to accommodate.
-    // Lemon: convergence is based on |z_{n+1} - z_n| < 10^-exp on a rational map with poles.
-    // With the default exp=6, the f32 GPU path and f64 CPU path diverge on thin boundary and
-    // near-singularity regions even when the overall image matches visually. Observed mismatch
-    // rate on the reference view is ~11%, so allow up to 12% for this fractal.
-    let tolerance = match name {
-        "Multifractal-Julia" => 0.15,
-        "Lemon"              => 0.12,
-        _                    => 0.05,
-    };
+    let comparison = comparison_config(fractal, name);
 
     let total = gpu_iters.len();
     let mismatches = gpu_iters.iter().zip(cpu_iters.iter())
-        .filter(|(&g, &c)| g.abs_diff(c) > 1)
+        .filter(|(&g, &c)| g.abs_diff(c) > comparison.diff_threshold)
         .count();
     let mismatch_rate = (mismatches as f64) / (total as f64);
-    let comparable = mismatch_rate < tolerance;
+    let comparable = mismatch_rate < comparison.mismatch_tolerance;
 
     GpuTestResult {
         fractal_name: name.to_string(),
@@ -286,11 +292,62 @@ fn test_one_fractal(
             None
         } else {
             Some(format!(
-                "GPU and CPU iteration counts differ: {:.1}% of pixels disagree by >1 iteration \
+                "GPU and CPU {} differ: {:.1}% of pixels disagree by >{} bin(s) \
                  (tolerance: <{:.0}%).",
+                comparison.label,
                 mismatch_rate * 100.0,
-                tolerance * 100.0
+                comparison.diff_threshold,
+                comparison.mismatch_tolerance * 100.0
             ))
+        },
+    }
+}
+
+#[cfg(feature = "gpu")]
+struct ComparisonConfig {
+    label: &'static str,
+    diff_threshold: u32,
+    mismatch_tolerance: f64,
+}
+
+#[cfg(feature = "gpu")]
+fn gpu_test_params(fractal: &dyn Fractal, view: &crate::fractals::FractalView) -> HashMap<String, f64> {
+    let mut params = view.parameters.clone();
+    for parameter in fractal.parameters() {
+        params.entry(parameter.name.clone()).or_insert(parameter.default);
+    }
+    params
+}
+
+#[cfg(feature = "gpu")]
+fn comparison_config(fractal: &dyn Fractal, name: &str) -> ComparisonConfig {
+    if fractal.uses_orbit_accumulation() {
+        return ComparisonConfig {
+            label: "normalized density bins",
+            diff_threshold: 24,
+            mismatch_tolerance: match name {
+                "Wallpaper" => 0.20,
+                _ => 0.20,
+            },
+        };
+    }
+
+    // Escape-time per-fractal overrides: some fractals have structural divergence
+    // between GPU and CPU that is not a shader bug and cannot be eliminated.
+    //
+    // Multifractal-Julia: CPU uses exact HashMap cycle detection (f64 bit-pattern match);
+    // GPU uses Brent's algorithm with f32 epsilon. Boundary pixels where the cycle fires at
+    // slightly different iterations cause ~10% divergence. The overall shape is correct.
+    // Lemon: convergence is based on |z_{n+1} - z_n| < 10^-exp on a rational map with poles.
+    // With the default exp=6, the f32 GPU path and f64 CPU path diverge on thin boundary and
+    // near-singularity regions even when the overall image matches visually.
+    ComparisonConfig {
+        label: "iteration counts",
+        diff_threshold: 1,
+        mismatch_tolerance: match name {
+            "Multifractal-Julia" => 0.15,
+            "Lemon" => 0.12,
+            _ => 0.05,
         },
     }
 }
@@ -327,6 +384,9 @@ fn gpu_supported_fractals() -> Vec<(String, Box<dyn Fractal>)> {
         ("Lemon".to_string(), Box::new(Lemon::new())),
         ("Lace Julia".to_string(), Box::new(LaceJulia::new())),
         ("Tetration".to_string(), Box::new(Tetration::new())),
+        ("Multi-Julia IFS".to_string(), Box::new(MultiJuliaIFS::new())),
+        ("ChaosSymmetry1".to_string(), Box::new(ChaosSymmetry1::new())),
+        ("Wallpaper".to_string(), Box::new(Wallpaper::new())),
     ]
 }
 

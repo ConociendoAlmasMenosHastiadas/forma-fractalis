@@ -45,7 +45,7 @@ use std::collections::HashMap;
 pub const PT_LOW_ZOOM_THRESHOLD: f64 = 1e10;
 
 /// Bit width used for BigFloat reference orbit computation.
-pub const PT_REFERENCE_BITS: u32 = 128;
+pub const PT_REFERENCE_BITS: u32 = 72;
 
 /// Maximum number of per-pixel rebase attempts before falling back.
 pub const PT_REBASE_BUDGET: usize = 4;
@@ -379,7 +379,7 @@ impl ReferenceOrbit {
     /// view center. The orbit stores z_n (before squaring) so that the caller's
     /// delta loop can use `r_n` in the recurrence.
     ///
-    /// `bits` should be `PT_REFERENCE_BITS` (128) or higher for deep zooms.
+    /// `bits` should be `PT_REFERENCE_BITS` (72) or higher for deep zooms.
     pub fn compute_mandelbrot(
         center_x: f64,
         center_y: f64,

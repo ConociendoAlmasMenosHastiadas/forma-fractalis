@@ -10,14 +10,14 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-forma-fractalis-core = "0.2.3"
+forma-fractalis-core = "0.2.9"
 ```
 
 To enable GPU acceleration (requires wgpu, optional):
 
 ```toml
 [dependencies]
-forma-fractalis-core = { version = "0.2.3", features = ["gpu"] }
+forma-fractalis-core = { version = "0.2.9", features = ["gpu"] }
 ```
 
 ## Quick Start
@@ -93,6 +93,11 @@ let config = FractalConfig::from_metadata(&metadata);
 | Zubieta | `"Zubieta"` | |
 | Sin Julia | `"SinJulia"` | |
 | Sinh Julia | `"SinhJulia"` | |
+| Multi-Julia IFS | `"MultiJuliaIFS"` | Orbit-accumulation fractal |
+| ChaosSymmetry1 | `"ChaosSymmetry1"` | Orbit-accumulation fractal |
+| Lace Julia | `"LaceJulia"` | Rational Julia variant |
+
+`AdjProbJulia` remains mothballed and is intentionally excluded from the active public list until its formula work is resumed.
 
 Implement the `Fractal` trait to define your own:
 
@@ -139,7 +144,7 @@ Disable GPU (pure CPU, no wgpu dependency):
 
 ```toml
 [dependencies]
-forma-fractalis-core = { version = "0.2.3", default-features = false }
+forma-fractalis-core = { version = "0.2.9", default-features = false }
 ```
 
 ## Examples

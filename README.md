@@ -16,9 +16,9 @@
 ![Mandelbrot Set](img_resources/banners/mandelbrot_4320x1080_4xLanczos31771181432.png)
 
 ### Interactive Exploration
-- **16 Fractal Types**: Mandelbrot, Julia, Burning Ship, Tippets Mandelbrot, Multifractal-Julia, Multi-Julia IFS, Cactus, Marek Dragon, Tetration, Lemon, Zubieta, Sin Julia, Sinh Julia, Insideout Dragon, ChaosSymmetry1, Lace Julia
+- **17 Active Fractal Types**: Mandelbrot, Julia, Burning Ship, Tippets Mandelbrot, Multifractal-Julia, Multi-Julia IFS, Cactus, Marek Dragon, Tetration, Lemon, Zubieta, Sin Julia, Sinh Julia, Insideout Dragon, ChaosSymmetry1, Lace Julia, Wallpaper
 - **Real-time Rendering**: Smooth 60 FPS with multi-threaded computation
-- **Deep Zoom Backends**: CPU Hi-Prec BigFloat and Mandelbrot perturbation theory for extreme zoom workflows
+- **Four Render Backends**: CPU f64, CPU Hi-Prec BigFloat, Mandelbrot perturbation theory, and GPU f32 compute shaders
 - **Click-to-Zoom**: Intuitive mouse controls for navigation
 - **Fractal Parameters**: Adjust Julia constants, powers, rotation angles with live sliders
 
@@ -36,7 +36,7 @@
 - **Round-Trip Loading**: Import any exported PNG or JSON settings file
 - **Animated GIF Export**: Zoom sequences and iteration-fade animations with GPU acceleration
 
-### CLI Automation (New in v0.1.7!)
+### CLI Automation
 - **Headless Rendering**: Generate fractals without GUI
 - **Batch Processing**: Render multiple resolutions from same settings
 - **Parameter Overrides**: Change dimensions, iterations, scale via command-line
@@ -135,6 +135,7 @@ forma-fractalis --profiling
 | ![ChaosSymmetry1 v0.2.5 showcase](img_resources/gallery_expanded/v0.2.5_chaos_symmetry1.png) |
 | ![Lace Julia v0.2.6 showcase](img_resources/gallery_expanded/v0.2.6_lace_julia.png) |
 | ![Mandelbrot v0.2.7 perturbation showcase](img_resources/gallery_expanded/v0.2.7_mandelbrot_perturbation.png) |
+| ![Sinh Julia v0.2.8 showcase](img_resources/gallery_expanded/v0.2.8_sinh_julia.png) |
 
 </details>
 
@@ -192,13 +193,14 @@ Forma Fractalis includes GPU compute shader support for significantly faster ren
 
 ### Backend Selection
 
-Open the **Performance** section in the GUI sidebar to choose your rendering backend:
+Use the backend radio buttons at the top of the left sidebar to switch renderers. The right-hand **Render & Color** panel exposes precision, PT, and export-related tuning.
 
 - **CPU Mode**: Uses f64 precision, supports all fractals, guaranteed compatibility
 - **CPU Hi-Prec Mode**: Arbitrary-precision BigFloat (64-1024 bit) for deep zoom beyond f64 limits
+- **Perturbation Mode**: Deep-zoom Mandelbrot renderer using BigFloat reference orbits plus f64 deltas; best when plain f64 is no longer stable
 - **GPU Mode**: Uses f32 precision via WGPU compute shaders, faster for large exports
 
-The active backend is displayed in the status bar. GPU mode initializes when you first select it (takes ~100-200ms).
+The active backend and transient feedback appear in the bottom preview toolbar. GPU mode initializes when you first select it (takes ~100-200ms).
 
 ### Supported Fractals
 
@@ -249,7 +251,7 @@ Perturbation Theory adds a separate deep-zoom backend for Mandelbrot views when 
 - Fall back to CPU mode (always available)
 
 **GPU rendering errors:**
-- Error messages displayed in status bar
+- Error messages displayed in the bottom toolbar status line
 - Switch to CPU mode if GPU encounters issues
 - Enable `--profiling` flag to see detailed GPU logs
 
@@ -290,20 +292,29 @@ The core library can be used independently. See [core/README.md](core/README.md)
 - [core/README.md](core/README.md) - Core library API and usage
 - [COLORMAP_SAVELOAD.md](COLORMAP_SAVELOAD.md) - ColorMap system details
 - [METADATA_FORMAT.md](METADATA_FORMAT.md) - PNG metadata specification
+- [BENCHMARKS.md](BENCHMARKS.md) - Historical performance notes and benchmark snapshots
 - [CHANGELOG.md](CHANGELOG.md) - Version history
 
 ---
 
 ## Releases
 
-**Latest: v0.2.8** (May 26, 2026)
+**Latest: v0.2.9** (May 30, 2026)
 
-Sinh Julia becomes the release showcase fractal, while Lemon gains GPU support, Marek Dragon gains CPU hi-precision rendering, and older fractal implementations now carry in-code source citations.
+Wallpaper closes out the 0.2.x GPU rollout series with full CPU/GPU/hi-precision support, the eframe 0.33 upgrade, Tetration CPU hi-precision rendering, finer 8-bit precision controls, and the final pre-0.3.0 cleanup pass.
 
-![v0.2.8 Showcase - Sinh Julia release fractal](img_resources/showcase/v0.2.8_sinh_julia.png)
+![v0.2.9 Showcase - Wallpaper release fractal](img_resources/showcase/v0.2.9_wallpaper.png)
 
 <details>
 <summary><b>View release history...</b></summary>
+
+### v0.2.9 (May 30, 2026)
+- Wallpaper release fractal on CPU f64, CPU hi-precision BigFloat, and GPU orbit-density backends
+- eframe/egui upgraded from 0.25 to 0.33, including the required app-creator, widget/input, and painter/image migrations
+- Tetration CPU hi-precision support added across the supported bit-width ladder
+- Hi-Prec and PT selectors now step in 8-bit increments through 256 bits, with metadata, CLI, and GUI round-tripping for non-power-of-two values
+- GUI layout split into dedicated left/right sidebars with a compact view toolbar below the preview
+- Dependency cleanup refreshed compatible crates, removed the direct `open` dependency, and completed the final pre-0.3.0 repository cleanup
 
 ### v0.2.8 (May 26, 2026)
 - Sinh Julia release fractal on all three active backends: CPU f64, CPU hi-precision BigFloat, and GPU f32 compute shader

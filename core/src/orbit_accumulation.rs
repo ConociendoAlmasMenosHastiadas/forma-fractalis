@@ -25,7 +25,7 @@ use num_complex::Complex64;
 use rayon::prelude::*;
 use std::cell::Cell;
 use std::sync::atomic::{AtomicU64, Ordering};
-use crate::fractals::{Fractal, FractalView};
+use crate::fractals::{Fractal, FractalView, OrbitParallelism};
 use std::collections::HashMap;
 use astro_float::{BigFloat, RoundingMode};
 
@@ -500,91 +500,169 @@ pub fn compute_orbit_density(
         fractal.name()
     );
 
-    let total_samples = params.get("samples").copied().unwrap_or(5_000_000.0) as u64;
     let use_log = params.get("use_log_density").copied().unwrap_or(1.0) > 0.5;
-    let master_seed = params.get("seed").copied().unwrap_or(0.0) as u64;
-
-    let k = SUB_ORBIT_COUNT;
     let w = view.width;
     let h = view.height;
 
-    // Pre-generate all sub-orbit work items: (sub_seed, num_steps)
-    let work_items: Vec<(u64, u64)> = (0..k)
-        .map(|i| {
-            let sub_seed = derive_sub_seed(master_seed, i);
-            let steps = total_samples / k + if i < (total_samples % k) { 1 } else { 0 };
-            (sub_seed, steps)
-        })
-        .collect();
-
     let buffer_bytes = (w as usize) * (h as usize) * std::mem::size_of::<u64>();
 
-    if buffer_bytes >= ATOMIC_THRESHOLD_BYTES {
-        // ── Atomic path: one shared AtomicDensityBuffer ────────────────
-        let atomic_buf = AtomicDensityBuffer::new(w, h);
+    match fractal.orbit_parallelism() {
+        OrbitParallelism::RowChunks => {
+            let chunk_count = std::cmp::max(1u32, h.min(SUB_ORBIT_COUNT as u32));
+            let work_items: Vec<(u32, u32)> = (0..chunk_count)
+                .map(|chunk| {
+                    let row_start = chunk * h / chunk_count;
+                    let row_end = (chunk + 1) * h / chunk_count;
+                    (row_start, row_end)
+                })
+                .filter(|(row_start, row_end)| row_start < row_end)
+                .collect();
 
-        let compute_atomic = || {
-            work_items.par_iter().for_each(|&(sub_seed, steps)| {
-                let mut sub_params = params.clone();
-                sub_params.insert("seed".to_string(), sub_seed as f64);
-                sub_params.insert("samples".to_string(), steps as f64);
-                fractal.accumulate_orbits(&atomic_buf, view, &sub_params);
-            });
-        };
+            if buffer_bytes >= ATOMIC_THRESHOLD_BYTES {
+                let atomic_buf = AtomicDensityBuffer::new(w, h);
 
-        let global_count = rayon::current_num_threads();
-        if max_threads > 0 && max_threads < global_count {
-            match rayon::ThreadPoolBuilder::new()
-                .num_threads(max_threads)
-                .build()
-            {
-                Ok(pool) => pool.install(compute_atomic),
-                Err(_) => compute_atomic(),
+                let compute_atomic = || {
+                    work_items.par_iter().for_each(|&(row_start, row_end)| {
+                        let mut sub_params = params.clone();
+                        sub_params.insert("row_start".to_string(), row_start as f64);
+                        sub_params.insert("row_end".to_string(), row_end as f64);
+                        fractal.accumulate_orbits(&atomic_buf, view, &sub_params);
+                    });
+                };
+
+                let global_count = rayon::current_num_threads();
+                if max_threads > 0 && max_threads < global_count {
+                    match rayon::ThreadPoolBuilder::new()
+                        .num_threads(max_threads)
+                        .build()
+                    {
+                        Ok(pool) => pool.install(compute_atomic),
+                        Err(_) => compute_atomic(),
+                    }
+                } else {
+                    compute_atomic();
+                }
+
+                atomic_buf.normalize(max_iter, use_log)
+            } else {
+                let compute = || -> DensityBuffer {
+                    work_items
+                        .par_iter()
+                        .fold(
+                            || LocalDensityTarget::new(w, h),
+                            |acc, &(row_start, row_end)| {
+                                let mut sub_params = params.clone();
+                                sub_params.insert("row_start".to_string(), row_start as f64);
+                                sub_params.insert("row_end".to_string(), row_end as f64);
+                                fractal.accumulate_orbits(&acc, view, &sub_params);
+                                acc
+                            },
+                        )
+                        .reduce(
+                            || LocalDensityTarget::new(w, h),
+                            |a, b| {
+                                a.merge(&b);
+                                a
+                            },
+                        )
+                        .into_density_buffer()
+                };
+
+                let global_count = rayon::current_num_threads();
+                let merged = if max_threads > 0 && max_threads < global_count {
+                    match rayon::ThreadPoolBuilder::new()
+                        .num_threads(max_threads)
+                        .build()
+                    {
+                        Ok(pool) => pool.install(compute),
+                        Err(_) => compute(),
+                    }
+                } else {
+                    compute()
+                };
+
+                merged.normalize(max_iter, use_log)
             }
-        } else {
-            compute_atomic();
         }
+        OrbitParallelism::SubOrbits => {
+            let total_samples = params.get("samples").copied().unwrap_or(5_000_000.0) as u64;
+            let master_seed = params.get("seed").copied().unwrap_or(0.0) as u64;
+            let k = SUB_ORBIT_COUNT;
 
-        atomic_buf.normalize(max_iter, use_log)
-    } else {
-        // ── Fold/reduce path: per-thread LocalDensityTarget ────────────
-        let compute = || -> DensityBuffer {
-            work_items
-                .par_iter()
-                .fold(
-                    || LocalDensityTarget::new(w, h),
-                    |acc, &(sub_seed, steps)| {
+            let work_items: Vec<(u64, u64)> = (0..k)
+                .map(|i| {
+                    let sub_seed = derive_sub_seed(master_seed, i);
+                    let steps = total_samples / k + if i < (total_samples % k) { 1 } else { 0 };
+                    (sub_seed, steps)
+                })
+                .collect();
+
+            if buffer_bytes >= ATOMIC_THRESHOLD_BYTES {
+                let atomic_buf = AtomicDensityBuffer::new(w, h);
+
+                let compute_atomic = || {
+                    work_items.par_iter().for_each(|&(sub_seed, steps)| {
                         let mut sub_params = params.clone();
                         sub_params.insert("seed".to_string(), sub_seed as f64);
                         sub_params.insert("samples".to_string(), steps as f64);
-                        fractal.accumulate_orbits(&acc, view, &sub_params);
-                        acc
-                    },
-                )
-                .reduce(
-                    || LocalDensityTarget::new(w, h),
-                    |a, b| {
-                        a.merge(&b);
-                        a
-                    },
-                )
-                .into_density_buffer()
-        };
+                        fractal.accumulate_orbits(&atomic_buf, view, &sub_params);
+                    });
+                };
 
-        let global_count = rayon::current_num_threads();
-        let merged = if max_threads > 0 && max_threads < global_count {
-            match rayon::ThreadPoolBuilder::new()
-                .num_threads(max_threads)
-                .build()
-            {
-                Ok(pool) => pool.install(compute),
-                Err(_) => compute(),
+                let global_count = rayon::current_num_threads();
+                if max_threads > 0 && max_threads < global_count {
+                    match rayon::ThreadPoolBuilder::new()
+                        .num_threads(max_threads)
+                        .build()
+                    {
+                        Ok(pool) => pool.install(compute_atomic),
+                        Err(_) => compute_atomic(),
+                    }
+                } else {
+                    compute_atomic();
+                }
+
+                atomic_buf.normalize(max_iter, use_log)
+            } else {
+                let compute = || -> DensityBuffer {
+                    work_items
+                        .par_iter()
+                        .fold(
+                            || LocalDensityTarget::new(w, h),
+                            |acc, &(sub_seed, steps)| {
+                                let mut sub_params = params.clone();
+                                sub_params.insert("seed".to_string(), sub_seed as f64);
+                                sub_params.insert("samples".to_string(), steps as f64);
+                                fractal.accumulate_orbits(&acc, view, &sub_params);
+                                acc
+                            },
+                        )
+                        .reduce(
+                            || LocalDensityTarget::new(w, h),
+                            |a, b| {
+                                a.merge(&b);
+                                a
+                            },
+                        )
+                        .into_density_buffer()
+                };
+
+                let global_count = rayon::current_num_threads();
+                let merged = if max_threads > 0 && max_threads < global_count {
+                    match rayon::ThreadPoolBuilder::new()
+                        .num_threads(max_threads)
+                        .build()
+                    {
+                        Ok(pool) => pool.install(compute),
+                        Err(_) => compute(),
+                    }
+                } else {
+                    compute()
+                };
+
+                merged.normalize(max_iter, use_log)
             }
-        } else {
-            compute()
-        };
-
-        merged.normalize(max_iter, use_log)
+        }
     }
 }
 
@@ -619,55 +697,105 @@ pub fn compute_orbit_density_hiprec(
         ));
     }
 
-    let total_samples = params.get("samples").copied().unwrap_or(5_000_000.0) as u64;
     let use_log = params.get("use_log_density").copied().unwrap_or(1.0) > 0.5;
-    let master_seed = params.get("seed").copied().unwrap_or(0.0) as u64;
-
-    let k = SUB_ORBIT_COUNT;
     let w = view.width;
     let h = view.height;
 
-    let work_items: Vec<(u64, u64)> = (0..k)
-        .map(|i| {
-            let sub_seed = derive_sub_seed(master_seed, i);
-            let steps = total_samples / k + if i < (total_samples % k) { 1 } else { 0 };
-            (sub_seed, steps)
-        })
-        .collect();
+    let merged = match fractal.orbit_parallelism() {
+        OrbitParallelism::RowChunks => {
+            let chunk_count = std::cmp::max(1u32, h.min(SUB_ORBIT_COUNT as u32));
+            let work_items: Vec<(u32, u32)> = (0..chunk_count)
+                .map(|chunk| {
+                    let row_start = chunk * h / chunk_count;
+                    let row_end = (chunk + 1) * h / chunk_count;
+                    (row_start, row_end)
+                })
+                .filter(|(row_start, row_end)| row_start < row_end)
+                .collect();
 
-    let compute = || -> DensityBuffer {
-        work_items
-            .par_iter()
-            .fold(
-                || DensityBuffer::new(w, h),
-                |mut acc, &(sub_seed, steps)| {
-                    let mut sub_params = params.clone();
-                    sub_params.insert("seed".to_string(), sub_seed as f64);
-                    sub_params.insert("samples".to_string(), steps as f64);
-                    fractal.accumulate_orbits_hiprec(&mut acc, view, &sub_params, bits);
-                    acc
-                },
-            )
-            .reduce(
-                || DensityBuffer::new(w, h),
-                |mut a, b| {
-                    a.merge(&b);
-                    a
-                },
-            )
-    };
+            let compute = || -> DensityBuffer {
+                work_items
+                    .par_iter()
+                    .fold(
+                        || DensityBuffer::new(w, h),
+                        |mut acc, &(row_start, row_end)| {
+                            let mut sub_params = params.clone();
+                            sub_params.insert("row_start".to_string(), row_start as f64);
+                            sub_params.insert("row_end".to_string(), row_end as f64);
+                            fractal.accumulate_orbits_hiprec(&mut acc, view, &sub_params, bits);
+                            acc
+                        },
+                    )
+                    .reduce(
+                        || DensityBuffer::new(w, h),
+                        |mut a, b| {
+                            a.merge(&b);
+                            a
+                        },
+                    )
+            };
 
-    let global_count = rayon::current_num_threads();
-    let merged = if max_threads > 0 && max_threads < global_count {
-        match rayon::ThreadPoolBuilder::new()
-            .num_threads(max_threads)
-            .build()
-        {
-            Ok(pool) => pool.install(compute),
-            Err(_) => compute(),
+            let global_count = rayon::current_num_threads();
+            if max_threads > 0 && max_threads < global_count {
+                match rayon::ThreadPoolBuilder::new()
+                    .num_threads(max_threads)
+                    .build()
+                {
+                    Ok(pool) => pool.install(compute),
+                    Err(_) => compute(),
+                }
+            } else {
+                compute()
+            }
         }
-    } else {
-        compute()
+        OrbitParallelism::SubOrbits => {
+            let total_samples = params.get("samples").copied().unwrap_or(5_000_000.0) as u64;
+            let master_seed = params.get("seed").copied().unwrap_or(0.0) as u64;
+            let k = SUB_ORBIT_COUNT;
+
+            let work_items: Vec<(u64, u64)> = (0..k)
+                .map(|i| {
+                    let sub_seed = derive_sub_seed(master_seed, i);
+                    let steps = total_samples / k + if i < (total_samples % k) { 1 } else { 0 };
+                    (sub_seed, steps)
+                })
+                .collect();
+
+            let compute = || -> DensityBuffer {
+                work_items
+                    .par_iter()
+                    .fold(
+                        || DensityBuffer::new(w, h),
+                        |mut acc, &(sub_seed, steps)| {
+                            let mut sub_params = params.clone();
+                            sub_params.insert("seed".to_string(), sub_seed as f64);
+                            sub_params.insert("samples".to_string(), steps as f64);
+                            fractal.accumulate_orbits_hiprec(&mut acc, view, &sub_params, bits);
+                            acc
+                        },
+                    )
+                    .reduce(
+                        || DensityBuffer::new(w, h),
+                        |mut a, b| {
+                            a.merge(&b);
+                            a
+                        },
+                    )
+            };
+
+            let global_count = rayon::current_num_threads();
+            if max_threads > 0 && max_threads < global_count {
+                match rayon::ThreadPoolBuilder::new()
+                    .num_threads(max_threads)
+                    .build()
+                {
+                    Ok(pool) => pool.install(compute),
+                    Err(_) => compute(),
+                }
+            } else {
+                compute()
+            }
+        }
     };
 
     Ok(merged.normalize(max_iter, use_log))

@@ -15,6 +15,8 @@ argument-hint: 'fractal name or parameter'
 - A new fractal is not complete until CPU f64, CPU hi-precision, and GPU f32 paths all honor the behavior.
 - A rendering-affecting parameter is not complete until it is wired consistently across all active backends.
 - Metadata round-trip checks and capability tracking are part of the implementation, not optional cleanup.
+- This workspace is split between `core/` and `gui/`; new fractal work should never create or rely on a root-level `src/` tree.
+- If the work is for a release fractal rather than just backend parity, coordinate the showcase/README/index requirements through `plan-workflow` instead of leaving them implicit.
 
 ## Procedure
 1. Review the [full checklist](./references/checklist.md) before editing.

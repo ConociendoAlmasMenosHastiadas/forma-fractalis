@@ -45,7 +45,7 @@ pub enum RenderBackend {
 
     /// CPU software floating-point rendering at user-selected bit width.
     /// Enables deep zooms beyond f64 limits. Much slower than Cpu.
-    /// `bits` must be one of: 64, 128, 256, 512, 1024.
+    /// `bits` should be selected from `HIPREC_BIT_OPTIONS`.
     CpuHiPrec,
 
     /// Perturbation Theory deep-zoom renderer.
@@ -100,7 +100,10 @@ impl RenderBackend {
 }
 
 /// Valid bit-width options for the CpuHiPrec backend
-pub const HIPREC_BIT_OPTIONS: &[u32] = &[64, 128, 256, 512, 1024];
+pub const HIPREC_BIT_OPTIONS: &[u32] = &[
+    64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208,
+    216, 224, 232, 240, 248, 256, 512, 1024,
+];
 
 /// Default bit-width for the CpuHiPrec backend
 pub const HIPREC_DEFAULT_BITS: u32 = 128;

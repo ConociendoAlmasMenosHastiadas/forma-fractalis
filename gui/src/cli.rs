@@ -185,6 +185,7 @@ pub fn render_from_cli(args: &Commands) -> Result<(), String> {
             let multi_julia_ifs = crate::fractals::MultiJuliaIFS::new();
             let adj_prob_julia = crate::fractals::AdjProbJulia::new();
             let chaos_symmetry1 = crate::fractals::ChaosSymmetry1::new();
+            let wallpaper = crate::fractals::Wallpaper::new();
             let lace_julia = crate::fractals::LaceJulia::new();
             
             let fractal: &dyn Fractal = match fractal_state.fractal_type {
@@ -204,6 +205,7 @@ pub fn render_from_cli(args: &Commands) -> Result<(), String> {
                 crate::app_state::FractalType::MultiJuliaIFS => &multi_julia_ifs,
                 crate::app_state::FractalType::AdjProbJulia => &adj_prob_julia,
                 crate::app_state::FractalType::ChaosSymmetry1 => &chaos_symmetry1,
+                crate::app_state::FractalType::Wallpaper => &wallpaper,
                 crate::app_state::FractalType::LaceJulia => &lace_julia,
             };
             
@@ -216,8 +218,13 @@ pub fn render_from_cli(args: &Commands) -> Result<(), String> {
                 supersample_factor
             ));
             
-            // Create render state (CLI uses CPU by default, GPU can be enabled via settings)
-            let mut render_state = crate::app_state::RenderState::new();
+            // Restore render backend and precision from metadata when present.
+            let mut render_state = crate::app_state::RenderState::from(&metadata);
+
+            #[cfg(feature = "gpu")]
+            if matches!(render_state.backend, crate::gpu::RenderBackend::Gpu) {
+                render_state.ensure_gpu_initialized()?;
+            }
             
             // Render using the new state-based export function
             let result = crate::export_helpers::export_png_from_state(

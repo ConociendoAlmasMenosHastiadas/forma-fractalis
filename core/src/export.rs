@@ -17,6 +17,49 @@ use std::io::BufWriter;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
+fn format_precise_value(precise: Option<&String>, fallback: f64) -> String {
+    precise
+        .cloned()
+        .unwrap_or_else(|| format!("{fallback:.16}"))
+}
+
+fn format_fractal_parameter_summary(fractal_parameters: &HashMap<String, f64>) -> String {
+    if fractal_parameters.is_empty() {
+        return "none".to_string();
+    }
+
+    let mut entries: Vec<_> = fractal_parameters.iter().collect();
+    entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+    entries
+        .into_iter()
+        .map(|(key, value)| format!("{key}={value}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn format_thread_usage(backend: crate::gpu::RenderBackend, max_threads: usize) -> String {
+    if matches!(backend, crate::gpu::RenderBackend::Gpu) {
+        return "ignored for GPU iteration passes".to_string();
+    }
+
+    let global_threads = rayon::current_num_threads();
+    if max_threads == 0 {
+        format!("requested=0 -> using global rayon pool ({global_threads} threads)")
+    } else if max_threads >= global_threads {
+        format!(
+            "requested={max_threads} -> global rayon pool remains in use ({global_threads} threads available; cap only applies below that)"
+        )
+    } else {
+        format!(
+            "requested={max_threads} -> temporary rayon pool capped to {max_threads} threads (global pool={global_threads})"
+        )
+    }
+}
+
+fn rgba_buffer_mib(width: u32, height: u32) -> f64 {
+    (width as f64 * height as f64 * 4.0) / (1024.0 * 1024.0)
+}
+
 /// Create metadata for PNG export as key-value pairs
 ///
 /// Stores all fractal parameters, view settings, colormap, and render settings
@@ -36,6 +79,11 @@ fn create_png_metadata(
     filter_type: FilterType,
     supersample: u32,
     scale: f32,
+    backend: crate::gpu::RenderBackend,
+    hiprec_bits: u32,
+    max_threads: usize,
+    pt_glitch_tolerance: f64,
+    pt_tiles: u32,
 ) -> Vec<(String, String)> {
     let mut metadata = Vec::new();
 
@@ -93,6 +141,22 @@ fn create_png_metadata(
     metadata.push(("Export-Filter".to_string(), filter_type.as_str().to_string()));
     metadata.push(("Export-Supersample".to_string(), supersample.to_string()));
     metadata.push(("Export-Scale".to_string(), scale.to_string()));
+
+    // Render settings
+    let (stored_hiprec_bits, stored_pt_bits) = if matches!(backend, crate::gpu::RenderBackend::Perturbation) {
+        (crate::gpu::HIPREC_DEFAULT_BITS, hiprec_bits)
+    } else {
+        (hiprec_bits, crate::perturbation::PT_REFERENCE_BITS)
+    };
+    metadata.push(("Render-Backend".to_string(), backend.as_str().to_string()));
+    metadata.push(("Render-HiPrec-Bits".to_string(), stored_hiprec_bits.to_string()));
+    metadata.push(("Render-PT-Bits".to_string(), stored_pt_bits.to_string()));
+    metadata.push(("Render-Max-Threads".to_string(), max_threads.to_string()));
+    metadata.push((
+        "Render-PT-Glitch-Tolerance".to_string(),
+        pt_glitch_tolerance.to_string(),
+    ));
+    metadata.push(("Render-PT-Tiles".to_string(), pt_tiles.to_string()));
     
     // Metadata version for future compatibility
     metadata.push(("Forma-Fractalis-Version".to_string(), env!("CARGO_PKG_VERSION").to_string()));
@@ -146,7 +210,8 @@ pub fn export_png(
     scale: f32,
     output_dir: Option<&PathBuf>,
     backend: crate::gpu::RenderBackend,
-    // Bit width for CPU Hi-Prec rendering. Ignored for other backends.
+    // Precision passed to the render pipeline.
+    // CpuHiPrec uses this as hi-prec bits; Perturbation uses it as PT bits.
     hiprec_bits: u32,
     // Max rayon threads for CPU rendering. 0 = use all available.
     max_threads: usize,
@@ -170,11 +235,84 @@ pub fn export_png(
         target_height,
         supersample,
     );
+    let target_pixels = target_width as u64 * target_height as u64;
+    let render_pixels = render_width as u64 * render_height as u64;
+    let samples_per_output_pixel = supersample.saturating_mul(supersample);
+    let thread_usage = format_thread_usage(backend, max_threads);
+    let center_x = format_precise_value(view.precise_center_x.as_ref(), view.center_x);
+    let center_y = format_precise_value(view.precise_center_y.as_ref(), view.center_y);
+    let zoom = format_precise_value(view.precise_zoom.as_ref(), view.zoom);
     
     let setup_time = export_timer.elapsed();
     perf_log!("[EXPORT-PERF] Setup complete: {:?}", setup_time);
-    perf_log!("[EXPORT-PERF] Target: {}x{}, Render: {}x{} ({}x SS)", 
+    perf_log!(
+        "[EXPORT-PERF] Fractal='{}' | backend={} | max_iter={} | colormap='{}'",
+        fractal.name(),
+        backend.as_str(),
+        max_iterations,
+        colormap.name,
+    );
+    perf_log!("[EXPORT-PERF] Params: {}", format_fractal_parameter_summary(fractal_parameters));
+    perf_log!(
+        "[EXPORT-PERF] View: center=({}, {}), zoom={}, base={}x{}, scale={:.3}",
+        center_x,
+        center_y,
+        zoom,
+        view.width,
+        view.height,
+        scale,
+    );
+    perf_log!("[EXPORT-PERF] Target: {}x{}, Render: {}x{} ({}x SS)",
         target_width, target_height, render_width, render_height, supersample);
+    perf_log!(
+        "[EXPORT-PERF] Sampling: filter={} | supersample={}x ({} samples/output px) | target_pixels={} | render_pixels={} | RGBA~= {:.1} MiB render / {:.1} MiB output",
+        filter_type.as_str(),
+        supersample,
+        samples_per_output_pixel,
+        target_pixels,
+        render_pixels,
+        rgba_buffer_mib(render_width, render_height),
+        rgba_buffer_mib(target_width, target_height),
+    );
+    match backend {
+        crate::gpu::RenderBackend::Cpu => perf_log!(
+            "[EXPORT-PERF] CPU settings: precision=f64 | threads: {}",
+            thread_usage,
+        ),
+        crate::gpu::RenderBackend::CpuHiPrec => perf_log!(
+            "[EXPORT-PERF] CPU Hi-Prec settings: bits={} | threads: {}",
+            hiprec_bits,
+            thread_usage,
+        ),
+        crate::gpu::RenderBackend::Perturbation => perf_log!(
+            "[EXPORT-PERF] PT settings: bits={} | tiles={}x{} | glitch_tolerance={} | threads: {}",
+            hiprec_bits,
+            pt_tiles.max(1),
+            pt_tiles.max(1),
+            pt_glitch_tolerance,
+            thread_usage,
+        ),
+        #[cfg(feature = "gpu")]
+        crate::gpu::RenderBackend::Gpu => perf_log!(
+            "[EXPORT-PERF] GPU settings: precision=f32 | CPU threads: {}",
+            thread_usage,
+        ),
+    }
+    perf_log!(
+        "[EXPORT-PERF] Color settings: period={}{} | log_scale={} | color_offset={} | interior={} rgb({},{},{})",
+        if use_period { "on" } else { "off" },
+        if use_period {
+            format!(" ({period})")
+        } else {
+            String::new()
+        },
+        use_log_scale,
+        color_offset,
+        use_interior_color,
+        interior_color[0],
+        interior_color[1],
+        interior_color[2],
+    );
 
     // Build render configuration with provided fractal
     let config = RenderConfig::new(view.clone(), colormap, max_iterations, fractal)
@@ -185,6 +323,7 @@ pub fn export_png(
         .with_color_offset(color_offset)
         .with_backend(backend)
         .with_hiprec_bits(hiprec_bits)
+        .with_pt_bits(hiprec_bits)
         .with_max_threads(max_threads)
         .with_pt_glitch_tolerance(pt_glitch_tolerance)
         .with_pt_tiles(pt_tiles);
@@ -213,7 +352,7 @@ pub fn export_png(
 
     // Apply filtering if enabled (downsample from supersample to target)
     let filter_start = std::time::Instant::now();
-    let final_buffer = if filter_type != FilterType::None && supersample > 1 {
+    let (final_buffer, filter_time) = if filter_type != FilterType::None && supersample > 1 {
         let filtered = apply_supersample_filter(
             &buffer,
             render_width,
@@ -224,10 +363,15 @@ pub fn export_png(
         )?;
         let filter_time = filter_start.elapsed();
         perf_log!("[EXPORT-PERF] Filtering complete: {:?}", filter_time);
-        filtered
+        (filtered, filter_time)
     } else {
-        perf_log!("[EXPORT-PERF] Filtering skipped (no filter or supersample=1)");
-        buffer
+        let filter_time = filter_start.elapsed();
+        perf_log!(
+            "[EXPORT-PERF] Filtering skipped: filter={} | supersample={}x",
+            filter_type.as_str(),
+            supersample,
+        );
+        (buffer, filter_time)
     };
 
     // Generate filename with timestamp and filter info
@@ -255,6 +399,7 @@ pub fn export_png(
     } else {
         PathBuf::from(filename)
     };
+    perf_log!("[EXPORT-PERF] Output path: {}", path.display());
 
     // Create metadata
     let metadata_start = std::time::Instant::now();
@@ -273,6 +418,11 @@ pub fn export_png(
         filter_type,
         supersample,
         scale,
+        backend,
+        hiprec_bits,
+        max_threads,
+        pt_glitch_tolerance,
+        pt_tiles,
     );
     let metadata_time = metadata_start.elapsed();
     perf_log!("[EXPORT-PERF] Metadata creation: {:?}", metadata_time);
@@ -308,7 +458,7 @@ pub fn export_png(
     perf_log!("[EXPORT-PERF] ========================================");
     perf_log!("[EXPORT-PERF] TOTAL EXPORT TIME: {:?}", total_time);
     perf_log!("[EXPORT-PERF] Breakdown: setup={:.1?}, render={:.1?}, filter={:.1?}, metadata={:.1?}, io={:.1?}",
-        setup_time, render_time, filter_start.elapsed(), metadata_time, io_time);
+        setup_time, render_time, filter_time, metadata_time, io_time);
     perf_log!("[EXPORT-PERF] ========================================");
 
     Ok(path.display().to_string())
@@ -498,6 +648,12 @@ mod tests {
             export_filter: "Lanczos3".to_string(),
             export_supersample: 4,
             export_scale: 3.0,
+            render_backend: crate::gpu::RenderBackend::Perturbation.as_str().to_string(),
+            hiprec_bits: 136,
+            pt_bits: 144,
+            max_threads: 2,
+            pt_glitch_tolerance: 1.5,
+            pt_tiles: 3,
             version: Some("0.1.6".to_string()),
             metadata_version: Some("1.0".to_string()),
             created_timestamp: Some(1234567890),
@@ -509,6 +665,9 @@ mod tests {
         
         // Test parsing filter type
         assert_eq!(metadata.parse_filter_type(), FilterType::Lanczos3);
+        assert_eq!(metadata.parse_render_backend(), crate::gpu::RenderBackend::Perturbation);
+        assert_eq!(metadata.hiprec_bits, 136);
+        assert_eq!(metadata.pt_bits, 144);
         
         // Test creating fractal view
         let view = metadata.to_fractal_view();
@@ -536,6 +695,7 @@ mod tests {
             ("Sin Julia", crate::fractals::FractalType::SinJulia),
             ("Sinh Julia", crate::fractals::FractalType::SinhJulia),
             ("Multi-Julia IFS", crate::fractals::FractalType::MultiJuliaIFS),
+            ("Wallpaper", crate::fractals::FractalType::Wallpaper),
         ];
         
         for (name, expected_type) in test_cases {
@@ -562,6 +722,12 @@ mod tests {
                 export_filter: "None".to_string(),
                 export_supersample: 1,
                 export_scale: 1.0,
+                render_backend: crate::gpu::RenderBackend::Cpu.as_str().to_string(),
+                hiprec_bits: crate::gpu::HIPREC_DEFAULT_BITS,
+                pt_bits: crate::perturbation::PT_REFERENCE_BITS,
+                max_threads: 0,
+                pt_glitch_tolerance: 1.0,
+                pt_tiles: 1,
                 version: None,
                 metadata_version: None,
                 created_timestamp: None,
@@ -594,6 +760,12 @@ mod tests {
             export_filter: "None".to_string(),
             export_supersample: 1,
             export_scale: 1.0,
+            render_backend: crate::gpu::RenderBackend::Cpu.as_str().to_string(),
+            hiprec_bits: crate::gpu::HIPREC_DEFAULT_BITS,
+            pt_bits: crate::perturbation::PT_REFERENCE_BITS,
+            max_threads: 0,
+            pt_glitch_tolerance: 1.0,
+            pt_tiles: 1,
             version: None,
             metadata_version: None,
             created_timestamp: None,
@@ -633,6 +805,12 @@ mod tests {
                 export_filter: "None".to_string(),
                 export_supersample: 1,
                 export_scale: 1.0,
+                render_backend: crate::gpu::RenderBackend::Cpu.as_str().to_string(),
+                hiprec_bits: crate::gpu::HIPREC_DEFAULT_BITS,
+                pt_bits: crate::perturbation::PT_REFERENCE_BITS,
+                max_threads: 0,
+                pt_glitch_tolerance: 1.0,
+                pt_tiles: 1,
                 version: None,
                 metadata_version: None,
                 created_timestamp: None,
@@ -748,6 +926,12 @@ mod tests {
         assert_eq!(metadata.interior_color, [255, 128, 64]);
         assert_eq!(metadata.use_log_scale, false);
         assert_eq!(metadata.color_offset, 0);
+        assert_eq!(metadata.render_backend, crate::gpu::RenderBackend::Cpu.as_str());
+        assert_eq!(metadata.hiprec_bits, crate::gpu::HIPREC_DEFAULT_BITS);
+        assert_eq!(metadata.pt_bits, crate::perturbation::PT_REFERENCE_BITS);
+        assert_eq!(metadata.max_threads, 0);
+        assert_eq!(metadata.pt_glitch_tolerance, 1.0);
+        assert_eq!(metadata.pt_tiles, 1);
         assert_eq!(metadata.export_filter, "None");
         assert_eq!(metadata.export_supersample, 1);
         assert_eq!(metadata.export_scale, 1.0);
@@ -771,7 +955,7 @@ mod tests {
         use crate::fractals::{
             Mandelbrot, Julia, BurningShip, TippetsMandelbrot, MultifractalJulia, Cactus,
             MarekDragon, Tetration, Lemon, InsideoutDragon, Zubieta, SinJulia, SinhJulia,
-            MultiJuliaIFS,
+            MultiJuliaIFS, Wallpaper,
         };
         
         let temp_dir = TempDir::new().unwrap();
@@ -1156,6 +1340,22 @@ mod tests {
             assert_eq!(loaded.fractal_type, "Multi-Julia IFS");
             assert_eq!(loaded.parse_fractal_type().unwrap(), FractalType::MultiJuliaIFS);
         }
+
+        // Test Wallpaper
+        {
+            let fractal = Wallpaper::new();
+            let view = fractal.default_view(400, 300);
+            let params = view.parameters.clone();
+            let result = export_png_test(
+                &view, &colormap, 100, &fractal, &params,
+                false, 256, false, [0, 0, 0], false,
+                FilterType::None, 1, 1.0, Some(&temp_dir.path().to_path_buf()),
+            );
+            assert!(result.is_ok(), "Wallpaper export failed");
+            let loaded = load_png_metadata(result.unwrap()).unwrap();
+            assert_eq!(loaded.fractal_type, "Wallpaper");
+            assert_eq!(loaded.parse_fractal_type().unwrap(), FractalType::Wallpaper);
+        }
     }
 
     #[test]
@@ -1343,6 +1543,30 @@ mod tests {
     }
 }
 
+fn default_metadata_render_backend() -> String {
+    crate::gpu::RenderBackend::default().as_str().to_string()
+}
+
+const fn default_metadata_hiprec_bits() -> u32 {
+    crate::gpu::HIPREC_DEFAULT_BITS
+}
+
+const fn default_metadata_pt_bits() -> u32 {
+    crate::perturbation::PT_REFERENCE_BITS
+}
+
+const fn default_metadata_max_threads() -> usize {
+    0
+}
+
+const fn default_metadata_pt_glitch_tolerance() -> f64 {
+    1.0
+}
+
+const fn default_metadata_pt_tiles() -> u32 {
+    1
+}
+
 /// Fractal metadata structure for serialization/deserialization
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FractalMetadata {
@@ -1372,6 +1596,18 @@ pub struct FractalMetadata {
     pub export_filter: String,
     pub export_supersample: u32,
     pub export_scale: f32,
+    #[serde(default = "default_metadata_render_backend")]
+    pub render_backend: String,
+    #[serde(default = "default_metadata_hiprec_bits")]
+    pub hiprec_bits: u32,
+    #[serde(default = "default_metadata_pt_bits")]
+    pub pt_bits: u32,
+    #[serde(default = "default_metadata_max_threads")]
+    pub max_threads: usize,
+    #[serde(default = "default_metadata_pt_glitch_tolerance")]
+    pub pt_glitch_tolerance: f64,
+    #[serde(default = "default_metadata_pt_tiles")]
+    pub pt_tiles: u32,
     pub version: Option<String>,
     pub metadata_version: Option<String>,
     pub created_timestamp: Option<u64>,
@@ -1493,6 +1729,25 @@ pub fn load_png_metadata<P: AsRef<Path>>(path: P) -> Result<FractalMetadata, Str
     let export_scale = find_text("Export-Scale")
         .and_then(|s| s.parse().ok())
         .unwrap_or(3.0);
+
+    // Parse render settings
+    let render_backend = find_text("Render-Backend")
+        .unwrap_or_else(default_metadata_render_backend);
+    let hiprec_bits = find_text("Render-HiPrec-Bits")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(default_metadata_hiprec_bits);
+    let pt_bits = find_text("Render-PT-Bits")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(default_metadata_pt_bits);
+    let max_threads = find_text("Render-Max-Threads")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(default_metadata_max_threads);
+    let pt_glitch_tolerance = find_text("Render-PT-Glitch-Tolerance")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(default_metadata_pt_glitch_tolerance);
+    let pt_tiles = find_text("Render-PT-Tiles")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(default_metadata_pt_tiles);
     
     // Parse version info
     let version = find_text("Forma-Fractalis-Version");
@@ -1523,6 +1778,12 @@ pub fn load_png_metadata<P: AsRef<Path>>(path: P) -> Result<FractalMetadata, Str
         export_filter,
         export_supersample,
         export_scale,
+        render_backend,
+        hiprec_bits,
+        pt_bits,
+        max_threads,
+        pt_glitch_tolerance,
+        pt_tiles,
         version,
         metadata_version,
         created_timestamp,
@@ -1551,8 +1812,20 @@ impl FractalMetadata {
             "Multi-Julia IFS" => Ok(FractalType::MultiJuliaIFS),
             "Adj Prob Julia" => Ok(FractalType::AdjProbJulia),
             "ChaosSymmetry1" => Ok(FractalType::ChaosSymmetry1),
+            "Wallpaper" => Ok(FractalType::Wallpaper),
             "Lace Julia" => Ok(FractalType::LaceJulia),
             other => Err(format!("Unknown fractal type: {}", other)),
+        }
+    }
+
+    /// Convert render backend string to RenderBackend enum.
+    pub fn parse_render_backend(&self) -> crate::gpu::RenderBackend {
+        match self.render_backend.as_str() {
+            "CPU Hi-Prec" | "CpuHiPrec" | "CPU_HIPREC" => crate::gpu::RenderBackend::CpuHiPrec,
+            "Perturbation" => crate::gpu::RenderBackend::Perturbation,
+            #[cfg(feature = "gpu")]
+            "GPU" | "Gpu" => crate::gpu::RenderBackend::Gpu,
+            _ => crate::gpu::RenderBackend::Cpu,
         }
     }
     
